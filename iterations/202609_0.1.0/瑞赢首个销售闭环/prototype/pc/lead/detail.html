@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>线索详情 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：线索详情 */
+  .ld-cols { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; align-items: start; }
+  .ld-demo-bar { display:flex; align-items:center; gap:9px; flex-wrap:wrap; padding:7px 10px; margin-bottom:8px; border:1px solid var(--line); border-radius:var(--r-btn); background:var(--surface); font-size:12px; }
+  .ld-demo-bar label { display:inline-flex; align-items:center; gap:6px; font-weight:600; }
+  .ld-demo-bar select { min-width:104px; height:28px; padding:2px 6px; border:1px solid var(--line); border-radius:var(--r-btn); background:var(--surface); font:inherit; }
+  .ld-demo-bar .ld-demo-muted { color:var(--muted); }
+  .ld-demo-rules { position:relative; }
+  .ld-demo-rules summary { cursor:pointer; color:var(--brand-ink); }
+  .ld-demo-rules[open] { flex-basis:100%; }
+  .ld-demo-rules p { margin:5px 0 0; line-height:1.6; }
+  .fu-item { border: 1px solid var(--line); border-radius: var(--r-btn); padding: 12px; margin-bottom: 10px; background: var(--surface); }
+  .fu-item__h { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .fu-item__b { font-size: 12.5px; margin-top: 6px; line-height: 1.75; }
+  .ld-activity-table { min-width: 780px; }
+  #ld-follow-section { margin-top:18px; }
+  #ld-follow-section>.ry-sec-title { margin:0 0 10px; }
+  .ld-detail-actions { display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap; max-width:560px; }
+  @media (max-width: 1180px) { .ld-cols { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="ld-guard"></div>
+      <div id="ld-body" style="display:none">
+        <div id="ld-demo-control"></div>
+        <div class="ry-objhead" id="ld-objhead"></div>
+        <div class="ry-tabs" id="ld-tabs"></div>
+        <div class="ry-tabpane" data-pane="overview"><div class="ld-cols"><div id="p-ov-l"></div><div id="p-ov-r"></div></div><section id="ld-follow-section"><h2 class="ry-sec-title">跟进与下一步</h2><div class="ld-cols"><div id="p-fu-l"></div><div id="p-fu-r"></div></div></section></div>
+        <div class="ry-tabpane" data-pane="history"><div id="p-history"></div></div>
+      </div>
+    
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser(), D = S.all('dicts');
+  document.addEventListener('click', function (e) { var b = e.target.closest('[data-perm-note]'); if (b && window.RYNOTES) RYNOTES.openPermission(b.getAttribute('data-perm-note')); });
+  var PROVINCES = ['北京市','天津市','上海市','重庆市','河北省','山西省','辽宁省','吉林省','黑龙江省','江苏省','浙江省','安徽省','福建省','江西省','山东省','河南省','湖北省','湖南省','广东省','海南省','四川省','贵州省','云南省','陕西省','甘肃省','青海省','台湾省','内蒙古自治区','广西壮族自治区','西藏自治区','宁夏回族自治区','新疆维吾尔自治区','香港特别行政区','澳门特别行政区'];
+  var id = ui.q('id') || 'LED-202609-0137';
+  var from = ui.q('from') || 'list';
+  var isDemo = id === 'LED-DEMO-PC' && ui.q('demo') === '1';
+  var demoStatus = '跟进中';
+  var demoActivities = [];
+  var demoLogs = [];
+  function demoLeadFor(status) {
+    var base = {
+      id: 'LED-DEMO-PC', raw: '远驰科技二期车电项目：客户计划十月选型，赵敏已确认需求沟通窗口，方案和预算仍待核实。',
+      source: '市场活动', sourceRecord: '演示录入', customerId: 'CUS-202609-0001', contactId: 'CON-202609-0001',
+      phone: '13800006021', contactName: '赵敏', salesRegionProvince: '上海市', salesRegionCity: '上海市',
+      candidateLines: ['BL-CE'], candidateProducts: [], sourcePool: 'POOL-CE', currentPool: '', owner: 'U-001',
+      protectUntil: '', nextAction: '提交方案初稿并确认预算', nextFollowUp: '2026-09-25 10:00', lastFollowUpAt: '2026-09-18 15:00',
+      cultivateReview: '', createdAt: '2026-09-14 09:20', createdBy: 'U-001', status: status
+    };
+    if (status === '待处理') return Object.assign(base, { currentPool: 'POOL-CE', sourcePool: '', owner: '', nextAction: '', nextFollowUp: '', lastFollowUpAt: '' });
+    if (status === '跟进中') return Object.assign(base, { protectUntil: '2026-09-27 22:00' });
+    if (status === '已转化') return Object.assign(base, { currentPool: '', protectUntil: '', convertTargets: ['OPP-DEMO-001'], convertName: '远驰科技二期车电项目', convertAt: '2026-09-20 11:00', convertBy: 'U-001' });
+    return Object.assign(base, { currentPool: '', protectUntil: '', invalidReason: '重复线索', invalidNote: '经核对与既有线索重复', duplicateOf: 'LED-202609-0137', statusBeforeInvalid: '跟进中', ownerBeforeInvalid: 'U-001' });
+  }
+  var l = isDemo ? demoLeadFor(demoStatus) : S.lead(id);
+  function resetDemo(status) {
+    demoStatus = status;
+    l = demoLeadFor(status);
+    demoActivities = status === '待处理' ? [] : [{ id: 'ACT-DEMO-001', type: '会议', at: '2026-09-18 15:00', summary: '赵敏确认二期选型节奏，要求十月前提交方案初稿。', actor: 'U-001' }];
+    demoLogs = [{ action: '载入演示场景', at: S.now(), actor: '演示操作', source: '本页', from: '—', to: status }];
+  }
+  function demoCommit(action, before, after) {
+    demoStatus = l.status;
+    demoLogs.unshift({ action: action, at: S.now(), actor: u.id, source: '演示操作', from: before || '—', to: after || '—' });
+    ui.close(); ui.toast(action + '已在演示线索中完成。', 'success'); renderAll();
+  }
+  if (isDemo) resetDemo(demoStatus);
+  var fromCustomer = ui.q('customer') || '';
+  function can(a, o) { return a.indexOf('lead.') === 0 || a === 'activity.create' ? true : RY.perm.can(a, o); }
+  function deny(a) { return RY.perm.whyNot(a); }
+
+  var g = isDemo ? { ok: true } : RY.perm.guard('lead.detail', 'leads', id);
+  if (!g.ok || !l) {
+    RY.nav.shell({ nav: 'lead.list', title: '线索详情', crumbs: [{ label: '首页', href: 'pc.html' }, { label: '线索', href: 'pc/lead/list.html' }, { label: '线索详情' }] });
+    ui.renderState('#ld-guard', g.kind || 'unavailable', {
+      body: '<p>' + ui.esc(g.reason || '该线索不存在，或已不在你的数据范围内。') + '</p>' +
+        '<p class="ry-hint">失去权限后不再展示线索原始内容、手机号、负责人与任何转化结果。</p>',
+      actions: '<a class="ry-btn" href="list.html">返回线索列表</a><a class="ry-btn" href="../search.html">改用全局搜索</a>'
+    });
+    return;
+  }
+
+  var STATES = ['待处理', '跟进中', '已转化', '无效'];
+  /* 状态说明只用于独立演示场景；正式详情在对象标题展示当前状态。 */
+  function demoStateNote() {
+    var st = l.status;
+    var notes = {
+      '待处理': '待处理可在池内或已有负责人；认领、分派只改归属，不改业务状态。',
+      '跟进中': '跟进中不能退回待处理；转交或退回池内只调整归属。',
+            '已转化': '已转化为终态，不可重复转换；转化结果保留在历史中。',
+      '无效': '无效需由有权人员纠错后恢复原状态和合法归属。'
+    };
+    return '<p>本演示展示四种状态及各状态可见的操作；演示操作不会写入正式业务数据。</p>' +
+      '<p>' + ui.esc(notes[st] || '') + '</p>' +
+      '<p>切换状态不会写入正式线索、活动、归属或审计。</p>';
+  }
+
+  /* ---------------------------------------------------------------- 头部 */
+
+  function objhead() {
+    var terminal = ['已转化', '无效'].indexOf(l.status) >= 0;
+    var ownerTxt = l.owner
+      ? ui.esc(S.userName(l.owner)) + (terminal ? '（历史负责人）' : '（当前负责人）')
+      : (l.currentPool ? '<span class="ry-faint">无负责人</span>，当前池：' + ui.esc(poolName(l.currentPool)) : (terminal ? '无当前负责人，已退出经营' : '<span class="ry-bad-text">当前负责人和池均为空（异常）</span>'));
+    return '<div class="ry-objhead__top"><div>' +
+      '<div class="ry-objhead__name">' + l.id + (isDemo ? ui.tag('演示线索', 'brand') : '') + ui.statusTag(l.status) +
+        (l.protectUntil ? (l.protectUntil.slice(0, 10) >= S.today() ? ui.tag('保护期内', 'ok') : ui.tag('保护期已到期', 'warn')) : '') + '</div>' +
+      '<div class="ry-flags">' +
+        ui.tag('来源：' + l.source, 'muted') + ui.tag(l.sourceRecord, 'muted') +
+        (l.candidateLines.length ? l.candidateLines.map(function (x) { return ui.tag('候选业务线：' + S.businessLineName(x), 'brand'); }).join('') : ui.tag('未标注候选业务线', 'muted')) +
+      '</div>' +
+      '<div class="ry-objhead__meta">' +
+        '<span>当前归属 ' + ownerTxt + '</span>' +
+        '<span>创建 ' + ui.esc(l.createdAt) + '</span>' +
+        '<span>最近跟进 ' + ui.esc(l.lastFollowUpAt || '—') + '</span>' +
+        (l.protectUntil ? '<span>保护期至 ' + ui.esc(l.protectUntil.slice(0, 10)) + '</span>' : '') +
+      '</div>' +
+    '</div><div class="ry-objhead__actions" id="ld-head-acts"></div></div>';
+  }
+
+  /* ---------------------------------------------------------------- 概览 */
+
+  function visiblePhone() {
+    if (l.phonePlain) return l.phonePlain;
+    var contact = l.contactId ? S.contact(l.contactId) : null;
+    if (l.phone && l.phone.indexOf('*') >= 0 && contact && contact.phonePlain) return contact.phonePlain;
+    return l.phone || '';
+  }
+  function renderOverview() {
+    ui.qs('#p-ov-l').innerHTML =
+      ui.section('线索信息', ui.kv([
+        ['线索描述', ui.esc(l.raw)],
+        ['线索来源', ui.esc(l.source)],
+        ['录入来源', ui.esc(l.sourceRecord)],
+        ['联系电话', visiblePhone() ? ui.esc(visiblePhone()) : '<span class="ry-faint">未登记</span>'],
+        ['联系人', l.contactId ? '<a href="../contact/detail.html?id=' + l.contactId + '&from=lead">' + ui.esc(contactName(l.contactId)) + '</a>' : ui.esc(l.contactName || '未登记')],
+        ['线索地区', l.salesRegionProvince ? ui.esc(l.salesRegionProvince + ' · ' + (l.salesRegionCity || '')) : '未填写'],
+        ['可能涉及的业务线', l.candidateLines.length ? ui.esc(l.candidateLines.map(S.businessLineName).join('、')) : '尚未确定']
+      ]));
+    ui.qs('#p-ov-r').innerHTML = ui.section('负责人和保护期', ui.kv([
+        [['已转化', '无效'].indexOf(l.status) >= 0 ? '原负责人' : '当前负责人', l.owner ? ui.esc(S.userName(l.owner)) : (l.currentPool ? '待认领或分派' : '暂无负责人')],
+        ['所在池', l.currentPool ? ui.esc(poolName(l.currentPool)) : '不在池内'],
+        ['来自线索池', l.sourcePool ? ui.esc(poolName(l.sourcePool)) : '未从线索池取得'],
+        ['保护至', l.protectUntil ? ui.esc(l.protectUntil.slice(0, 16)) : '无保护期']
+      ]) + (l.protectUntil ? '<p class="ry-hint">保护期到期后不会自动收回线索。</p>' : '') +
+      '<div class="ry-actions-row"><button class="ry-btn ry-btn--sm" id="ld-own-history">查看归属记录</button></div>') +
+      (l.duplicateOf ? ui.section('重复线索', '<p>这条线索已标记为重复。' +
+        (S.lead(l.duplicateOf) && RY.perm.inScope('leads', S.lead(l.duplicateOf)) ? '重复于 ' + ui.esc(l.duplicateOf) + '。' : '') +
+        '处理经过可在日志记录中查看。</p>') : '');
+    var b4 = ui.qs('#ld-own-history'); if (b4) b4.addEventListener('click', function () {
+      if (isDemo) ui.qs('[data-tab="history"]').click();
+      else RY.nav.go('pc/lead/detail.html?id=' + id + '&from=' + from + '#history');
+    });
+  }
+
+  function custName(x) { var c = S.customer(x); return c ? c.name : x; }
+  function contactName(x) { var c = S.contact(x); return c ? c.name + '（' + x + '）' : x; }
+  function poolName(code) { var p = S.poolOf(code); return p ? p.name : '未知线索池'; }
+
+  /* ------------------------------------------------------------ 跟进记录 */
+
+  function followUps() {
+    if (isDemo) return demoActivities;
+    return S.all('activities').filter(function (a) {
+      return a.leadId === id || (a.related || []).some(function (x) { return x.type === '线索' && x.id === id; });
+    });
+  }
+
+  function renderFollow() {
+    var list = (isDemo ? demoActivities.slice() : S.all('activities').filter(function (a) {
+      return a.leadId === id || (a.related || []).some(function (x) { return x.type === '线索' && x.id === id; });
+    })).sort(function (a, b) { return String(b.at || '').localeCompare(String(a.at || '')); });
+    var linkedTasks = isDemo ? (demoStatus === '待处理' ? [] : [{ id: 'TSK-DEMO-001', name: '准备二期方案初稿', status: demoStatus === '已转化' ? '已完成' : '进行中', owner: 'U-001', dueAt: '2026-09-25' }]) : S.all('tasks').filter(function (t) { return t.related && t.related.type === '线索' && t.related.id === id && RY.perm.inScope('tasks', t); });
+    ui.qs('#p-fu-l').innerHTML = ui.section('关联销售活动（' + list.length + ' 条）',
+      (list.length ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight ld-activity-table"><thead><tr><th>发生时间</th><th>方式</th><th>结果摘要</th><th>记录人</th><th>详情</th></tr></thead><tbody>' + list.map(function (a) {
+        return '<tr><td>' + ui.esc(a.at || '—') + '</td><td>' + ui.esc(a.type || a.channel || '—') + '</td><td>' + ui.esc(a.summary || a.content || '—') + '</td><td>' + ui.esc(S.userName(a.owner || a.actor) || a.actor || '—') + '</td><td>' + (isDemo ? '演示活动' : '<a href="../activity/detail.html?id=' + ui.esc(a.id) + '&from=lead">查看活动</a>') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' : '<p class="ry-hint">该线索尚无关联销售活动。</p>') +
+      '<div class="ry-actions-row">' + (isDemo ? '' : '<a class="ry-btn" href="../activity/list.html?lead=' + encodeURIComponent(id) + '">查看销售活动</a>') +
+        (!isDemo && ['待处理','跟进中'].indexOf(l.status) >= 0 && can('activity.create') ? '<button class="ry-btn ry-btn--primary" data-record-activity>记录销售活动</button>' : '') + '</div>',
+      '<button type="button" data-pcn-rule="leadActivity"></button>') +
+      ui.section('关联正式任务（' + linkedTasks.length + ' 条）', linkedTasks.length ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr><th>任务</th><th>状态</th><th>负责人</th><th>截止时间</th></tr></thead><tbody>' + linkedTasks.map(function (t) { return '<tr><td>' + (isDemo ? ui.esc(t.name) : '<a href="../task/detail.html?id=' + encodeURIComponent(t.id) + '">' + ui.esc(t.name || t.title || t.id) + '</a>') + '</td><td>' + ui.esc(t.status || '—') + '</td><td>' + ui.esc(S.userName(t.owner) || '—') + '</td><td>' + ui.esc(t.dueAt || t.due || '—') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="ry-hint">该线索暂无关联正式任务。</p>');
+
+    ui.qs('#p-fu-r').innerHTML =
+      ui.section('下一步', ui.kv([
+        ['下一步动作', ui.esc(l.nextAction || '—')],
+        ['下次跟进时间', ui.esc(l.nextFollowUp || '—')],
+        ['最近跟进时间', ui.esc(l.lastFollowUpAt || '—')]
+      ]) + '<div class="ry-actions-row">' + (isDemo ? '' : '<button class="ry-btn" id="ld-next2">设置下一步</button>') + '</div>') +
+      ui.section('该线索产生的关联对象', '<div>' +
+        (l.customerId ? '<div class="ry-list-row"><span>' + ui.tag('客户', 'brand') + '</span><span class="ry-list-row__main"><a href="../customer/detail.html?id=' + l.customerId + '&from=lead">' + ui.esc(custName(l.customerId)) + '</a></span></div>' : '') +
+        (l.contactId ? '<div class="ry-list-row"><span>' + ui.tag('联系人', 'brand') + '</span><span class="ry-list-row__main"><a href="../contact/detail.html?id=' + l.contactId + '&from=lead">' + ui.esc(contactName(l.contactId)) + '</a></span></div>' : '') +
+        (l.convertTargets || []).filter(function (x) { return x.indexOf('OPP-') === 0; }).map(function (x) {
+          var o = isDemo ? null : S.opp(x);
+          return '<div class="ry-list-row"><span>' + ui.tag('商机', 'brand') + '</span><span class="ry-list-row__main">' +
+            (isDemo ? ui.esc(l.convertName || x) + '（演示结果）' : '<a href="../opportunity/detail.html?id=' + x + '&from=lead">' + ui.esc(o ? o.name : x) + '</a>') +
+            '</span><span class="ry-list-row__side ry-mini">' + (o ? ui.statusTag(o.closeResult || o.processStatus) : '') + '</span></div>';
+        }).join('') +
+        (!l.customerId && !(l.convertTargets || []).length ? '<p class="ry-hint">该线索尚未产出客户、联系人或商机。</p>' : '') + '</div>');
+    var a2 = ui.qs('#ld-next2'); if (a2) a2.addEventListener('click', nextDrawer);
+    ui.qsa('[data-record-activity]').forEach(function (b) { b.addEventListener('click', activityDrawer); });
+  }
+
+  function nextDrawer() {
+    if (!can('lead.edit', { owner: l.owner })) { ui.modal({ title: '该动作当前不可执行', size: 'sm', body: '<p>' + ui.esc(deny('lead.edit')) + '</p>', footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>' }); return; }
+    ui.drawer({
+      title: '设置下一步', subtitle: '线索必须始终有明确的下一步，避免线索悬空。',
+      body: ui.field('下一步动作', ui.input('nextAction', l.nextAction, '如：提交一版技术方案初稿并约现场交流'), '必填', true) +
+        ui.field('下次跟进时间', ui.input('nextFollowUp', l.nextFollowUp.slice(0, 10), 'YYYY-MM-DD HH:mm'), '必填', true) +
+        ui.banner('下一步不是任务：0.1 不生成任务对象，也不做自动提醒策略配置；这里只登记节奏，实际日程由「工作管理」承担。', 'info'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="nx-ok">保存</button>',
+      onOpen: function (el) {
+        ui.qs('#nx-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!v.nextAction) { ui.toast('请填写下一步动作。', 'warn'); return; }
+          S.updateLead(id, { nextAction: v.nextAction, nextFollowUp: v.nextFollowUp, updatedAt: S.now() }, '设置下一步');
+          l = S.lead(id);
+          ui.close(); ui.toast('下一步已更新。', 'success'); renderAll();
+        });
+      }
+    });
+  }
+
+  function activityDrawer() {
+    if (['已转化','无效'].indexOf(l.status) >= 0 || !can('activity.create')) return;
+    ui.drawer({
+      title: '记录销售活动', subtitle: '记录已经发生的沟通。' + (isDemo ? '演示提交仅更新本页快照。' : '保存后关联当前线索。'),
+      body: ui.field('沟通方式', ui.select('channel', ['电话','微信','会议','邮件','其他'], '电话'), '', true) +
+        ui.field('发生时间', ui.input('at', S.now().slice(0, 16), 'YYYY-MM-DD HH:mm'), '', true) +
+        ui.field('实际沟通人', ui.input('target', l.contactName || '', '姓名或称谓'), '可直接记录实际沟通人，不强制创建正式联系人。') +
+        ui.field('结果摘要', ui.textarea('content', '', '记录真实沟通结果'), '', true) +
+        ui.banner('保存活动只更新最近跟进时间；下一步计划和正式任务保持独立。', 'info'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ld-activity-save">保存活动</button>',
+      onOpen: function (el) { ui.qs('#ld-activity-save', el).addEventListener('click', function () {
+        var v = ui.formValues(el);
+        if (!v.channel || !v.at || !String(v.content || '').trim()) { ui.toast('请填写沟通方式、发生时间和结果摘要。', 'warn'); return; }
+        if (isDemo) {
+          demoActivities.unshift({ id: 'ACT-DEMO-' + (demoActivities.length + 1), type: v.channel, at: v.at, summary: v.content.trim(), target: v.target, actor: u.id });
+          if (!l.lastFollowUpAt || v.at > l.lastFollowUpAt) l.lastFollowUpAt = v.at;
+          demoCommit('记录跟进', '—', v.content.trim());
+          return;
+        }
+        var r = S.createActivity({ channel: v.channel, at: v.at, target: v.target, content: v.content.trim(), related: [{ type: '线索', id: id }] });
+        if (!r.ok) { ui.toast(r.msg || '活动保存失败。', 'warn'); return; }
+        if (!l.lastFollowUpAt || v.at > l.lastFollowUpAt) S.updateLead(id, { lastFollowUpAt: v.at }, '更新最近跟进时间');
+        l = S.lead(id); ui.close(); ui.toast('销售活动已保存。', 'success'); renderAll();
+      }); }
+    });
+  }
+
+  function act(kind) {
+    var perm = { claim: 'lead.claim', assign: 'lead.assign', transfer: 'lead.transfer', returnPool: 'lead.returnPool', recycle: 'lead.recycle' }[kind];
+    if (!can(perm, { owner: l.owner })) {
+      ui.modal({ title: '该动作当前不可执行', size: 'sm', body: '<p>' + ui.esc(deny(perm)) + '</p>', footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>' });
+      return;
+    }
+    var needTarget = kind === 'assign' || kind === 'transfer';
+    var needPool = kind === 'returnPool' || kind === 'recycle';
+    var label = { claim: '认领', assign: '分派', transfer: '转交', returnPool: '退回池内', recycle: '主管回收' }[kind];
+    ui.drawer({
+      title: label + '线索',
+      subtitle: ((kind === 'claim' || kind === 'assign') ? '认领／池内分派后线索离开当前池并按池规则产生保护期；业务状态保持不变。' : (kind === 'transfer' ? '转交不经过线索池；成功后清除保护期，业务状态保持不变。' : '退回／回收仅调整归属并清除保护期，业务状态保持不变。')) + (isDemo ? '演示提交仅更新本页快照。' : ''),
+      body: (needTarget ? ui.field('目标负责人', ui.select('target', (kind === 'assign'
+        ? (function () { var p = S.poolOf(l.currentPool); return S.all('users').filter(function (x) { return p && (p.members || []).indexOf(x.id) >= 0; }); })()
+        : S.all('users').filter(function (x) { return x.role === 'R1' || x.role === 'R2'; })
+      ).map(function (x) { return { value: x.id, label: x.name + '（' + x.role + '）' }; })), kind === 'assign' ? '池内分派的目标必须是该池成员' : '转交目标须为有效销售且业务范围覆盖线索候选业务线', true) : '') +
+        (needPool ? ui.field('目标线索池', ui.select('pool', [{ value: '', label: '请选择' }].concat(S.all('leadPools').filter(function (p) { return p.status === '启用'; }).map(function (p) { return { value: p.code, label: p.name }; })), ''), '', true) : '') +
+        ui.field(kind === 'returnPool' ? '退回原因' : kind === 'recycle' ? '回收原因' : '说明', ui.textarea('note', '', '将写入审计'), '', kind === 'returnPool' || kind === 'recycle') +
+        ui.banner(kind === 'claim'
+          ? '认领是原子动作：只有第一个完成的人成功；持有上限按池规则校验，超限会被拒绝而不是静默成功。'
+          : '提交时按「角色页面权限 ∩ 动作权限 ∩ 数据范围 ∩ 字段规则 ∩ 当前对象状态」重新校核，不满足会给出具体原因。', 'info'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="act-ok">确认' + label + '</button>',
+      onOpen: function (el) {
+        ui.qs('#act-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (needTarget && !v.target) { ui.toast('请选择目标负责人。', 'warn'); return; }
+          if (needPool && !v.pool) { ui.toast('请选择目标线索池。', 'warn'); return; }
+          if ((kind === 'returnPool' || kind === 'recycle') && !v.note) { ui.toast('请填写操作原因。', 'warn'); return; }
+          if (isDemo) {
+            var before = l.owner ? S.userName(l.owner) : poolName(l.currentPool);
+            if (kind === 'claim' || kind === 'assign' || kind === 'transfer') {
+              l.owner = kind === 'claim' ? u.id : v.target;
+              l.currentPool = '';
+              l.protectUntil = kind === 'transfer' ? '' : S.addDays(S.today(), 7);
+            } else {
+              l.owner = '';
+              l.currentPool = v.pool;
+              l.protectUntil = '';
+            }
+            demoCommit(label, before, l.owner ? S.userName(l.owner) : poolName(l.currentPool));
+            return;
+          }
+          var holdCount = S.all('leads').filter(function (x) { return x.owner === u.id; }).length;
+          var r = S.leadAction(id, kind, { target: v.target, pool: v.pool, note: v.note, holdCount: holdCount });
+          if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+          l = S.lead(id);
+          ui.close(); ui.toast(label + '完成。', 'success'); renderAll();
+        });
+      }
+    });
+  }
+
+  /* -------------------------------------------------------------- 日志记录 */
+
+  function renderHistory() {
+    var logs = isDemo ? demoLogs : S.all('audits').filter(function (a) { return a.objectId === id; });
+    var excs = isDemo ? [{ id: 'EXC-DEMO-001', status: '已完成', type: '来源信息核对', target: '演示线索', note: '原始来源已核实，处理历史保留。' }] : S.all('exceptions').filter(function (e) { return e.objectId === id; });
+    ui.qs('#p-history').innerHTML =
+      ui.section('操作记录', '<div class="ry-timeline">' + (logs.length ? logs.map(function (a) {
+        return '<div class="ry-tl"><div class="ry-tl__h"><b>' + ui.esc(a.action) + '</b><span class="ry-tl__t">' + ui.esc(a.at) + '</span><span class="ry-mini">' + ui.esc(a.actor) + ' · ' + ui.esc(a.source) + '</span></div>' +
+          '<div class="ry-tl__b">' + ui.esc(a.from || '—') + ' → ' + ui.esc(a.to || '—') + '</div></div>';
+      }).join('') : '<p class="ry-hint">暂无操作记录。</p>') + '</div>') +
+      ui.section('关联异常记录', excs.length ? '<div>' + excs.map(function (e) {
+        return '<div class="ry-list-row"><span>' + ui.statusTag(e.status) + '</span><span class="ry-list-row__main">' + ui.esc(e.type) + '｜' + ui.esc(e.target) + '　' + ui.esc(e.note) + '</span><span class="ry-list-row__side ry-mini">' + e.id + '</span></div>';
+      }).join('') + '</div>' : '<p class="ry-hint">该线索暂无关联异常记录。</p>');
+  }
+
+  /* ---------------------------------------------------------------- 编辑 */
+
+  function editDrawer() {
+    if (!can('lead.edit', { owner: l.owner })) { ui.modal({ title: '该动作当前不可执行', size: 'sm', body: '<p>' + ui.esc(deny('lead.edit')) + '</p>', footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>' }); return; }
+    ui.drawer({
+      title: '编辑线索（普通字段）', subtitle: '来源与来源记录不可修改；结构化的候选业务线可多选。' + (isDemo ? '演示提交仅更新本页快照。' : ''),
+      body: ui.field('原始内容', ui.textarea('raw', l.raw, '', 4), '', true) +
+        ui.field('候选业务线', '<div style="display:flex;gap:12px;flex-wrap:wrap">' + S.all('businessLines').map(function (x) {
+          return '<label class="ry-check"><input type="checkbox" name="line" value="' + x.code + '"' + (l.candidateLines.indexOf(x.code) >= 0 ? ' checked' : '') + '> ' + x.name + '</label>';
+        }).join('') + '</div>', '可多选') +
+        ui.field('关联正式联系人', ui.select('contactId', [{ value: '', label: '暂不关联' }].concat(S.all('contacts').filter(function (c) { return RY.perm.inScope('contacts', c); }).map(function (c) { return { value: c.id, label: c.name + '（' + c.id + '）' }; })), l.contactId || ''), '<button type="button" data-pcn-rule="leadCreateContact"></button>') +
+        ui.grid2(ui.field('联系人姓名', ui.input('contactName', l.contactName || '', '')),
+          ui.field('联系人电话', ui.input('phone', visiblePhone(), ''), '<button type="button" data-pcn-rule="leadCreatePhone"></button>')) +
+        ui.field('销售归属地区', ui.grid2(
+          ui.select('salesRegionProvince', [{ value: '', label: '未填写' }].concat(PROVINCES.map(function (x) { return { value: x, label: x }; })), l.salesRegionProvince || ''),
+          ui.input('salesRegionCity', l.salesRegionCity || '', '填写城市')
+        ), '由销售填写，可留空；不影响用户权限或客户经营区域。') +
+        ui.grid2(ui.field('下一步动作', ui.input('nextAction', l.nextAction, '')), ui.field('下次跟进时间', ui.input('nextFollowUp', l.nextFollowUp.slice(0, 10), ''))) +
+        ui.kv([['线索来源', ui.esc(l.source) + '（不可修改）'], ['录入来源', ui.esc(l.sourceRecord) + '（不可修改）']]),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="le-ok">保存</button>',
+      onOpen: function (el) {
+        var contactSelect = ui.qs('[name=contactId]', el);
+        var contactName = ui.qs('[name=contactName]', el);
+        var contactPhone = ui.qs('[name=phone]', el);
+        var manual = { name: l.contactId ? '' : contactName.value, phone: l.contactId ? '' : contactPhone.value };
+        var linked = !!l.contactId;
+        function syncContact() {
+          var contact = contactSelect.value ? S.contact(contactSelect.value) : null;
+          if (contact) {
+            if (!linked) manual = { name: contactName.value, phone: contactPhone.value };
+            contactName.value = contact.name || '';
+            contactPhone.value = contact.phonePlain || (contact.phones && contact.phones[0]) || '';
+            contactName.readOnly = contactPhone.readOnly = true;
+            linked = true;
+          } else {
+            if (linked) { contactName.value = manual.name; contactPhone.value = manual.phone; }
+            contactName.readOnly = contactPhone.readOnly = false;
+            linked = false;
+          }
+        }
+        contactSelect.addEventListener('change', syncContact);
+        syncContact();
+        ui.qs('#le-ok', el).addEventListener('click', function () {
+          syncContact();
+          var v = ui.formValues(el);
+          if (!v.raw) { ui.toast('原始内容不能为空。', 'warn'); return; }
+          var lines = ui.qsa('input[name=line]', el).filter(function (x) { return x.checked; }).map(function (x) { return x.value; });
+          if (!isDemo && RY.perm.flag('conflict')) {
+            ui.versionConflict({ objectLabel: '线索 ' + l.id, onReload: function () { l = S.lead(id); renderAll(); } });
+            return;
+          }
+          if (!!v.salesRegionProvince !== !!String(v.salesRegionCity || '').trim()) { ui.toast('销售归属地区的省份和城市请同时填写，或同时留空。', 'warn'); return; }
+          if (isDemo) {
+            Object.assign(l, { raw: v.raw, candidateLines: lines, phone: v.phone, contactId: v.contactId,
+              contactName: v.contactName, salesRegionProvince: v.salesRegionProvince,
+              salesRegionCity: String(v.salesRegionCity || '').trim(), nextAction: v.nextAction, nextFollowUp: v.nextFollowUp });
+            demoCommit('编辑普通字段', '—', '字段已更新');
+            return;
+          }
+          S.updateLead(id, { raw: v.raw, candidateLines: lines, phone: v.phone, contactId: v.contactId,
+            contactName: v.contactName, salesRegionProvince: v.salesRegionProvince,
+            salesRegionCity: String(v.salesRegionCity || '').trim(), nextAction: v.nextAction, nextFollowUp: v.nextFollowUp, updatedAt: S.now() }, '线索普通编辑');
+          l = S.lead(id);
+          ui.close(); ui.toast('已保存。', 'success'); renderAll();
+        });
+      }
+    });
+  }
+
+  function demoStatusAction(name) {
+    if (name === '查看转化结果') {
+      ui.drawer({ title: '查看转化结果', subtitle: '演示结果只用于走查，不关联正式商机。',
+        body: ui.kv([['线索', l.id], ['转换时间', l.convertAt || '—'], ['转换人', S.userName(l.convertBy) || '—'],
+          ['目标商机', l.convertName || (l.convertTargets || []).join('、') || '—']]),
+        footer: '<button class="ry-btn ry-btn--primary" data-close>关闭</button>' });
+      return;
+    }
+    if (name === '标记无效') {
+      ui.drawer({ title: '标记无效', subtitle: '演示提交仅更新本页快照，可切换场景重新走查。',
+        body: ui.field('无效原因', ui.select('reason', D.leadInvalidReason, ''), '', true) +
+          ui.field('补充说明', ui.textarea('note', '', '')) +
+          ui.field('重复线索指向（如适用）', ui.select('dup', [{ value: '', label: '不适用' }].concat(S.all('leads').map(function (x) { return { value: x.id, label: x.id + ' ' + x.raw.slice(0, 16) }; })))) +
+          ui.banner('标记无效会清除当前负责人与池归属，并记录纠错前归属。', 'warn'),
+        footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--danger" id="demo-invalid-ok">确认标记无效</button>',
+        onOpen: function (el) { ui.qs('#demo-invalid-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!v.reason) { ui.toast('请选择无效原因。', 'warn'); return; }
+          var before = l.status;
+          l.statusBeforeInvalid = l.status; l.ownerBeforeInvalid = l.owner; l.poolBeforeInvalid = l.currentPool;
+          l.invalidReason = v.reason; l.invalidNote = v.note; l.duplicateOf = v.dup;
+          l.status = '无效'; l.owner = ''; l.currentPool = ''; l.protectUntil = '';
+          demoCommit('标记无效', before, '无效');
+        }); } });
+      return;
+    }
+    if (name === '无效纠错') {
+      ui.drawer({ title: '无效线索纠错', subtitle: '演示提交仅恢复本页快照的纠错前状态和归属。',
+        body: ui.kv([['线索', l.id], ['无效原因', l.invalidReason || '—'], ['纠错前状态', l.statusBeforeInvalid || '—'],
+          ['纠错前负责人', l.ownerBeforeInvalid ? S.userName(l.ownerBeforeInvalid) : '—']]) +
+          ui.field('纠错原因', ui.textarea('reason', '', '必填'), '', true),
+        footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="demo-correct-ok">确认纠错</button>',
+        onOpen: function (el) { ui.qs('#demo-correct-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!v.reason) { ui.toast('请填写纠错原因。', 'warn'); return; }
+          l.status = l.statusBeforeInvalid || '跟进中'; l.owner = l.ownerBeforeInvalid || '';
+          l.currentPool = l.owner ? '' : (l.poolBeforeInvalid || 'POOL-CE');
+          demoCommit('无效纠错', '无效', l.status);
+        }); } });
+    }
+  }
+
+  /* ---------------------------------------------------------------- 渲染 */
+
+  var TABS = [{ key: 'overview', name: '线索概况与跟进' }, { key: 'history', name: '日志记录' }];
+
+  function headActions() {
+    var out = '';
+    var st = l.status;
+    if (isDemo) {
+      var names = (st === '待处理' || st === '跟进中') && l.currentPool && !l.owner ? ['认领', '分派', '编辑普通字段', '标记无效', '整条转换'] :
+        (st === '待处理' || st === '跟进中') ? ['记录跟进', '编辑普通字段', '转交', '退回池内', '标记无效', '整条转换'] :
+        st === '无效' ? ['无效纠错'] : ['查看转化结果'];
+      return names.map(function (name) {
+        if (name === '整条转换') return '<a class="ry-btn ry-btn--sm ry-btn--primary" href="convert.html?id=LED-DEMO-PC&demo=1&from=demo">整条转换</a>';
+        return '<button class="ry-btn ry-btn--sm" type="button" data-demo-action="' + ui.esc(name) + '">' + ui.esc(name) + '</button>';
+      }).join('');
+    }
+    if (['待处理', '跟进中'].indexOf(st) >= 0) out += '<button class="ry-btn ry-btn--sm" id="h-follow">记录跟进</button>';
+    if (st !== '已转化' && st !== '无效') out += '<button class="ry-btn ry-btn--sm" id="h-edit">编辑普通字段</button>';
+    if (st === '待处理' && l.currentPool && !l.owner) out += '<button class="ry-btn ry-btn--sm" id="h-claim">认领</button><button class="ry-btn ry-btn--sm" id="h-assign">分派</button>';
+    if (['待处理', '跟进中'].indexOf(st) >= 0 && l.owner) out += '<button class="ry-btn ry-btn--sm" id="h-transfer">转交</button><button class="ry-btn ry-btn--sm" id="h-return">退回池内</button><button class="ry-btn ry-btn--sm" id="h-recycle">回收</button>';
+    if (st === '无效') out += '<button class="ry-btn ry-btn--sm" id="h-correct">无效纠错</button>';
+    if (st !== '已转化' && st !== '无效') out += '<button class="ry-btn ry-btn--sm" id="h-invalid">标记无效</button>';
+    if (['待处理', '跟进中'].indexOf(st) >= 0) out += '<a class="ry-btn ry-btn--sm ry-btn--primary" href="convert.html?id=' + encodeURIComponent(id) + '&from=' + encodeURIComponent(from) + '">整条转换</a>';
+    if (st === '已转化') out += '<a class="ry-btn ry-btn--primary" href="convert-result.html?id=' + l.id + '&from=' + from + '">查看转化结果</a>';
+    return out;
+  }
+
+  function bindGlobal() {
+    var m = {
+      'h-claim': function () { act('claim'); },
+      'h-edit': function () { editDrawer(); },
+      'h-follow': function () { activityDrawer(); },
+      'h-assign': function () { act('assign'); },
+      'h-transfer': function () { act('transfer'); },
+      'h-return': function () { act('returnPool'); },
+      'h-recycle': function () { act('recycle'); },
+      'h-review': function () {
+        if (!can('lead.nurtureReview', { owner: l.owner })) { ui.modal({ title: '该动作当前不可执行', size: 'sm', body: '<p>' + ui.esc(deny('lead.nurtureReview')) + '</p>', footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>' }); return; }
+        ui.confirm({ title: '培育复查通过', message: '<p>线索将回到「跟进中」，重新进入跟进节奏。</p>', confirmText: '确认复查通过', onConfirm: function () { S.leadAction(id, 'nurtureReview', {}); l = S.lead(id); ui.toast('已回到跟进中。', 'success'); renderAll(); } });
+      },
+      'h-correct': function () {
+        if (!can('lead.correctInvalid')) { ui.modal({ title: '该动作当前不可执行', size: 'sm', body: '<p>' + ui.esc(deny('lead.correctInvalid')) + '</p><p class="ry-hint">无效线索纠错只允许销售主管（R2）或系统管理员（管理员（运营））执行。</p>', footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>' }); return; }
+        ui.drawer({
+          title: '无效线索纠错', subtitle: '纠错后按纠错前的负责人与池归属恢复。',
+          body: ui.kv([['线索', l.id], ['无效原因', l.invalidReason || '—'], ['纠错前状态', l.statusBeforeInvalid || '—'], ['纠错前负责人', l.ownerBeforeInvalid ? S.userName(l.ownerBeforeInvalid) : '—']]) +
+            ui.field('纠错原因', ui.textarea('reason', '', '必填，将写入审计'), '', true),
+          footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ci-ok">确认纠错</button>',
+          onOpen: function (el) {
+            ui.qs('#ci-ok', el).addEventListener('click', function () {
+              var v = ui.formValues(el);
+              if (!v.reason) { ui.toast('请填写纠错原因。', 'warn'); return; }
+              S.leadAction(id, 'correctInvalid', { reason: v.reason });
+              l = S.lead(id); ui.close(); ui.toast('已纠错。', 'success'); renderAll();
+            });
+          }
+        });
+      },
+      'h-nurture': function () {
+        if (!can('lead.nurture', { owner: l.owner })) { ui.modal({ title: '该动作当前不可执行', size: 'sm', body: '<p>' + ui.esc(deny('lead.nurture')) + '</p>', footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>' }); return; }
+        ui.drawer({
+          title: '转入培育', subtitle: '培育是可逆的暂缓状态。',
+          body: ui.field('培育原因', ui.textarea('reason', '', '如：客户年度预算未批复'), '', true) +
+            ui.field('复查日期', ui.input('review', S.addDays(S.today(), 30), ''), '', true) +
+            ui.field('培育方式', ui.input('method', '', '如：电话复查 + 预算节点确认')) +
+            ui.banner('转入培育会清除保护期，但线索当前负责人不变。', 'info'),
+          footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="nu-ok">转入培育</button>',
+          onOpen: function (el) {
+            ui.qs('#nu-ok', el).addEventListener('click', function () {
+              var v = ui.formValues(el);
+              if (!v.reason) { ui.toast('请填写培育原因。', 'warn'); return; }
+              S.leadAction(id, 'nurture', { reason: v.reason, review: v.review, method: v.method });
+              l = S.lead(id); ui.close(); ui.toast('已转入培育。', 'success'); renderAll();
+            });
+          }
+        });
+      },
+      'h-invalid': function () {
+        if (!can('lead.invalid', { owner: l.owner })) { ui.modal({ title: '该动作当前不可执行', size: 'sm', body: '<p>' + ui.esc(deny('lead.invalid')) + '</p>', footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>' }); return; }
+        ui.drawer({
+          title: '标记无效', subtitle: '无效是终态，但可由主管或有权限人员纠错恢复。',
+          body: ui.field('无效原因', ui.select('reason', D.leadInvalidReason, ''), '', true) +
+            ui.field('补充说明', ui.textarea('note', '', '')) +
+            ui.field('重复线索指向（如适用）', ui.select('dup', [{ value: '', label: '不适用' }].concat(S.all('leads').filter(function (x) { return x.id !== id; }).map(function (x) { return { value: x.id, label: x.id + ' ' + x.raw.slice(0, 16) }; })))) +
+            ui.banner('标记无效会清除当前负责人与池归属，并记录纠错前归属以便恢复。', 'warn'),
+          footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--danger" id="iv-ok">确认标记无效</button>',
+          onOpen: function (el) {
+            ui.qs('#iv-ok', el).addEventListener('click', function () {
+              var v = ui.formValues(el);
+              if (!v.reason) { ui.toast('请选择无效原因。', 'warn'); return; }
+              l.ownerBeforeInvalid = l.owner; l.statusBeforeInvalid = l.status;
+              l.protectUntilBeforeInvalid = l.protectUntil; l.poolBeforeInvalid = l.currentPool;
+              S.leadAction(id, 'invalid', { reason: v.reason, note: v.note });
+              if (v.dup) { var ll = S.lead(id); ll.duplicateOf = v.dup; S.save(); }
+              l = S.lead(id); ui.close(); ui.toast('已标记无效。', 'success'); renderAll();
+            });
+          }
+        });
+      }
+    };
+    Object.keys(m).forEach(function (k) { var b = ui.qs('#' + k); if (b) b.addEventListener('click', m[k]); });
+  }
+
+  function renderAll() {
+    ui.qs('#ld-demo-control').innerHTML = isDemo ? '<div class="ld-demo-bar"><b>演示场景</b>' +
+      '<label>线索状态 <select name="demoStatus">' + STATES.map(function (s) { return '<option value="' + ui.esc(s) + '"' + (s === demoStatus ? ' selected' : '') + '>' + ui.esc(s) + '</option>'; }).join('') + '</select></label>' +
+      '<span class="ld-demo-muted">仅切换演示快照</span><details class="ld-demo-rules"><summary>状态规则与提示</summary>' + demoStateNote() + '</details>' +
+      '<a class="ry-btn ry-btn--sm" href="list.html">退出演示</a></div>' : '';
+    ui.qs('#ld-objhead').innerHTML = objhead();
+    ui.qs('#ld-head-acts').innerHTML = headActions();
+    bindGlobal();
+    if (isDemo) {
+      var sel = ui.qs('[name=demoStatus]');
+      if (sel) sel.addEventListener('change', function () { resetDemo(sel.value); renderAll(); });
+      ui.qsa('[data-demo-action]').forEach(function (b) { b.addEventListener('click', function () {
+        var name = b.getAttribute('data-demo-action');
+        if (name === '记录跟进') return activityDrawer();
+        if (name === '认领') return act('claim');
+        if (name === '分派') return act('assign');
+        if (name === '编辑普通字段') return editDrawer();
+        if (name === '转交') return act('transfer');
+        if (name === '退回池内') return act('returnPool');
+        if (name === '主管回收') return act('recycle');
+        if (['标记无效', '无效纠错', '查看转化结果'].indexOf(name) >= 0) return demoStatusAction(name);
+      }); });
+    }
+    renderOverview(); renderFollow(); renderHistory();
+    ui.qsa('.ry-tabpane').forEach(function (p) { p.classList.toggle('is-on', p.getAttribute('data-pane') === (ui.hash() === 'history' ? 'history' : 'overview')); });
+    ui.bindMasked('#ld-body');
+    ui.bindDenied('#ry-page');
+  }
+
+  RY.nav.shell({
+    nav: 'lead.list',
+    title: '线索详情',
+    subtitle: '线索编号：<code>' + l.id + '</code>',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '销售管理' }, { label: '线索', href: 'pc/lead/list.html' }, { label: l.id }],
+    actions: '<a class="ry-btn" href="' + (fromCustomer ? '../customer/detail.html?id=' + fromCustomer + '&from=lead' : 'list.html') + '">' +
+      (fromCustomer ? '返回客户详情' : '返回线索列表') + '</a>'
+  });
+
+  ui.qs('#ld-body').style.display = '';
+  var legacyFollowLink = ui.hash() === 'follow';
+  if (legacyFollowLink) history.replaceState(null, '', location.pathname + location.search + '#overview');
+  renderAll();
+  RY.nav.tabs('ld-tabs', TABS, function (key) {
+    ui.qsa('.ry-tabpane').forEach(function (p) { p.classList.toggle('is-on', p.getAttribute('data-pane') === key); });
+  });
+  if (legacyFollowLink) {
+    ui.qs('#ld-follow-section').scrollIntoView({ block: 'start' });
+  }
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

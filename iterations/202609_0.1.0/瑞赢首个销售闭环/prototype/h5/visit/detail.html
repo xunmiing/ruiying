@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>正式拜访详情 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：正式拜访详情（签到 / 执行 / 结果 / 证据 / 异常与复核 / 历史）。 */
+  .vd-sec { display: none; }
+  .vd-sec.is-on { display: block; }
+  .vd-gate { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; background: var(--surface); }
+  .vd-gate__row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 5px 0; border-bottom: 1px dashed var(--line-soft); }
+  .vd-gate__row:last-child { border-bottom: 0; }
+  .vd-gate__row b { margin-left: auto; font-weight: 500; }
+  .vd-exc { border: 1px solid var(--warn-line); background: var(--warn-soft); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+  .vd-exc p { margin: 0; font-size: 12.5px; line-height: 1.8; }
+  .vd-exc__t { font-weight: 600; color: var(--warn); margin-bottom: 4px !important; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+  <div id="vd-host"></div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store;
+
+  var id = ui.q('id');
+  var v = id ? S.visit(id) : null;
+
+  RY.nav.h5shell({
+    title: v ? ('正式拜访 · ' + ((S.customer(v.customerId) || {}).name || v.customerId)) : '正式拜访详情',
+    sub: '稳定 visit_id · 与销售活动独立',
+    back: 'h5/activity/list.html?tab=visit',
+    nav: 'home',
+    tabbar: false   /* 详情页隐藏底部五入口 */
+  });
+
+  /* 本页契约区块：任何状态下都要渲染，评审需要能对照页面边界。 */
+  function contractHtml() {
+    return '<div class="ry-hcard ry-hcard--flat" style="margin-top:14px"><div class="ry-hcard__head"><h3>本页契约</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">PG-VISIT-DETAIL</span></div></div>' +
+      '<div class="ry-hcard__body">' + ui.kv([
+        ['页面契约', 'PG-VISIT-DETAIL · 正式拜访 · H5'],
+        ['可进入角色', 'R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员（ALL5）'],
+        ['依据', 'prd/04 §4'],
+        ['覆盖验收', 'AC-31 AC-32'],
+        ['本页视图', '签到、执行、结果、证据、异常说明、签退'],
+        ['完成门槛', '有效签到或已说明的异常签到＋签退＋拜访总结；图片与附件不作为完成阻断项'],
+        ['异常边界', '复核只改变异常状态，不改变拜访主状态；复核不通过须说明原因并进入待补充'],
+        ['正式权限', '签到／签退由拜访负责人执行；主管仅在授权团队范围内复核异常；追加补充与纠错分别校验对象权限。正式系统须在服务端重检角色、数据范围、状态与版本。'],
+        ['评审交互', '本 HTML 原型的拜访动作按钮不按演示账号角色权限锁定，仅按对象状态展示；可点击走查，不代表正式授权。'],
+        ['不做', 'H5 不做拜访规则配置、不做批量复核；正式系统不做他人拜访的签到与签退']
+      ]) +
+      '<p class="ry-hint">本页在所有状态下都展示该契约；缺少对象标识或对象不可用时，页面只渲染状态说明与契约，不渲染签到、纪要与证据字段。</p>' +
+      '</div></div>';
+  }
+
+  /* 评审原型只校验对象是否存在；正式页面与对象权限写在页面说明。 */
+  var g = v ? { ok: true }
+            : { ok: false, kind: 'unavailable', reason: '缺少拜访标识，或该拜访记录不存在。' };
+  if (!g.ok) {
+    ui.qs('#vd-host').innerHTML = ui.stateCard(g.kind, {
+      title: '该正式拜访当前不可用',
+      body: '<p>' + ui.esc(g.reason) + '</p>' +
+        '<p class="ry-hint">缺少标识或对象不存在时不渲染签到、纪要与证据字段；正式实现按页面说明鉴权。</p>' +
+        '<p class="ry-hint">正式拜访是独立业务对象，不是销售活动子类；它以稳定的 visit_id 贯穿计划、签到、拜访、签退、纪要与异常复核，改期与取消也保留同一 ID。</p>' +
+        '<p class="ry-hint">异常状态（待复核／待补充／已复核）与拜访主状态相互独立，复核只改变异常状态，不改变拜访主状态，也不改写拜访事实。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/activity/list.html?tab=visit') + '">返回我的拜访</a>' +
+               '<a class="ry-btn" href="' + RY.nav.href('index.html') + '">返回工作台</a>'
+    }) + contractHtml();
+    return;
+  }
+
+  var SUM_FIELDS = [
+    ['object', '拜访对象'], ['chain', '决策链'], ['demand', '需求'], ['concern', '顾虑'],
+    ['budget', '预算'], ['timeline', '时间计划'], ['decision', '决策方式'],
+    ['competitor', '竞争情况'], ['agreement', '共识'], ['support', '需要的支持']
+  ];
+  var TABS = [
+    { k: 'ci', n: '签到' }, { k: 'run', n: '执行' }, { k: 'sum', n: '结果' },
+    { k: 'ev', n: '证据' }, { k: 'exc', n: '异常与复核' }, { k: 'hi', n: '历史' }
+  ];
+
+  function kv(list) {
+    return ui.kv(list.map(function (r) { return [r[0], (r[1] == null || r[1] === '' ? '—' : r[1])]; }));
+  }
+  function stage() {
+    if (v.status === '计划中') return '待签到';
+    if (v.status === '进行中') return '已签到，待签退';
+    if (v.status === '已完成') return '已完成';
+    if (v.status === '未到访') return '未到访';
+    return v.status;
+  }
+
+  /* ---------------------------------------------------------- 视图 */
+
+  function viewCheckIn() {
+    var out = '<div class="vd-gate">' +
+      '<div class="vd-gate__row">计划时间 <b>' + ui.esc(v.planAt || '—') + '</b></div>' +
+      '<div class="vd-gate__row">计划快照冻结 <b>' + ui.esc(v.planSnapshotAt || '未冻结') + '</b></div>' +
+      '<div class="vd-gate__row">实际签到 <b>' + ui.esc(v.checkInAt || '未签到') + '</b></div>' +
+      '<div class="vd-gate__row">签到位置 <b>' + ui.esc(v.checkInLoc ? (v.checkInLoc.addr + '（精度 ' + v.checkInLoc.acc + ' 米）') : '—') + '</b></div>' +
+      '<div class="vd-gate__row">签到问题 <b>' + ui.esc(v.checkInIssue || '无') + '</b></div>' +
+      '</div>' +
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>计划与地址快照</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">签到前可改，签到后冻结</span></div></div>' +
+      '<div class="ry-hcard__body">' + kv([
+        ['客户', ui.esc((S.customer(v.customerId) || {}).name || '—')],
+        ['拜访类型', ui.esc(v.type)],
+        ['计划区域', ui.esc(v.addressSnapshot ? v.addressSnapshot.region : '—')],
+        ['计划地址', ui.esc(v.addressSnapshot ? v.addressSnapshot.detail : '—')],
+        ['规则版本', ui.esc((v.ruleSnapshot && v.ruleSnapshot.code) || '未命中生效规则')]
+      ]) +
+      '<p class="ry-hint">签到前可修改计划时间与地点并留历史；签到后冻结计划快照，另存实际签到时间、位置、距离与异常事实。' +
+        '不采集连续轨迹。</p>' +
+      '<div class="ry-acts-row" style="margin-top:10px">' + checkInBtns() + '</div>' +
+      '</div></div>';
+
+    out += '<div class="ry-hcard ry-hcard--flat"><div class="ry-hcard__head"><h3>改期、取消与未到访</h3></div>' +
+      '<div class="ry-hcard__body">' +
+      '<p class="ry-hint">到计划结束时间仍未签到时，系统只提醒，由用户或主管明确改期、取消或确认未到访。' +
+      '改期保持同一 visit_id 并保留前后值；已签到后中止进入已取消，必填原因并保留签到与定位事实。</p>' +
+      '<p class="ry-hint">改期、取消与未到访确认的正式权限和操作入口见页面说明；本页不提供就地操作。</p></div></div>';
+    return out;
+  }
+
+  function checkInBtns() {
+    var out = [];
+    if (v.status === '计划中') {
+      out.push('<button type="button" class="ry-btn ry-btn--primary" data-do="签到">签到</button>');
+    }
+    if (v.status === '进行中') {
+      out.push('<button type="button" class="ry-btn ry-btn--primary" data-do="签退">签退并提交总结</button>');
+    }
+    if (v.status === '已完成') out.push('<span class="ry-hint">拜访已完成，签到与签退事实已冻结。</span>');
+    if (v.status === '未到访') out.push('<span class="ry-hint">该拜访已标记未到访，不产生签到与签退事实。</span>');
+    if (v.status === '已取消') out.push('<span class="ry-hint">该拜访已取消，保留对象与原因。</span>');
+    return out.join('');
+  }
+
+  function viewRun() {
+    return '<div class="vd-gate">' +
+      '<div class="vd-gate__row">有效签到或已说明的异常签到 <b>' + (v.checkInAt ? '已满足' : (v.exceptionReason ? '已说明（' + ui.esc(v.exceptionReason) + '）' : '未满足')) + '</b></div>' +
+      '<div class="vd-gate__row">签退 <b>' + (v.checkOutAt ? '已完成（' + ui.esc(v.checkOutAt) + '）' : '未完成') + '</b></div>' +
+      '<div class="vd-gate__row">拜访总结与下一步 <b>' + (v.nextStep ? '已填写' : '未填写') + '</b></div>' +
+      '<div class="vd-gate__row">图片与附件 <b>不作为完成阻断项</b></div>' +
+      '</div>' +
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>执行步骤</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">计划 → 签到 → 拜访 → 签退 → 纪要 → 下一步</span></div></div>' +
+      '<div class="ry-hcard__body">' + kv([
+        ['当前步骤', ui.esc(stage())],
+        ['主状态', ui.statusTag(v.status)],
+        ['签退时间', ui.esc(v.checkOutAt || '—')],
+        ['签退位置', ui.esc(v.checkOutLoc ? (v.checkOutLoc.addr + '（精度 ' + v.checkOutLoc.acc + ' 米）') : '—')],
+        ['下一步动作', ui.esc(v.nextStep || '—')],
+        ['备注', ui.esc(v.note || '—')]
+      ]) +
+      '<p class="ry-hint">完成最小门槛＝有效签到或已说明的异常签到＋签退＋拜访总结。' +
+        '下一步不自动生成候选任务，由用户选择是否生成，AI 只提示并用来源锚点防重。</p>' +
+      '<div class="ry-acts-row" style="margin-top:10px">' + checkInBtns() + '</div>' +
+      '</div></div>' +
+      '<div class="ry-hcard ry-hcard--flat"><div class="ry-hcard__head"><h3>与任务、活动的边界</h3></div>' +
+      '<div class="ry-hcard__body"><ul class="ry-kv ry-kv--tight">' +
+      '<li><span>与任务</span><b>任务与拜访可建立 0..1 ↔ 0..1 关联，两者状态不自动联动</b></li>' +
+      '<li><span>与活动</span><b>正式拜访是独立业务对象，不是销售活动子类；时间线只以同一 visit_id 投影</b></li>' +
+      '<li><span>企微同步</span><b>同步范围只保留独立日程和正式拜访；冲突时以瑞赢最终业务事实为准</b></li>' +
+      '</ul></div></div>';
+  }
+
+  function viewSummary() {
+    if (!v.summary) {
+      return ui.empty('该拜访尚未填写拜访总结。', '') +
+        '<p class="ry-hint">签退时必填拜访总结与下一步动作；纪要在签退前可补充，签退后作为事实保留。</p>';
+    }
+    var rows = SUM_FIELDS.map(function (f) { return [f[1], ui.esc(v.summary[f[0]] || '')]; });
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>拜访纪要</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">已确认的结构化字段</span></div></div>' +
+      '<div class="ry-hcard__body">' + kv(rows) + '</div></div>' +
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>下一步动作</h3></div>' +
+      '<div class="ry-hcard__body"><p class="ry-read">' + ui.esc(v.nextStep || '—') + '</p>' +
+      '<p class="ry-hint">下一步动作不自动生成候选任务；由用户选择是否生成，AI 只提示。</p>' +
+      '</div></div>';
+  }
+
+  function viewEvidence() {
+    var list = v.evidence || [];
+    if (!list.length) {
+      return ui.empty('该拜访没有上传照片或附件。', '') +
+        '<p class="ry-hint">图片与附件不作为拜访完成的阻断项，但拜访需要留存照片证据；原件不改变拜访的发生时间与事实归属。</p>';
+    }
+    return '<div class="ry-sec-title">照片与附件 <span class="h5-sec-note">共 ' + list.length + ' 项</span></div>' +
+      '<div class="ry-thumbs">' + list.map(function (f) {
+        return '<div class="ry-thumb"><i>🖼</i>' + ui.esc(f.name) + '<span class="h5-sec-note">' + ui.esc(f.size || '') + '</span></div>';
+      }).join('') + '</div>' +
+      '<ul class="ry-kv ry-kv--tight" style="margin-top:10px">' + list.map(function (f) {
+        return '<li><span>' + ui.esc(f.id) + '</span><b>' + ui.esc(f.at || '') + '</b></li>';
+      }).join('') + '</ul>' +
+      '<p class="ry-hint">证据与签到、签退事实一同保留；H5 不提供下载与导出（下载与导出属于 PC 能力，' +
+        '且明文查看与导出是两项互相独立的授权）。</p>';
+  }
+
+  function viewException() {
+    var out = '';
+    if (!v.exception) {
+      out += ui.empty('该拜访没有异常记录。', '') +
+        '<p class="ry-hint">定位异常或命中规则时才会标记待复核；异常是风险信号，不自动改变拜访主状态。</p>';
+    } else {
+      out += '<div class="vd-exc"><p class="vd-exc__t">异常状态：' + ui.esc(v.exception) + '</p>' +
+        '<p>异常说明：' + ui.esc(v.exceptionDetail || '—') + '</p>' +
+        (v.exceptionReason ? '<p>销售说明：' + ui.esc(v.exceptionReason) + '（' + ui.esc(S.userName(v.exceptionNoteBy)) + ' · ' + ui.esc(v.exceptionNoteAt || '') + '）</p>' : '') +
+        '</div>';
+    }
+    out += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>复核结果</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">只改变异常状态</span></div></div>' +
+      '<div class="ry-hcard__body">' + kv([
+        ['异常状态', ui.esc(v.exception || '无异常')],
+        ['复核人', ui.esc(v.review && v.review.by ? S.userName(v.review.by) : '—')],
+        ['复核时间', ui.esc((v.review && v.review.at) || '—')],
+        ['复核结论', ui.esc((v.review && v.review.result) || '—')],
+        ['复核说明', ui.esc((v.review && v.review.reason) || '—')],
+        ['规则版本', ui.esc((v.ruleSnapshot && v.ruleSnapshot.code) || '未命中生效规则')]
+      ]) +
+      '<p class="ry-hint">复核不通过（要求补充）时必须说明原因，异常进入「待补充」，由销售补充后回到「待复核」。' +
+        '0.1 只支持对相同规则版本、相同复核结论且满足批量条件的记录批量复核通过；不支持批量退回。' +
+        'H5 不提供批量复核，批量复核属主管 PC 能力。</p>' +
+      '<div class="ry-acts-row" style="margin-top:10px">' + reviewBtns() + '</div>' +
+      '</div></div>';
+    return out;
+  }
+
+  function reviewBtns() {
+    if (!v.exception) return '<span class="ry-hint">无异常记录，无需复核。</span>';
+    if (['待复核', '待补充'].indexOf(v.exception) < 0) return '<span class="ry-hint">该异常已复核完成（' + ui.esc(v.exception) + '），复核结论与说明保留。</span>';
+    return '<button type="button" class="ry-btn" data-do="复核">异常复核</button>' +
+      '<span class="ry-hint">复核只改变异常状态，不改变拜访主状态，也不改写拜访事实。</span>';
+  }
+
+  function viewHistory() {
+    var list = (v.history || []).slice().reverse();
+    if (!list.length) return ui.empty('该拜访暂无历史记录。', '');
+    return '<div class="ry-card"><div class="ry-card__head"><h3>操作历史</h3>' +
+      '<div class="ry-card__extra"><span class="h5-sec-note">同一 visit_id 贯穿</span></div></div>' +
+      '<div class="ry-card__body"><ul class="ry-tl">' + list.map(function (h) {
+        return '<li><p class="ry-tl__t"><b>' + ui.esc(h.action) + '</b>' +
+          (h.from || h.to ? '（' + ui.esc((h.from || '—') + ' → ' + (h.to || '—')) + '）' : '') + '</p>' +
+          '<p class="ry-tl__m">' + ui.esc(h.actor) + ' · ' + ui.esc(h.at) + (h.note ? ' · ' + ui.esc(h.note) : '') + '</p></li>';
+      }).join('') + '</ul></div></div>' +
+      '<p class="ry-hint">改期保持同一 visit_id 并保留前后值；取消保留对象与原因；已删除或失权的拜访不展示受控标题与摘要。</p>';
+  }
+
+  var VIEWS = { ci: viewCheckIn, run: viewRun, sum: viewSummary, ev: viewEvidence, exc: viewException, hi: viewHistory };
+
+  /* ---------------------------------------------------------- 动作 */
+
+  function checkInSheet() {
+    RY.nav.sheet({
+      title: '签到', sub: (S.customer(v.customerId) || {}).name || '',
+      body: '<div class="ry-hform">' +
+        '<p class="ry-hint">签到后进入「进行中」并冻结计划快照。签到半径、定位精度与签到签退间隔提示值由创建时绑定的规则决定；无计划坐标不判断半径。</p>' +
+        '<div class="ry-field__label">定位结果</div>' +
+        '<div class="ry-fbar__seg" style="margin-bottom:12px">' +
+          '<button type="button" data-loc="ok" class="is-on">定位成功</button>' +
+          '<button type="button" data-loc="fail">定位失败</button>' +
+        '</div>' +
+        ui.field('定位失败原因', ui.textarea('reason', '', '定位失败必须填写原因后才能继续进行', 2), '', false) +
+        '</div>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="vd-ci">确认签到</button>',
+      onOpen: function (host, close) {
+        var loc = 'ok';
+        host.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-loc]');
+          if (b) {
+            loc = b.getAttribute('data-loc');
+            b.parentNode.querySelectorAll('button').forEach(function (x) { x.classList.remove('is-on'); });
+            b.classList.add('is-on');
+            return;
+          }
+          if (!e.target.closest('#vd-ci')) return;
+          var reason = (ui.formValues(host).reason || '').trim();
+          if (loc === 'fail' && !reason) { ui.toast('定位失败必须填写原因后才能继续', 'warn'); return; }
+          var r = S.visitCheckIn(v.id, loc === 'ok'
+            ? { ok: true, loc: { lat: v.addressSnapshot ? 31.2569 : 0, lng: 121.5902, addr: '（演示定位）', acc: 22 } }
+            : { ok: false, reason: reason, detail: '定位失败，销售填写原因后继续进行' });
+          if (!r.ok) { ui.toast(r.msg || '签到未完成', 'warn'); return; }
+          close(); v = S.visit(v.id);
+          ui.toast(r.msg || '签到成功', 'ok');
+          render('run');
+        });
+      }
+    });
+  }
+
+  function checkOutSheet() {
+    var f = v.summary || {};
+    function fi(k, label, ph) { return ui.field(label, ui.input('s_' + k, f[k] || '', ph || ''), '', false); }
+    function ft(k, label, ph) { return ui.field(label, ui.textarea('s_' + k, f[k] || '', ph || '', 2), '', false); }
+    RY.nav.sheet({
+      title: '签退并提交总结', sub: (S.customer(v.customerId) || {}).name || '',
+      body: '<div class="ry-hform">' +
+        '<p class="ry-hint">签退可在其他地点完成，记录当时位置；定位失败可说明后继续。图片与附件不作为完成阻断项。</p>' +
+        '<div class="ry-field__label">签退定位结果</div><div class="ry-fbar__seg" style="margin-bottom:12px">' +
+          '<button type="button" data-co-loc="ok" class="is-on">定位成功</button><button type="button" data-co-loc="fail">定位失败</button></div>' +
+        ui.field('签退定位失败原因', ui.textarea('checkOutReason', '', '定位失败时必填；进入异常复核', 2), '', false) +
+        fi('object', '拜访对象') + fi('chain', '决策链') + ft('demand', '需求') + ft('concern', '顾虑') +
+        fi('budget', '预算') + fi('timeline', '时间计划') + fi('decision', '决策方式') + fi('competitor', '竞争情况') +
+        ft('agreement', '共识') + ft('support', '需要的支持') +
+        ui.field('下一步动作', ui.input('nextStep', v.nextStep || '', '如：9 月 23 日前提交技术方案初稿'), '下一步动作不自动生成候选任务', true) +
+        '</div>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="vd-co">确认签退</button>',
+      onOpen: function (host, close) {
+        var locState = 'ok';
+        host.addEventListener('click', function (e) {
+          var locButton = e.target.closest('[data-co-loc]');
+          if (locButton) {
+            locState = locButton.getAttribute('data-co-loc');
+            locButton.parentNode.querySelectorAll('button').forEach(function (x) { x.classList.remove('is-on'); });
+            locButton.classList.add('is-on');
+            return;
+          }
+          if (!e.target.closest('#vd-co')) return;
+          var vals = ui.formValues(host);
+          var summary = {};
+          SUM_FIELDS.forEach(function (x) { summary[x[0]] = vals['s_' + x[0]] || ''; });
+          summary.nextStep = (vals.nextStep || '').trim();
+          if (!summary.nextStep) { ui.toast('拜访总结与下一步动作必须填写', 'warn'); return; }
+          summary.checkOutReason = (vals.checkOutReason || '').trim();
+          if (locState === 'fail' && !summary.checkOutReason) { ui.toast('签退定位失败原因必填', 'warn'); return; }
+          var r = S.visitCheckOut(v.id, locState === 'ok' ? { lat: 31.2571, lng: 121.5905, addr: '（演示定位）', acc: 26 } : null, summary);
+          if (!r.ok) { ui.toast(r.msg || '签退未完成', 'warn'); return; }
+          close(); v = S.visit(v.id);
+          ui.toast(r.msg || '拜访已完成', 'ok');
+          render('sum');
+        });
+      }
+    });
+  }
+
+  function reviewSheet() {
+    RY.nav.sheet({
+      title: '异常复核', sub: '只改变异常状态',
+      body: '<div class="ry-hform">' +
+        '<p class="ry-hint">异常复核只改变异常状态，不改变拜访主状态，也不改写拜访事实。' +
+        '要求补充时必须说明原因，异常进入「待补充」，由销售补充后回到「待复核」。</p>' +
+        '<div class="ry-field__label">复核结论</div>' +
+        '<div class="ry-fbar__seg" style="margin-bottom:12px">' +
+          '<button type="button" data-res="已复核" class="is-on">已复核</button>' +
+          '<button type="button" data-res="待补充">要求补充</button>' +
+        '</div>' +
+        ui.field('复核说明', ui.textarea('reason', '', '选择「要求补充」时必填；说明不通过或补充要求', 3), '', false) +
+        '</div>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="vd-rv">提交复核</button>',
+      onOpen: function (host, close) {
+        var res = '已复核';
+        host.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-res]');
+          if (b) {
+            res = b.getAttribute('data-res');
+            b.parentNode.querySelectorAll('button').forEach(function (x) { x.classList.remove('is-on'); });
+            b.classList.add('is-on');
+            return;
+          }
+          if (!e.target.closest('#vd-rv')) return;
+          var reason = (ui.formValues(host).reason || '').trim();
+          var r = S.visitReview(v.id, res, reason);
+          if (!r.ok) { ui.toast(r.msg || '复核未完成', 'warn'); return; }
+          close(); v = S.visit(v.id);
+          ui.toast('复核结论已记录：' + res, 'ok');
+          render('exc');
+        });
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function render(active) {
+    active = active || 'ci';
+    var tone = v.status === '未到访' || v.status === '已取消' ? 'ry-brief--muted'
+      : (v.exception === '待复核' || v.exception === '待补充' ? 'ry-brief--warn' : (v.status === '进行中' ? '' : 'ry-brief--info'));
+    ui.qs('#vd-host').innerHTML =
+      '<div class="ry-brief ' + tone + '"><div class="ry-brief__row">' +
+        '<div><div class="ry-brief__k">拜访主状态</div><div class="ry-brief__v">' + ui.statusTag(v.status) +
+          (v.exception ? ' ' + ui.tag('异常：' + v.exception, v.exception === '已复核' ? 'ok' : 'warn') : '') + '</div></div>' +
+        '<div><div class="ry-brief__k">计划时间</div><div class="ry-brief__v">' + ui.esc(v.planAt || '—') + '</div></div>' +
+      '</div><p class="ry-brief__next">下一步：<b>' + ui.esc(
+        v.status === '计划中' ? '签到'
+          : v.status === '进行中' ? '签退并提交总结'
+          : v.status === '已完成' ? (v.exception && v.exception !== '已复核' ? '等待主管异常复核' : '已完成，无后续动作')
+          : '终态，保留历史记录') + '</b></p></div>' +
+      '<div class="ry-fbar" style="position:static;margin-bottom:10px"><div class="ry-fbar__seg" style="flex:1">' +
+        TABS.map(function (x) {
+          return '<button type="button" data-tab="' + x.k + '"' + (x.k === active ? ' class="is-on"' : '') + '>' + x.n + '</button>';
+        }).join('') + '</div></div>' +
+      '<div class="vd-sec is-on" id="vd-sec">' + VIEWS[active]() + '</div>' + contractHtml();
+
+    ui.qsa('#vd-host [data-tab]').forEach(function (b) {
+      b.addEventListener('click', function () { render(b.getAttribute('data-tab')); });
+    });
+    ui.qsa('#vd-host [data-do="签到"]').forEach(function (b) { b.addEventListener('click', checkInSheet); });
+    ui.qsa('#vd-host [data-do="签退"]').forEach(function (b) { b.addEventListener('click', checkOutSheet); });
+    ui.qsa('#vd-host [data-do="复核"]').forEach(function (b) { b.addEventListener('click', reviewSheet); });
+  }
+
+  render('ci');
+  if (ui.q('action') === 'checkin' && v.status === '计划中') checkInSheet();
+})();
+</script>
+</body>
+</html>

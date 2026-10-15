@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>活动详情 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：销售活动详情 */
+  .ad-quote { border-left: 3px solid var(--brand-line); background: var(--brand-soft); padding: 9px 12px; border-radius: 0 8px 8px 0; font-size: 13px; line-height: 1.8; }
+  .ad-diff { font-size: 12.5px; line-height: 1.9; }
+  .ad-diff del { color: var(--muted); }
+  .ad-diff ins { color: var(--ok-ink); text-decoration: none; font-weight: 600; }
+  .ad-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+  .ad-layout__main, .ad-layout__side { display: contents; }
+  .ad-layout > div > .ry-card { min-width: 0; margin: 0; }
+  .ad-facts { grid-column: 1 / -1; }
+  .ad-history { order: 1; }
+  .ad-corrections { order: 2; }
+  .ad-layout [hidden] { display: none !important; }
+  .ad-facts .ry-kv { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; margin-top: 14px; }
+  .ad-facts .ry-kv li { min-width: 0; }
+  .ad-facts .ry-kv li > span { flex-basis: 100px; }
+  .ad-facts .ry-kv li > b { min-width: 0; word-break: break-word; }
+  .ad-tip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  @media (max-width: 1100px) {
+    .ad-layout { grid-template-columns: 1fr; }
+    .ad-facts { grid-column: auto; }
+  }
+  @media (max-width: 700px) { .ad-facts .ry-kv { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="ad-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var PAGE = 'activity.detail';
+  var id = ui.q('id');
+  var from = ui.q('from') || 'mine';
+  var a = id ? S.activity(id) : null;
+  var owner = a ? (a.owner || a.actor || '') : '';
+  var openTab = ['overview', 'business', 'records'].indexOf(ui.hash()) >= 0 ? ui.hash() : 'overview';
+  var g = a ? RY.perm.guard(PAGE) : null;
+  if (g && g.ok && !RY.perm.inScope('activity', { owner: owner, collaborators: a.collaborators })) {
+    g = { ok: false, kind: 'no-permission', reason: '该活动不在当前账号的数据范围内。' };
+  }
+
+  /* backHref() 供页面内「返回列表」按钮使用：相对本页；面包屑的 href 会被 navigation.js
+     统一加上 data-root 前缀，因此必须是「相对原型根」的路径，两者不能混用同一个值。 */
+  function listQuery() {
+    return '?scope=' + encodeURIComponent(from) + '&kw=' + encodeURIComponent(S.listState('activity.list').flt && S.listState('activity.list').flt.kw || '');
+  }
+  function backHref() { return 'list.html' + listQuery(); }
+  function crumbHref() { return 'pc/activity/list.html' + listQuery(); }
+
+  RY.nav.shell({
+    nav: 'activity.list',
+    title: a ? '活动 ' + a.id : '活动详情',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '销售管理' }, { label: '销售活动', href: crumbHref() }, { label: a ? a.id : '未找到' }],
+    actions: g && g.ok ? '<a class="ry-btn" href="' + backHref() + '">返回列表</a>' +
+      (owner === u.id ? ui.actionBtn('activity.correct', '活动纠错', ' id="ad-correct"') : '') : ''
+  });
+
+  if (!a) {
+    ui.qs('#ad-host').innerHTML = ui.stateCard('unavailable', {
+      title: '销售活动不存在或不可见',
+      body: '<p>该活动编号不存在，或它关联的业务对象不在当前数据范围内，或它已被合并到其他记录。</p>' +
+        '<p class="ry-hint">销售活动是历史事实，不会因数据范围变化而被删除；但无权对象的活动不返回名称与摘要。</p>'
+    });
+    return;
+  }
+
+  if (!g.ok) { ui.qs('#ad-host').innerHTML = ui.stateCard(g.kind, { title: '当前身份不可查看该活动', body: '<p>' + ui.esc(g.reason) + '</p>' }); return; }
+
+  function relatedOf(x) {
+    if (x.related && x.related.length) return x.related.slice();
+    var out = [];
+    if (x.customerId) out.push({ type: '客户', id: x.customerId });
+    if (x.leadId) out.push({ type: '线索', id: x.leadId });
+    if (x.oppId) out.push({ type: '商机', id: x.oppId });
+    return out;
+  }
+  function objName(r) {
+    var o = r.type === '客户' ? S.customer(r.id) : r.type === '商机' ? S.opp(r.id)
+      : r.type === '线索' ? S.lead(r.id) : S.contact(r.id);
+    return (o && (o.name || o.raw)) || r.name || r.id;
+  }
+  function objHref(r) {
+    if (r.type === '客户') return '../customer/detail.html?id=' + encodeURIComponent(r.id);
+    if (r.type === '联系人') return '../contact/detail.html?id=' + encodeURIComponent(r.id);
+    if (r.type === '线索') return '../lead/detail.html?id=' + encodeURIComponent(r.id);
+    if (r.type === '商机') return '../opportunity/detail.html?id=' + encodeURIComponent(r.id);
+    return '';
+  }
+
+  function visibleRelated(r) {
+    var kind = { '客户': 'customer', '联系人': 'contact', '线索': 'lead', '商机': 'opp' }[r.type];
+    var o = kind === 'customer' ? S.customer(r.id) : kind === 'contact' ? S.contact(r.id)
+      : kind === 'lead' ? S.lead(r.id) : kind === 'opp' ? S.opp(r.id) : null;
+    var page = { customer: 'customer.detail', contact: 'contact.detail', lead: 'lead.detail', opp: 'opp.detail' }[kind];
+    return !!(o && page && RY.perm.page(page) && RY.perm.inScope(kind, o));
+  }
+
+  function tip(key, label) {
+    return '<button type="button" data-pcn-rule="activityDetail' + key.charAt(0).toUpperCase() + key.slice(1) + '">' + ui.esc(label) + '</button>';
+  }
+
+  function evidenceBlock() {
+    var files = a.evidence || [];
+    if (!files.length) return '<p class="ry-hint">该活动没有原件。</p>';
+    return '<ul class="ry-files">' + files.map(function (f) {
+      var name = typeof f === 'string' ? f : f.name || '未命名原件';
+      var url = typeof f === 'object' && (f.dataUrl || f.url);
+      return '<li>📎 ' + ui.esc(name) + '　<span class="ry-hint">' + ui.esc(f.size || '') + '</span>' +
+        (url && /^(https?:\/\/|blob:|data:(image\/(png|jpeg|gif|webp)|application\/pdf);)/i.test(url) ? '　<a href="' + ui.esc(url) + '" target="_blank" rel="noopener">查看或下载</a>'
+          : '　' + tip('missingFile', '暂不可预览')) + '</li>';
+    }).join('') + '</ul>';
+  }
+
+  function correctBlock() {
+    var cs = a.corrections || [];
+    if (!cs.length) return '<p class="ry-hint">暂无纠错记录。</p>';
+    return '<div class="ry-timeline">' + cs.slice().reverse().map(function (c) {
+      var b = c.before || {}, after = c.after;
+      var fields = [['沟通渠道', 'channel'], ['实际沟通人', 'target'], ['内容摘要', 'content'], ['下一步动作', 'nextAction']];
+      return '<div class="ry-tl-item"><div class="ry-tl-dot"></div>' +
+        '<div class="ry-tl-body"><b>' + ui.esc(c.at || '—') + '　' + ui.esc(S.userName(c.by) || c.by || '—') + ' 提交纠错</b>' +
+        '<div class="ry-hint" style="margin:4px 0">原因：' + ui.esc(c.reason || '未填写') + '</div>' +
+        '<div class="ad-diff">' + (after ? fields.filter(function (f) { return b[f[1]] !== after[f[1]]; }).map(function (f) {
+          return f[0] + '：<del>' + ui.esc(b[f[1]] || '—') + '</del> → <ins>' + ui.esc(after[f[1]] || '—') + '</ins>';
+        }).join('<br>') || '本次未改变所列字段' : tip('legacy', '旧记录说明')) +
+        '</div></div></div>';
+    }).join('') + '</div>';
+  }
+
+  function render() {
+    var mine = owner === u.id;
+    var rel = relatedOf(a).filter(visibleRelated);
+    var history = (a.history || []).slice().reverse();
+    ui.qs('#ad-host').innerHTML =
+      '<div class="ry-tabs" role="tablist" aria-label="销售活动详情">' +
+        [['overview', '概况'], ['business', '业务对象'], ['records', '操作记录']].map(function (tab) {
+          return '<button type="button" class="ry-tab' + (openTab === tab[0] ? ' is-on' : '') +
+            '" role="tab" aria-selected="' + (openTab === tab[0]) + '" data-ad-tab="' + tab[0] + '">' + tab[1] + '</button>';
+        }).join('') + '</div>' +
+      '<div class="ad-layout">' +
+        '<div class="ad-layout__main">' +
+          '<section class="ry-card ad-facts" data-ad-panel="overview"><header class="ry-card__head"><h3>活动事实</h3><div class="ry-card__extra">' + tip('fact', '活动事实') + '</div></header>' +
+          '<div class="ry-card__body">' +
+            '<div class="ad-quote">' + ui.esc(a.content || a.summary || '（本活动无内容摘要）') + '</div>' +
+            ui.kv([
+              ['活动编号', ui.esc(a.id)],
+              ['发生时间', ui.esc(a.at || '—')],
+              ['发生人', ui.esc(S.userName(owner) || owner || '—') + '（' + (mine ? '本人' : '他人') + '）'],
+              ['沟通渠道', ui.esc(a.channel || a.type || '未分类')],
+              ['实际沟通人', ui.esc(a.target || '未填写')],
+              ['客户诉求', ui.esc(a.request || '未填写')],
+              ['达成共识', ui.esc(a.agreement || '未填写')],
+              ['下一步动作', ui.esc(a.nextAction || '未填写')],
+              ['录入来源', ui.esc(a.origin || '系统投影')]
+            ]) +
+          '</div></section>' +
+
+          '<section class="ry-card ad-related" data-ad-panel="business"><header class="ry-card__head"><h3>关联业务对象</h3>' +
+            '<div class="ry-card__extra">' + tip('related', '关联说明') + '</div></header>' +
+          '<div class="ry-card__body">' + (rel.length
+            ? '<ul class="ry-links">' + rel.map(function (r) {
+                var href = objHref(r);
+                return '<li>' + ui.tag(r.type, 'muted') + ' ' +
+                  (href ? '<a href="' + href + '">' + ui.esc(objName(r)) + '</a>' : ui.esc(objName(r))) +
+                  ' <span class="ry-hint">' + ui.esc(r.id) + '</span></li>';
+              }).join('') + '</ul>'
+            : '<p class="ry-hint">当前没有可查看的关联对象。</p>') +
+          '</div></section>' +
+
+          '<section class="ry-card ad-ai" data-ad-panel="overview"><header class="ry-card__head"><h3>AI 整理结果</h3>' +
+            '<div class="ry-card__extra">' + tip('ai', 'AI 说明') + '</div></header><div class="ry-card__body">' +
+            (a.aiResult ?
+              ui.kv(Object.keys(a.aiResult).map(function (k) { return [k, ui.esc(String(a.aiResult[k] == null ? '—' : a.aiResult[k]))]; }))
+              : '<p class="ry-hint">该活动没有 AI 整理结果。</p>') + '</div></section>' +
+
+          '<section class="ry-card ad-evidence" data-ad-panel="overview"><header class="ry-card__head"><h3>原件</h3>' +
+            '<div class="ry-card__extra">' + tip('evidence', '原件说明') + '</div></header><div class="ry-card__body">' +
+            evidenceBlock() + '</div></section>' +
+
+          '<section class="ry-card ad-corrections" data-ad-panel="records"><header class="ry-card__head"><h3>纠错记录</h3>' +
+            '<div class="ry-card__extra">' + tip('correction', '纠错说明') + '</div></header>' +
+          '<div class="ry-card__body">' + correctBlock() + '</div></section>' +
+
+          '<section class="ry-card ad-history" data-ad-panel="records"><header class="ry-card__head"><h3>操作历史</h3></header><div class="ry-card__body">' +
+            (history.length ? '<div class="ry-timeline">' + history.map(function (h) {
+              return '<div class="ry-tl-item"><div class="ry-tl-dot"></div><div class="ry-tl-body"><b>' +
+                ui.esc(h.at || '') + '　' + ui.esc(h.actor || '') + '　' + ui.esc(h.action || '') + '</b>' +
+                (h.note ? '<div class="ry-hint">原因：' + ui.esc(h.note) + '</div>' : '') + '</div></div>';
+            }).join('') + '</div>' : '<p class="ry-hint">暂无操作历史。</p>') + '</div></section>' +
+        '</div>' +
+
+        '<div class="ad-layout__side">' +
+          '<section class="ry-card ad-relations" data-ad-panel="business"><header class="ry-card__head"><h3>与其他对象的关系</h3></header>' +
+          '<div class="ry-card__body"><div class="ad-tip-row">' + tip('visit', '与拜访') + tip('task', '与任务') +
+            tip('agent', '与 Agent') + '</div></div></section>' +
+        '</div>' +
+      '</div>';
+
+    ui.qsa('[data-ad-panel]').forEach(function (panel) {
+      panel.hidden = panel.getAttribute('data-ad-panel') !== openTab;
+    });
+    ui.qsa('[data-ad-tab]').forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        openTab = tab.getAttribute('data-ad-tab');
+        location.hash = openTab;
+        render();
+      });
+    });
+
+    var cb = ui.qs('#ad-correct');
+    if (cb) cb.onclick = function (e) {
+      if (e.target.closest('[data-denied]')) return;
+      ui.drawer({
+        title: '活动纠错', subtitle: '保留修改前后值与原因；不删除原记录。',
+        size: 'lg',
+        body: ui.kv([['活动编号', a.id], ['发生时间', a.at || '—'], ['发生人', S.userName(owner)]]) +
+          ui.grid2(
+            ui.field('沟通渠道', ui.select('channel', ['电话', '会议', '消息', '微信', '邮件', '上门', '客户面访'], a.channel || a.type), '', false),
+            ui.field('实际沟通人', ui.input('target', a.target || '', '姓名或称谓，可填写多人'), '记录实际参与沟通者；无需为保存活动而创建正式联系人。', false)
+          ) +
+          ui.field('内容摘要', ui.textarea('content', a.content || a.summary || '', '', 4), '', false) +
+          ui.field('下一步动作', ui.input('nextAction', a.nextAction || '', ''), '', false) +
+          ui.field('纠错原因', ui.textarea('reason', '', '必填', 3), '', true) +
+          tip('correctionFlow', '纠错提交说明'),
+        footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ad-cf">提交纠错</button>',
+        onOpen: function (el) {
+          ui.qs('#ad-cf', el).addEventListener('click', function () {
+            var v = ui.formValues(el);
+            if (!(v.reason || '').trim()) { ui.toast('纠错原因必填。', 'warn'); return; }
+            var r = S.correctActivity(id, { channel: v.channel, target: v.target, content: v.content, nextAction: v.nextAction, reason: v.reason.trim() });
+            if (!r.ok) { ui.toast(r.msg || '纠错未完成。', 'warn'); return; }
+            a = S.activity(id);
+            openTab = 'records'; location.hash = openTab;
+            ui.close(); ui.toast('已提交纠错并留痕。', 'success'); render();
+          });
+        }
+      });
+    };
+    ui.bindDenied('#ry-page');
+  }
+
+  window.addEventListener('hashchange', function () {
+    var next = ui.hash();
+    if (['overview', 'business', 'records'].indexOf(next) >= 0 && next !== openTab) {
+      openTab = next; render();
+    }
+  });
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>全国公海 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：全国公海 */
+  .pool-note { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  .pool-note__i { padding: 12px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); }
+  .pool-note__i b { display: block; font-size: 18px; }
+  .pool-note__i span { font-size: 11.5px; color: var(--muted); }
+  .pool-mini { font-size: 11.5px; color: var(--muted); line-height: 1.7; }
+  .pool-mini code { font-family: var(--mono); font-size: 11px; }
+  .claim-block { color: var(--danger); font-size: 11.5px; }
+  @media (max-width: 1180px) { .pool-note { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="pool-state"></div>
+      <div id="pool-body">
+        <div class="pool-note" id="pool-note"></div>
+        <div class="ry-filter" id="pool-filter"></div>
+        <div class="ry-resultbar" id="pool-resultbar"></div>
+        <div id="pool-selbar"></div>
+        <div class="ry-card"><div class="ry-card__body ry-card__body--flush">
+          <div class="ry-table__wrap ry-standard-list-wrap ry-standard-list-wrap--select ry-standard-list-wrap--actions" role="region" aria-label="全国公海列表，可左右滚动" tabindex="0"><table class="ry-table ry-table--tight" id="pool-table">
+            <thead><tr><th style="width:34px"><input type="checkbox" id="p-all"></th><th>客户名称</th><th>客户编号</th><th>客户类型</th><th>价值分级</th><th>入池原因</th><th>入池时间</th><th>入池备注</th><th>最近销售活动</th><th>认领资格</th><th>操作</th></tr></thead>
+            <tbody id="pool-rows"></tbody>
+          </table></div>
+        </div></div>
+        <div id="pool-pager"></div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/customer-review-mode.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  function can(a, o) { return RY.perm.can(a, o); }
+  function deny(a) { return RY.perm.whyNot(a); }
+
+  RY.nav.shell({
+    nav: 'customer.pool',
+    title: '全国公海',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '客户管理' }, { label: '全国公海' }],
+    actions: '<a class="ry-btn" href="list.html">客户列表</a>' +
+      (can('customer.export') ? '<button class="ry-btn" id="po-exp">导出公海清单</button>'
+        : '<button class="ry-btn" data-denied="1" data-action="customer.export">导出公海清单<i class="ry-btn__lock">无权限</i></button>')
+  });
+
+  if (!RY.perm.page('customer.pool')) {
+    ui.renderState('#pool-state', 'no-permission', {
+      title: '没有全国公海页面权限',
+      body: '<p>当前角色为 ' + ui.esc(RY.perm.ROLES[u.role].code + ' ' + RY.perm.ROLES[u.role].name) + '，没有查看全国公海的页面权限。</p>' +
+        '<p class="ry-hint">未获页面权限时不可进入全国公海。</p>',
+      actions: '<a class="ry-btn" href="list.html">返回客户列表</a>'
+    });
+    return;
+  }
+
+  var st = S.listState('customer.pool');
+  var flt = st.flt || (st.flt = { kw: '', reason: '', claimable: '', entryFrom: '', entryTo: '' });
+  var page = st.page || 1, size = 10, sort = st.sort || 'entryAt';
+  var view = 'all';
+
+  ui.qs('#pool-filter').innerHTML =
+    '<div class="ry-filter__row">' +
+      ui.field('关键词', ui.input('kw', flt.kw, '客户名称／编号'), '', false) +
+      ui.field('入池原因', ui.select('reason', [{ value: '', label: '全部' }, { value: '最后一条有效经营关系停止', label: '最后一条有效经营关系停止' }], flt.reason), '', false) +
+      ui.field('认领资格', ui.select('claimable', [{ value: '', label: '全部' }, { value: '1', label: '我满足条件' }, { value: '0', label: '我不满足' }], flt.claimable), '', false) +
+    '</div>' +
+    '<div class="ry-filter__more" id="pool-more"><div class="ry-filter__row">' +
+      ui.field('入池时间', '<div class="ry-daterange">' + ui.input('entryFrom', flt.entryFrom, '起') + '<span>~</span>' + ui.input('entryTo', flt.entryTo, '止') + '</div>', '', false) +
+    '</div></div>' +
+    '<div class="ry-filter__foot"><div class="ry-resultbar__tools"><button class="ry-btn" id="pool-toggle-more">更多筛选</button><button class="ry-btn ry-btn--primary" id="f-apply">查询</button><button class="ry-btn" id="f-reset">重置条件</button></div><button type="button" data-pcn-rule="poolFilter">◆ 公海筛选</button></div>';
+  RY.nav.bindFilterToggle('#pool-toggle-more', '#pool-more');
+
+  function noteCard(t, n, s) { return '<div class="pool-note__i"><b>' + ui.esc(String(n)) + '</b><span>' + t + '<br><span class="ry-faint">' + ui.esc(s) + '</span></span></div>'; }
+  function renderStats() {
+    var records = S.poolRecords();
+    var claimOpen = ((S.configA('cusPool') || {}).claimActions || {})['认领'] !== false;
+    ui.qs('#pool-note').innerHTML =
+      noteCard('公海客户', records.length, '一个客户一行') +
+      noteCard('可认领客户', claimOpen ? records.filter(function (p) { return p.claimable; }).length : 0, '提交时选择初始区域与业务线');
+  }
+
+  function filtered() {
+    var k = flt.kw.trim();
+    return S.poolRecords().filter(function (p) {
+      if (k && p.customerName.indexOf(k) < 0 && p.id.indexOf(k) < 0 && p.customerId.indexOf(k) < 0) return false;
+      if (flt.reason && p.entryReason !== flt.reason) return false;
+      if (flt.claimable === '1' && !p.claimable) return false;
+      if (flt.claimable === '0' && p.claimable) return false;
+      if (flt.entryFrom && p.entryAt.slice(0, 10) < flt.entryFrom) return false;
+      if (flt.entryTo && p.entryAt.slice(0, 10) > flt.entryTo) return false;
+      return true;
+    });
+  }
+
+  var bar = document.createElement('div');
+  bar.className = 'ry-selbar';
+  bar.id = 'pool-batchbar';
+  bar.style.display = 'none';
+  bar.innerHTML = '<span>已选 <b id="pool-bn">0</b> 条</span>' +
+    '<button class="ry-btn ry-btn--sm" data-pool-batch="assign">批量分派</button>' +
+    '<button type="button" data-pcn-rule="poolBatch">◆ 批量分派</button>';
+
+  function render() {
+    renderStats();
+    var actionCfg = (S.configA('cusPool') || {}).claimActions || {};
+    var claimOpen = actionCfg['认领'] !== false, assignOpen = actionCfg['分派'] !== false;
+    var batchAssign = bar.querySelector('[data-pool-batch="assign"]');
+    if (batchAssign) batchAssign.hidden = !assignOpen;
+    var list = filtered();
+    var total = list.length;
+    var pages = Math.max(1, Math.ceil(total / size));
+    if (page > pages) page = pages;
+    var sorted = list.slice().sort(function (a, b) {
+      if (sort === 'entryAt') return a.entryAt < b.entryAt ? 1 : -1;
+      if (sort === 'customerName') return a.customerName.localeCompare(b.customerName, 'zh');
+      return 0;
+    });
+    var rows = sorted.slice((page - 1) * size, page * size);
+
+    ui.qs('#pool-rows').innerHTML = rows.length ? rows.map(function (p) {
+      return '<tr data-row="' + p.id + '">' +
+        '<td><input type="checkbox" data-pool-sel="' + p.id + '"></td>' +
+        '<td><a class="ry-cellname" href="detail.html?id=' + p.customerId + '&from=pool">' + ui.esc(p.customerName) + '</a></td>' +
+        '<td><code>' + ui.esc(p.customerId) + '</code></td>' +
+        '<td>' + ui.tag(p.customerType, 'muted') + '</td>' +
+        '<td>' + (p.customerValue ? ui.valueTag(p.customerValue) : '—') + '</td>' +
+        '<td>' + ui.esc(p.entryReason) + '</td><td>' + ui.esc(p.entryAt) + '</td><td>' + ui.esc(p.entryNote || '—') + '</td>' +
+        '<td>' + ui.esc(p.lastActivityAt || '—') + '</td>' +
+        '<td>' + (claimOpen ? (p.claimable ? ui.tag('可认领', 'ok') : ui.tag('暂不可认领', 'warn')) : ui.tag('认领已关闭', 'muted')) + (claimOpen && p.claimBlockReason ? '<div class="claim-block">' + ui.esc(p.claimBlockReason) + '</div>' : '') + '</td>' +
+        '<td class="ry-tbl-act">' +
+          (claimOpen ? (p.claimable ? ui.actionBtn('pool.claim', '认领', ' data-pool-op="claim" data-id="' + p.id + '"', 'ry-btn--sm ry-btn--primary') : ui.actionBtn('pool.claim', '认领', ' data-pool-op="claim" data-id="' + p.id + '" data-disabled="1"', 'ry-btn--sm')) : '') +
+          (assignOpen ? ui.actionBtn('pool.assign', '分派', ' data-pool-op="assign" data-id="' + p.id + '"', 'ry-btn--sm') : '') +
+          '<button class="ry-btn ry-btn--sm" data-pool-op="history" data-id="' + p.id + '">流转历史</button>' +
+        '</td></tr>';
+    }).join('') : '<tr><td colspan="11" class="ry-hint">当前筛选条件下全国公海没有待分配客户。</td></tr>';
+
+    ui.qs('#pool-resultbar').innerHTML = '<span>共 ' + total + ' 条公海客户</span><button type="button" data-pcn-rule="poolResult">◆ 公海口径</button>' +
+      '<span class="ry-resultbar__right">排序：' +
+      '<select class="ry-input ry-input--inl" id="pool-sort">' +
+      '<option value="entryAt"' + (sort === 'entryAt' ? ' selected' : '') + '>入池时间（新→旧）</option>' +
+      '<option value="customerName"' + (sort === 'customerName' ? ' selected' : '') + '>客户名称</option>' +
+      '</select></span>';
+    ui.qs('#pool-pager').innerHTML = ui.pager(total, page, size, 'customer.pool');
+    ui.qs('#pool-selbar').innerHTML = '<div id="pool-selhost"></div>';
+    var host = ui.qs('#pool-selhost');
+    host.innerHTML = ui.selectionBar({ id: 'pool-sel', filteredTotal: total, crossPageCount: 0 });
+    host.appendChild(bar);
+
+    ui.bindPager('#pool-pager', function (p) { page = p; st.page = p; S.save(); render(); });
+    ui.bindSelection({
+      id: 'pool-sel', key: 'customer.pool', pageIds: rows.map(function (r) { return r.id; }),
+      filteredIds: list.map(function (r) { return r.id; }), filteredTotal: total,
+      onChange: function (ids) {
+        bar.style.display = ids.length ? 'flex' : 'none';
+        var bn = ui.qs('#pool-bn'); if (bn) bn.textContent = ids.length;
+        ui.qsa('[data-pool-sel]').forEach(function (x) { x.checked = ids.indexOf(x.getAttribute('data-pool-sel')) >= 0; });
+        ui.qs('#p-all').checked = rows.length > 0 && rows.every(function (row) { return ids.indexOf(row.id) >= 0; });
+      }
+    });
+
+    ui.qsa('[data-pool-sel]').forEach(function (x) {
+      x.addEventListener('change', function () {
+        var cur = ui.selected('customer.pool').slice();
+        var v = x.getAttribute('data-pool-sel');
+        if (x.checked) { if (cur.indexOf(v) < 0) cur.push(v); }
+        else cur = cur.filter(function (y) { return y !== v; });
+        if (cur.length > 100) { ui.toast('已选 ' + cur.length + ' 条，超过单次上限 100 条。请先收窄筛选条件，系统不会自动截断。', 'warn'); x.checked = false; return; }
+        ui.syncSel('customer.pool', cur);
+      });
+    });
+    ui.qs('#p-all').addEventListener('change', function (e) {
+      var checked = e.target.checked;
+      ui.qsa('[data-pool-sel]').forEach(function (x) { x.checked = checked; x.dispatchEvent(new Event('change')); });
+    });
+
+    var so = ui.qs('#pool-sort');
+    if (so) so.addEventListener('change', function () { sort = so.value; st.sort = sort; S.save(); render(); });
+
+    ui.qsa('[data-pool-op]').forEach(function (b) {
+      b.addEventListener('click', function () { op(b.getAttribute('data-pool-op'), b.getAttribute('data-id'), b.getAttribute('data-disabled')); });
+    });
+    ui.bindDenied('#pool-body');
+  }
+
+  function op(kind, id, disabled) {
+    var p = S.find('poolRecords', id);
+    if (!p) { ui.toast('该公海记录已不在池内，请刷新。', 'warn'); return; }
+    if (kind === 'claim' && disabled) {
+      ui.modal({
+        title: '暂不满足认领资格', size: 'sm',
+        body: '<p>' + ui.esc(p.claimBlockReason || '当前角色缺该区域或业务线资格。') + '</p>' +
+          '<p class="ry-hint">认领资格按账号的区域资格与业务线资格计算；不具备认领资格时仍可查看完整客户详情，但不能认领。</p>' +
+          '<p class="ry-hint">确需经营时，请由销售主管通过「分派」指定主负责人。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+      });
+      return;
+    }
+    var need = kind === 'claim' ? 'pool.claim' : kind === 'assign' ? 'pool.assign' : '';
+    if (need && !can(need)) {
+      ui.modal({ title: '该动作当前不可执行', size: 'sm', body: '<p>' + ui.esc(deny(need)) + '</p>', footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>' });
+      return;
+    }
+
+    if (kind === 'claim') {
+      ui.drawer({
+        title: '认领客户主档', subtitle: '认领人固定为当前用户，必须创建新的初始经营关系。',
+        body: ui.kv([['客户', p.customerName], ['主负责人', u.name]]) +
+          ui.field('经营区域', ui.select('region', S.activeRegions().map(function (x) { return { value: x.code, label: x.name }; }), (u.region || [])[0] || ''), '', true) +
+          ui.field('业务线', ui.select('line', S.all('businessLines').filter(function (x) { return x.status === '启用'; }).map(function (x) { return { value: x.code, label: x.name }; }), 'BL-UNSPECIFIED'), '', true) +
+          ui.banner('结束公海记录与新建经营关系是一个原子动作，并发时仅第一人成功。', 'info'),
+        footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="po-claim">确认认领</button>',
+        onOpen: function (el) { ui.qs('#po-claim', el).addEventListener('click', function () { var v = ui.formValues(el); var r = S.claimPool(id, u.id, { region: v.region, businessLine: v.line });
+          if (!r.ok) { ui.toast(r.reason, 'warn'); render(); return; }
+          ui.close(); ui.toast('认领成功，已创建新的初始经营关系。', 'success'); render(); }); }
+      });
+      return;
+    }
+
+    if (kind === 'assign') {
+      ui.drawer({
+        title: '分派至主负责人',
+        subtitle: '主管指定负责人并创建新的初始经营关系。',
+        body: ui.kv([['客户', p.customerName], ['入池原因', p.entryReason], ['入池时间', p.entryAt]]) +
+          ui.field('分派给', ui.select('user', S.all('users').filter(function (x) { return x.role === 'R1' || x.role === 'R2'; }).map(function (x) { return { value: x.id, label: x.name + '（' + RY.perm.ROLES[x.role].code + '）' }; }), 'U-001'), '', true) +
+          ui.field('经营区域', ui.select('region', S.activeRegions().map(function (x) { return { value: x.code, label: x.name }; }), 'RG-EAST'), '', true) +
+          ui.field('业务线', ui.select('line', S.all('businessLines').filter(function (x) { return x.status === '启用'; }).map(function (x) { return { value: x.code, label: x.name }; }), 'BL-UNSPECIFIED'), '', true) +
+          ui.field('分派说明', ui.textarea('note', '', '将写入审计与公海记录')) +
+          ui.banner('分派成功后结束客户公海记录，并以所选区域、业务线和主负责人创建初始经营关系。', 'info'),
+        footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="po-assign">确认分派</button>',
+        onOpen: function (el) {
+          ui.qs('#po-assign', el).addEventListener('click', function () {
+            var v = ui.formValues(el);
+            var r = S.assignPool(id, v.user, { region: v.region, businessLine: v.line });
+            if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+            if (v.note) S.audit('全国公海', id, '分派说明', '—', v.note);
+            ui.close(); ui.toast('已分派给 ' + S.userName(v.user) + '。', 'success'); render();
+          });
+        }
+      });
+      return;
+    }
+
+    /* history：只读查看客户入池与流转历史。 */
+    var historyIds = [p.customerId].concat(p.previousRelationIds || []);
+    var logs = S.all('audits').filter(function (a) { return historyIds.indexOf(a.objectId) >= 0; });
+    ui.drawer({
+      title: '该客户的公海流转记录',
+      subtitle: '最后一条有效经营关系停止后自动入池；不提供主动释放或主管回收入口。',
+      body: ui.kv([['当前池内记录', p.id], ['入池时间', p.entryAt], ['入池原因', p.entryReason], ['入池备注', p.entryNote || '—']]) +
+        '<div class="ry-timeline">' + (logs.length ? logs.map(function (a) {
+          return '<div class="ry-tl"><div class="ry-tl__h"><b>' + ui.esc(a.action) + '</b><span class="ry-tl__t">' + ui.esc(a.at) + '</span><span class="ry-mini">' + ui.esc(a.actor) + '</span></div>' +
+            '<div class="ry-tl__b">' + ui.esc(a.from || '—') + ' → ' + ui.esc(a.to || '—') + '</div></div>';
+        }).join('') : '<p class="ry-hint">暂无相关审计记录。</p>') + '</div>' +
+        ui.banner('公海记录来自客户最后一条有效经营关系停止。认领或分派时再新建经营关系，不复用已停止关系作为待分配单元。', 'info'),
+      footer: '<button class="ry-btn" data-close>关闭</button>',
+      onOpen: function (el) { }
+    });
+  }
+
+  /* 批量：对当前公海客户做主管分派，并为每个客户创建同参数的初始经营关系。 */
+  bar.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-pool-batch]');
+    if (!b) return;
+    var ids = ui.selected('customer.pool');
+    if (!ids.length) { ui.toast('请先选择要处理的公海客户。', 'warn'); return; }
+    if (!can('pool.assign')) {
+      ui.modal({ title: '该动作当前不可执行', size: 'sm', body: '<p>' + ui.esc(deny('pool.assign')) + '</p>', footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>' });
+      return;
+    }
+    ui.modal({
+      title: '批量分派公海客户（逐条校验）', size: 'lg',
+      body: ui.banner('共 ' + ids.length + ' 条。提交后会逐条校验目标人员、持有上限和当前公海状态；单条失败不影响其他条目。', 'info') +
+        ui.field('分派给', ui.select('target', S.all('users').filter(function (x) { return x.role === 'R1' || x.role === 'R2'; }).map(function (x) { return { value: x.id, label: x.name + '（' + RY.perm.ROLES[x.role].code + '）' }; }), 'U-001'), '', true) +
+        ui.field('经营区域', ui.select('batchRegion', S.activeRegions().map(function (x) { return { value: x.code, label: x.name }; }), 'RG-EAST'), '', true) +
+        ui.field('业务线', ui.select('batchLine', S.all('businessLines').filter(function (x) { return x.status === '启用'; }).map(function (x) { return { value: x.code, label: x.name }; }), 'BL-UNSPECIFIED'), '', true) +
+        '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr><th>公海客户</th><th>预检</th><th>说明</th></tr></thead><tbody>' +
+        ids.map(function (rid) {
+          var r = S.find('poolRecords', rid);
+          if (!r) return '<tr><td>' + rid + '</td><td>' + ui.tag('失败', 'bad') + '</td><td class="ry-hint">该记录已不在池内</td></tr>';
+          return '<tr><td>' + ui.esc(r.customerName) + '</td><td>' + ui.tag('待提交校验', 'info') + '</td><td class="ry-hint">当前仍在公海</td></tr>';
+        }).join('') + '</tbody></table></div>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="pb-ok">确认执行</button>',
+      onOpen: function (el) {
+        ui.qs('#pb-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          var job = S.addJob({ type: '批量', action: '公海客户批量分派', object: '全国公海', status: '处理中', total: ids.length, success: 0, failed: 0 });
+          ui.asyncRun({
+            title: '正在批量分派', total: ids.length, processId: job.processId,
+            onDone: function () {
+              var okn = 0, bad = [];
+              ids.forEach(function (rid) {
+                var r = S.find('poolRecords', rid);
+                if (!r || r.status !== '有效') { bad.push({ id: rid, obj: '公海客户', reason: '已不在池内' }); return; }
+                if (S.relationHoldCount(v.target) >= S.RELATION_HOLD_LIMIT) { bad.push({ id: rid, obj: r.customerName, reason: '目标人员已达持有上限' }); return; }
+                var ar = S.assignPool(rid, v.target, { region: v.batchRegion, businessLine: v.batchLine });
+                if (ar.ok) okn++; else bad.push({ id: rid, obj: r.customerName, reason: ar.reason });
+              });
+              var status = bad.length === 0 ? '已完成' : (okn === 0 ? '失败' : '部分成功');
+              S.updateJob(job.id, { status: status, success: okn, failed: bad.length, failedItems: bad });
+              ui.closeAll();
+              ui.syncSel('customer.pool', []);
+              if (bad.length) {
+                ui.jobResult(S.job(job.id));
+              } else {
+                ui.toast('批量分派完成，共 ' + okn + ' 条。', 'success');
+              }
+              render();
+            }
+          });
+        });
+      }
+    });
+  });
+
+  ui.qs('#f-apply').addEventListener('click', function () {
+    var v = ui.formValues(ui.qs('#pool-filter'));
+    flt.kw = v.kw; flt.reason = v.reason;
+    flt.claimable = v.claimable; flt.entryFrom = v.entryFrom; flt.entryTo = v.entryTo;
+    ui.syncSel('customer.pool', []); page = 1; st.page = 1; S.save(); render();
+  });
+  ui.qs('#f-reset').addEventListener('click', function () {
+    flt.kw = flt.reason = flt.claimable = flt.entryFrom = flt.entryTo = '';
+    ui.syncSel('customer.pool', []); page = 1; st.page = 1; S.save(); render();
+    ui.qs('#pool-filter').querySelectorAll('input,select').forEach(function (x) { if (x.tagName === 'SELECT') x.selectedIndex = 0; else x.value = ''; });
+  });
+
+  var ex = ui.qs('#po-exp');
+  if (ex) ex.addEventListener('click', function (e) {
+    if (e.target.closest('[data-denied]')) return;
+    ui.modal({
+      title: '导出公海清单', size: 'sm',
+      body: '<p>本次将导出当前筛选结果 <b>' + filtered().length + '</b> 条，字段固定为：客户名称、客户编号、客户类型、客户价值、入池原因、入池时间、最近销售活动。</p>' +
+        ui.banner('导出按按钮权限执行，不设置字段明文授权。结果为异步任务，可在处理记录中下载。', 'info'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="po-exp-ok">提交导出</button>',
+      onOpen: function (el) {
+        ui.qs('#po-exp-ok', el).addEventListener('click', function () {
+          ui.close();
+          var job = S.addJob({ type: '导出', action: '全国公海清单导出', object: '全国公海', status: '处理中', total: filtered().length, fileName: '全国公海清单.xlsx' });
+          ui.asyncRun({ title: '正在生成导出文件', total: filtered().length, processId: job.processId, onDone: function () {
+            S.updateJob(job.id, { status: '已完成', success: filtered().length, failed: 0 });
+            ui.closeAll(); ui.toast('导出已完成，可在处理记录下载。', 'success');
+          } });
+        });
+      }
+    });
+  });
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

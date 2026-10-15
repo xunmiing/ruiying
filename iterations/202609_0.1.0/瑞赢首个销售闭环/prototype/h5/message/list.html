@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>消息中心 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：消息分类、阅读状态与来源入口。 */
+  .ms-row { border: 1px solid var(--line); border-radius: 12px; padding: 10px 11px; margin-bottom: 8px; background: var(--surface); }
+  .ms-row.is-unread { border-left: 3px solid var(--brand); }
+  .ms-row__t { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; font-size: 13.5px; font-weight: 600; }
+  .ms-row__b { font-size: 12px; line-height: 1.85; margin-top: 5px; word-break: break-all; }
+  .ms-row__m { font-size: 11.5px; color: var(--muted); line-height: 1.8; margin-top: 5px; }
+  .ms-row__m code { font-family: var(--mono); font-size: 11px; }
+  .ms-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--brand); margin-right: 5px; vertical-align: middle; }
+  #ms-settings-entry { color: #0c665d; font-size: 19px; line-height: 1; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+  <div id="ms-host"></div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.message';
+
+  RY.nav.h5shell({
+    title: '消息中心',
+    sub: '业务通知与个人提醒',
+    back: 'index.html',
+    nav: 'home',
+    actions: '<button type="button" class="ry-bar__ico" id="ms-settings-entry" title="个人消息设置" aria-label="打开个人消息设置">⚙</button>',
+    tabbar: true
+  });
+
+  var u = S.currentUser();
+
+  /* 四分类：任务／日程与拜访／日报／系统。分类由事件类型映射，不由前端按标题猜测。 */
+  var CAT = {
+    '主管指派任务': '任务', '任务指派': '任务', '任务到期与逾期': '任务', '任务催办': '任务',
+    '拜访异常进入待复核': '日程与拜访', '正式拜访': '日程与拜访', '日程与拜访': '日程与拜访', '日程变更': '日程与拜访',
+    '日报新增建议': '日报', '日报提交': '日报', '应交未交日报': '日报', '日报': '日报',
+    '公海分派': '系统', '异步批量结果': '系统', '异步导出完成': '系统', '价值待复核': '系统',
+    '异常事项提交': '系统', '客户合并失效': '系统', '系统通知': '系统'
+  };
+  var CATS = ['全部', '任务', '日程与拜访', '日报', '系统'];
+
+  /* 来源深链：把消息携带的来源路径解析成对象类型与对象标识，跳转前重新鉴权。 */
+  var SEG = {
+    customer: { type: '客户', list: 'customers', h5: 'h5/customer/detail.html?id=' },
+    lead: { type: '线索', list: 'leads', h5: 'h5/lead/detail.html?id=' },
+    opportunity: { type: '商机', list: 'opportunities', h5: 'h5/opportunity/detail.html?id=' },
+    task: { type: '任务', list: 'tasks', h5: 'h5/task/detail.html?id=' },
+    visit: { type: '正式拜访', list: 'visits', h5: 'h5/visit/detail.html?id=' },
+    report: { type: '日报', list: 'reports', h5: 'h5/report/detail.html?id=' },
+    processing: { type: '处理记录', list: 'jobs', h5: '' }
+  };
+
+  var state = { cat: '全部', read: '全部', q: '' };
+
+  function catOf(m) { return CAT[m.event] || '系统'; }
+
+  function targetOf(m) {
+    var l = String(m.link || '');
+    var mt = /\/([a-z]+)\/detail\.html\?([^#]*)/.exec(l);
+    if (!mt) return null;
+    var seg = SEG[mt[1]];
+    if (!seg) return null;
+    var mi = /(?:^|&)id=([^&#]+)/.exec(mt[2]);
+    if (!mi) return null;
+    var id = decodeURIComponent(mi[1]);
+    var rec = S.find(seg.list, id);
+    return { seg: seg, id: id, rec: rec };
+  }
+
+  /* 逐条重新鉴权：对象不存在、已被合并或因权限收敛不可见时，只显示消息类型与发生时间。 */
+  function access(t) {
+    if (!t) return { ok: false, reason: '消息没有可跳转的来源对象，仅保留消息类型与发生时间。' };
+    if (!t.rec) return { ok: false, reason: '来源对象不存在，或已因合并、删除不再对当前账号可见。' };
+    if (!P.inScope(t.seg.list, t.rec)) return { ok: false, reason: '来源对象不在当前数据范围内：失权后只显示消息类型、发生时间与通用状态。' };
+    return { ok: true };
+  }
+
+  function messages() {
+    return S.arr('messages').filter(function (m) {
+      if (m.receiver && m.receiver !== u.id) return false;
+      if (state.cat !== '全部' && catOf(m) !== state.cat) return false;
+      if (state.read === '未读' && m.read) return false;
+      if (state.read === '已读' && !m.read) return false;
+      if (state.q) {
+        var a = access(targetOf(m));
+        if (!a.ok) return false; /* 无权对象的标题与摘要不参与检索，避免侧漏 */
+        var hay = (m.title + m.body + m.event).toLowerCase();
+        if (hay.indexOf(state.q.toLowerCase()) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function unread() { return S.arr('messages').filter(function (m) { return (!m.receiver || m.receiver === u.id) && !m.read; }).length; }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function changed(t, m) {
+    if (!t || !t.rec) return false;
+    var up = t.rec.updatedAt || '';
+    return !!up && up > m.at;
+  }
+
+  function rowHtml(m) {
+    var t = targetOf(m);
+    var a = access(t);
+    var c = catOf(m);
+    var head = '<div class="ms-row__t"><span>' + (m.read ? '' : '<i class="ms-dot"></i>') +
+      (a.ok ? ui.esc(m.title) : '该消息关联的业务对象当前不可见') + '</span>' +
+      '<span>' + ui.tag(c, 'muted') + ' ' + (m.read ? ui.tag('已读', 'muted') : ui.tag('未读', 'warn')) + '</span></div>';
+
+    if (!a.ok) {
+      /* 失权：只显示消息类型、发生时间与通用状态，不展示标题、摘要与来源。 */
+      return '<div class="ms-row' + (m.read ? '' : ' is-unread') + '">' + head +
+        '<div class="ms-row__m">消息类型：' + ui.esc(m.event) + '　发生时间 ' + ui.esc(m.at) + '<br>' +
+        '当前状态：来源对象不可见</div>' +
+        '<div class="ry-acts-row" style="margin-top:8px">' +
+          '<button class="ry-btn ry-btn--sm" data-open="' + ui.esc(m.id) + '">查看来源</button>' +
+          (m.read ? '<button class="ry-btn ry-btn--sm" data-unread="' + ui.esc(m.id) + '">标回未读</button>'
+                  : '<button class="ry-btn ry-btn--sm" data-read="' + ui.esc(m.id) + '">标记已读</button>') +
+        '</div></div>';
+    }
+
+    return '<div class="ms-row' + (m.read ? '' : ' is-unread') + '">' + head +
+      '<div class="ms-row__b">' + ui.esc(m.body) + '</div>' +
+      '<div class="ms-row__m">' + ui.esc(m.at) + ' · 来源：' + ui.tag(t.seg.type, 'info') +
+        (t.rec.name ? ' ' + ui.esc(t.rec.name) : '') +
+        (changed(t, m) ? '　' + ui.tag('来源已更新', 'warn') : '') +
+      '</div>' +
+      '<div class="ry-acts-row" style="margin-top:8px">' +
+        (t.seg.h5 ? '<button class="ry-btn ry-btn--sm ry-btn--primary" data-open="' + ui.esc(m.id) + '">打开来源对象</button>' : '') +
+        (m.read ? '<button class="ry-btn ry-btn--sm" data-unread="' + ui.esc(m.id) + '">标回未读</button>'
+                : '<button class="ry-btn ry-btn--sm" data-read="' + ui.esc(m.id) + '">标记已读</button>') +
+      '</div></div>';
+  }
+
+  function render() {
+    var html = '';
+
+    if (!P.page(PAGE)) {
+      html += ui.stateCard('no-permission', {
+        title: '没有消息中心的访问权限',
+        body: '<p>' + ui.esc(P.whyNot('msg.view') || '当前身份没有「消息中心」页面权限。') + '</p>' +
+          '<p class="ry-hint">页面入口和消息内容按当前身份校验。</p>',
+        actions: '<a class="ry-btn" href="' + RY.nav.href('h5/more.html') + '">返回更多</a>'
+      });
+      html += contractHtml();
+      ui.qs('#ms-host').innerHTML = html;
+      return;
+    }
+
+    var list = messages();
+    var all = S.arr('messages').filter(function (m) { return !m.receiver || m.receiver === u.id; });
+    html += '<div class="ry-brief">' +
+      '<div class="ry-brief__row"><span class="ry-brief__k"><i class="ms-dot"></i>我的消息</span>' +
+        '<span>' + ui.tag('未读 ' + unread() + ' 条', unread() ? 'warn' : 'muted') + ' ' +
+        ui.tag('共 ' + all.length + ' 条', 'muted') + '</span></div>' +
+      '<span class="h5-sec-note">仅展示本人可接收的消息；失权后隐藏业务标题和摘要。打开来源前重新鉴权。</span></div>';
+
+    /* 分类与读状态筛选 */
+    html += '<div class="ry-card" style="padding:10px 11px">' +
+      '<div class="ry-acts-row">' + CATS.map(function (c) {
+        return '<button type="button" class="ry-chip' + (state.cat === c ? ' is-on' : '') + '" data-cat="' + ui.esc(c) + '">' + ui.esc(c) + '</button>';
+      }).join('') + '</div>' +
+      '<div class="ry-acts-row" style="margin-top:8px">' + ['全部', '未读', '已读'].map(function (r) {
+        return '<button type="button" class="ry-chip' + (state.read === r ? ' is-on' : '') + '" data-rd="' + ui.esc(r) + '">' + ui.esc(r) + '</button>';
+      }).join('') + '<button class="ry-btn ry-btn--sm" id="ms-allread">全部已读</button></div>' +
+      '<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--surface);margin-top:8px">' +
+        '<input id="ms-q" type="search" placeholder="搜索消息" value="' + ui.esc(state.q) + '" style="flex:1;border:0;outline:0;font-size:14px;background:transparent">' +
+        '<button class="ry-btn ry-btn--sm" id="ms-go">检索</button></div>' +
+      '</div>';
+
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>消息列表</h3>' +
+      '<div class="ry-hcard__extra">' + ui.tag(list.length + ' 条', list.length ? 'info' : 'muted') + '</div></div>' +
+      '<div class="ry-hcard__body">' +
+      (list.length ? list.map(rowHtml).join('')
+        : ui.empty('当前筛选条件下没有消息。', '')) +
+      '<span class="h5-sec-note">打开来源时重新鉴权；已读和未读只影响本人消息，不改变来源业务状态。</span>' +
+      '</div></div>';
+
+    html += contractHtml();
+    ui.qs('#ms-host').innerHTML = html;
+    bind();
+  }
+
+  function contractHtml() {
+    return '<div class="ry-hcard ry-hcard--flat" style="margin-top:14px">' +
+      '<div class="ry-hcard__head"><h3>本页契约</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">PG-GLOBAL-MESSAGE</span></div></div>' +
+      '<div class="ry-hcard__body">' + ui.kv([
+        ['页面契约', 'PG-GLOBAL-MESSAGE · 消息中心'],
+        ['所属模块', '首页和工作入口；依据 prd/04 §7、prd/07 §5、prd/08 §16'],
+        ['端', '企业微信 H5'],
+        ['可进入角色', 'ALL5：R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员（仅展示当前用户可接收的消息）'],
+        ['覆盖 AC', 'AC-55：铃铛未读数、任务／日程与拜访／日报／系统四分类、已读未读、来源深链及个人企微提醒开关'],
+        ['消息范围', '只展示当前用户可接收的站内消息。检索不使用失权对象的标题或摘要；失权后只保留消息类型、发生时间和通用状态，打开来源前重新鉴权。'],
+        ['阅读动作', '打开消息或手工标记只改变本人的阅读状态；来源对象完成、取消或失效不自动将消息置为已读。全部已读对本人可接收的消息生效。'],
+        ['个人提醒', '站内消息始终生成并在线保留 1 年，用户不能删除或改写。企微是额外提醒渠道；新任务指派、新移交处理待办、拜访异常需销售补充为系统必达。任务临期／逾期、日报未提交可由个人关闭，默认开启，只影响保存后新产生的企微提醒。'],
+        ['技术处理', '消息投递状态与站内阅读状态独立；失败不回滚源业务，技术按规则重试并记录投递与审计日志。0.1 不向业务前台提供投递记录、消息模板或系统审计查询页面。']
+      ]) + '</div></div>';
+  }
+
+  /* M27：从消息中心页头打开个人设置，仅控制后续可选企微提醒。 */
+  function openSettings() {
+    var prefs = S.notificationPrefs();
+    RY.nav.sheet({
+      title: '个人消息设置',
+      body: '<label class="ry-switch"><input type="checkbox" id="ms-pref-due"' + (prefs.taskDue ? ' checked' : '') + '><span>任务今日到期与已逾期企微提醒</span></label>' +
+        '<label class="ry-switch"><input type="checkbox" id="ms-pref-daily"' + (prefs.dailyMissing ? ' checked' : '') + '><span>日报应交未交企微提醒</span></label>' +
+        '<span class="h5-sec-note">仅控制保存后新产生的可选企微提醒。新任务指派、新移交处理待办和拜访异常补充为系统必达；站内消息持续保留。</span>',
+      footer: '<button type="button" class="ry-btn" data-close>取消</button><button type="button" class="ry-btn ry-btn--primary" id="ms-pref-save">保存设置</button>',
+      onOpen: function (host, close) {
+        ui.qs('#ms-pref-save', host).addEventListener('click', function () {
+          S.saveNotificationPrefs({
+            taskDue: ui.qs('#ms-pref-due', host).checked,
+            dailyMissing: ui.qs('#ms-pref-daily', host).checked
+          });
+          close();
+          ui.toast('个人企微提醒设置已保存', 'ok');
+        });
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------- 交互 */
+
+  function openMessage(mid) {
+    var m = S.arr('messages').filter(function (x) { return x.id === mid; })[0];
+    if (!m) return;
+    var t = targetOf(m);
+    /* 点击即重新鉴权：每次跳转前重新判定，不用渲染时的旧结论。 */
+    var a = access(t);
+    if (!a.ok || !t.seg.h5) {
+      ui.modal({
+        title: a.ok ? '该来源对象不在 H5 提供入口' : '无法打开来源对象',
+        size: 'sm',
+        body: '<p>' + ui.esc(a.ok ? '来源对象在 0.1 只在 PC 处理记录中查看，H5 不提供入口，也不会跳转到无权页面。' : a.reason) + '</p>' +
+          ui.kv([['消息类型', ui.esc(m.event)], ['发生时间', ui.esc(m.at)],
+            ['通用状态', a.ok ? '来源对象存在，但 H5 无该对象入口' : '来源对象不可见，不展示业务标题与摘要']]),
+        footer: '<button class="ry-btn ry-btn--primary" data-close>知道了</button>'
+      });
+      /* 打开失败仍按「已打开过」处理阅读状态，与站内消息口径一致。 */
+      S.markMessageRead(m.id, true);
+      render();
+      return;
+    }
+    S.markMessageRead(m.id, true);
+    window.location.href = RY.nav.href(t.seg.h5 + encodeURIComponent(t.id));
+  }
+
+  function bind() {
+    ui.qsa('[data-cat]').forEach(function (b) {
+      b.addEventListener('click', function () { state.cat = b.getAttribute('data-cat'); render(); });
+    });
+    ui.qsa('[data-rd]').forEach(function (b) {
+      b.addEventListener('click', function () { state.read = b.getAttribute('data-rd'); render(); });
+    });
+    var go = ui.qs('#ms-go');
+    if (go) go.addEventListener('click', function () { state.q = ui.qs('#ms-q').value; render(); });
+    var q = ui.qs('#ms-q');
+    if (q) q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { state.q = q.value; render(); } });
+
+    var ar = ui.qs('#ms-allread');
+    if (ar) ar.addEventListener('click', function () {
+      ui.confirm({
+        title: '全部标为已读',
+        message: '<p>将本人可接收的全部站内消息标记为已读。</p>',
+        confirmText: '全部已读',
+        onConfirm: function () { S.markAllMessagesRead(); render(); ui.toast('已将本人站内消息全部标为已读。', 'ok'); }
+      });
+    });
+
+    ui.qsa('[data-read]').forEach(function (b) {
+      b.addEventListener('click', function () { S.markMessageRead(b.getAttribute('data-read'), true); render(); });
+    });
+    ui.qsa('[data-unread]').forEach(function (b) {
+      b.addEventListener('click', function () { S.markMessageRead(b.getAttribute('data-unread'), false); ui.toast('已标回未读。', 'ok'); render(); });
+    });
+    ui.qsa('[data-open]').forEach(function (b) {
+      b.addEventListener('click', function () { openMessage(b.getAttribute('data-open')); });
+    });
+  }
+
+  ui.qs('#ms-settings-entry').addEventListener('click', openSettings);
+  render();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>商机详情 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：商机详情 */
+  .od-flags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .od-flow { display:flex; gap:2px; overflow-x:auto; padding:2px 0 8px; }
+  .od-flow__i { display:flex; align-items:center; gap:8px; flex:1 0 154px; min-width:154px; min-height:48px; padding:7px 20px 7px 23px; color:#64707c; background:#e5e9ed; clip-path:polygon(0 0,calc(100% - 13px) 0,100% 50%,calc(100% - 13px) 100%,0 100%,13px 50%); }
+  .od-flow__i:first-child { padding-left:13px; clip-path:polygon(0 0,calc(100% - 13px) 0,100% 50%,calc(100% - 13px) 100%,0 100%); }
+  .od-flow__i:last-child { padding-right:12px; clip-path:polygon(0 0,100% 0,100% 100%,0 100%,13px 50%); }
+  .od-flow__i:first-child:last-child { clip-path:none; border-radius:4px; }
+  .od-flow__i.is-done { color:#fff; background:#378cc7; }
+  .od-flow__i.is-cur { color:#fff; background:#19ad71; }
+  .od-flow__mark { display:grid; place-items:center; flex:none; width:17px; height:17px; border-radius:50%; background:rgba(255,255,255,.95); color:inherit; font-size:11px; font-weight:700; line-height:1; }
+  .od-flow__i.is-done .od-flow__mark { color:#378cc7; }
+  .od-flow__i.is-cur .od-flow__mark { color:#19ad71; }
+  .od-flow__copy { min-width:0; line-height:1.15; }
+  .od-flow__copy b { display:block; font-size:12px; font-weight:700; }
+  .od-flow__copy small { display:block; margin-top:3px; font-size:10px; opacity:.9; }
+  .od-demo-control { margin:0 0 10px; padding:9px 12px; border:1px solid var(--line); border-radius:var(--r-card); background:var(--surface); font-size:12px; }
+  .od-demo-control__row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .od-demo-control select { width:auto; min-width:170px; }
+  .od-gate { border: 1px solid var(--warn-line); background: var(--warn-soft); border-radius: var(--r-btn); padding: 12px; }
+  .od-gate h4 { margin: 0 0 8px; font-size: 13px; color: var(--warn); }
+  .od-gate ul { margin: 0; padding-left: 18px; }
+  .od-gate li { margin-bottom: 6px; line-height: 1.8; }
+  .od-task { border: 1px solid var(--line); border-radius: var(--r-btn); padding: 11px 12px; margin-bottom: 9px; background: var(--surface); }
+  .od-task__h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .od-task__m { margin-top: 5px; font-size: 12px; color: var(--muted); line-height: 1.8; }
+  .od-tl { border-left: 2px solid var(--line); padding-left: 14px; }
+  .od-tl__i { position: relative; padding: 0 0 14px; }
+  .od-tl__i:before { content: ''; position: absolute; left: -19px; top: 5px; width: 9px; height: 9px; border-radius: 50%; background: var(--brand-line); border: 2px solid var(--surface); }
+  .od-tl__t { font-size: 12.5px; }
+  .od-tl__m { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .od-line { border: 1px solid var(--line); border-radius: var(--r-btn); padding: 11px 12px; margin-bottom: 9px; background: var(--surface); }
+  .od-fields { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+  .od-fields .od-field--long { grid-column:1/-1; }
+  .od-table-actions { display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap; }
+  .od-hero { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+  .od-hero__main { min-width:230px; flex:1 1 280px; }
+  .od-head-actions { flex:0 1 770px; justify-content:flex-end; gap:6px; margin:0; }
+  .od-head-actions .ry-btn { white-space:nowrap; }
+  .od-hero__meta { color:var(--muted); font-size:11.5px; line-height:1.7; margin-top:8px; }
+  .od-info-kv { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); column-gap:24px; }
+  .od-info-kv li { min-width:0; }
+  .od-info-kv li > span { flex:0 0 104px; }
+  .od-info-kv li > b { min-width:0; word-break:break-word; }
+  .od-info-layout { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(360px,1fr); gap:14px; align-items:start; }
+  .od-info-layout>div { min-width:0; }
+  .od-info-layout .od-info-kv { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .od-info-layout .od-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .od-ordinary { margin-top:16px; padding-top:14px; border-top:1px solid var(--line); }
+  .od-ordinary__head { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+  .od-ordinary__head h4 { margin:0; font-size:13px; }
+  .od-ordinary__actions { display:flex; align-items:center; gap:8px; }
+  .od-ordinary .ry-field { margin:0; }
+  .od-tbl td,.od-tbl th { padding:7px 9px; }
+  @media(max-width:1100px){.od-info-layout{grid-template-columns:1fr}.od-fields,.od-info-kv{grid-template-columns:repeat(2,minmax(0,1fr));}}
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+        <div id="od-guard"></div>
+      <div id="od-body" style="display:none">
+        <div id="od-objhead"></div>
+        <div id="od-flowbar"></div>
+        <div class="ry-tabs" id="od-tabs"></div>
+        <div id="od-panel"></div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/opportunity-review-mode.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<!-- 原型说明层：把「业务规则 / 注解 / 待修 / 不做」就地标注在页面上；不含业务逻辑，可整行摘除 -->
+<script>
+(function () {
+  'use strict';
+  var ui = Object.create(RY.ui), S = RY.store, u = S.currentUser(), D = S.all('dicts');
+  var infoNotes = {}, infoCodes = {}, infoCount = 0;
+  var baseBanner = RY.ui.banner;
+  ui.banner = function (body, kind) {
+    if (kind !== 'info' && kind !== 'brand') return baseBanner.apply(RY.ui, arguments);
+    var plain = String(body).replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, '').trim();
+    var title = plain.slice(0, 8);
+    if (!infoCodes[title]) infoCodes[title] = ++infoCount;
+    var key = 'I' + infoCodes[title];
+    infoNotes[key] = body;
+    return '<button class="ryn-perm-link" type="button" data-info-note="' + key + '">' + infoCodes[title] + ' ' + ui.esc(title) + '…</button>';
+  };
+  document.addEventListener('click', function (e) {
+    var p = e.target.closest('[data-perm-note]');
+    if (p && window.RYNOTES) RYNOTES.openPermission(p.getAttribute('data-perm-note'));
+    var n = e.target.closest('[data-info-note]');
+    if (n) ui.modal({ title: n.textContent.replace(/…$/, ''), size: 'sm', body: '<div class="ry-hint">' + (infoNotes[n.getAttribute('data-info-note')] || '') + '</div>', footer: '<button class="ry-btn ry-btn--primary" data-close>知道了</button>' });
+  });
+  function can(a, o) { return RY.perm.can(a, o); }
+  function deny(a) { return RY.perm.whyNot(a); }
+  function actionBtn(a, label, attrs, cls) { return can(a, o) ? ui.actionBtn(a, label, attrs, cls) : ''; }
+  function canManageOpportunity() {
+    return can('opp.customer.change', o);
+  }
+
+  var id = ui.q('id') || 'OPP-202609-0042';
+  var isDemo = id === 'OPP-202609-0042' && ui.q('demo') === '1';
+  var from = ui.q('from') || 'list';
+  var g = RY.perm.guard('opp.detail', 'opportunities', id);
+  var o = S.opp(id);
+
+  var TABS = [
+    ['info', '详细信息'], ['advance', '阶段推进'], ['lines', '业务线与协同'], ['timeline', '日志记录']
+  ];
+  var TAB_ALIAS = { overview: 'info', team: 'info', fields: 'info', tasks: 'advance', close: 'info' };
+  var tab = TAB_ALIAS[ui.hash()] || ui.hash() || 'info';
+  var historyFilter = '全部';
+  var demoStageCode = '';
+  if (!TABS.some(function (t) { return t[0] === tab; })) tab = 'info';
+
+  RY.nav.shell({
+    nav: 'opp.list',
+    title: '商机详情',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '销售管理' }, { label: '商机', href: 'pc/opportunity/list.html' }, { label: o ? o.id : '商机' }],
+    actions: '<a class="ry-btn" href="list.html">返回商机列表</a>'
+  });
+
+  if (!g.ok) {
+    ui.renderState('#od-guard', g.kind || 'unavailable', {
+      title: g.kind === 'no-permission' ? '没有访问该商机的权限' : '商机不可用',
+      body: '<p>' + ui.esc(g.reason) + '</p>' +
+        '<p class="ry-hint">失去访问权限或对象不可用时，本页不展示商机名称、客户、阶段、金额线索与团队成员等任何摘要信息。</p>',
+      actions: '<a class="ry-btn" href="list.html">返回商机列表</a>'
+    });
+    return;
+  }
+  ui.qs('#od-body').style.display = '';
+  if (isDemo) demoStageCode = o.currentStageCode;
+
+  /* ---------------------------------------------------------------- 工具 */
+
+  function tpl() { return S.currentTemplate(o); }
+  function stage() { return S.currentStage(o); }
+  function mainLine() { return (o.lines || []).filter(function (l) { return l.role === '主业务线'; })[0] || {}; }
+  function collabLines() { return (o.lines || []).filter(function (l) { return l.role !== '主业务线'; }); }
+  function sceneName(code) {
+    var s = S.all('scenarios').filter(function (x) { return x.code === code; })[0];
+    return s ? s.name : (code || '—');
+  }
+  function daysSince(str) {
+    if (!str) return null;
+    var d = new Date(String(str).replace(/-/g, '/').slice(0, 10));
+    if (isNaN(d.getTime())) return null;
+    return Math.round((new Date(S.today().replace(/-/g, '/')) - d) / 86400000);
+  }
+  function stagnant() {
+    var x = S.opportunityStagnation(o);
+    return { on: x.on, days: x.days, limit: x.threshold, paused: x.paused };
+  }
+  function tasks(scope) {
+    return S.all('stageTasks').filter(function (x) {
+      if (x.oppId !== o.id) return false;
+      if (!scope) return true;
+      if (scope === 'current') { var entry = S.currentStageEntryEvent(o); return x.stageCode === o.currentStageCode && (!entry || x.stageEntryEventId === entry.eventId); }
+      return true;
+    });
+  }
+  function customFieldsOfTemplate() {
+    var t = tpl();
+    if (!t) return [];
+    var codes = [];
+    t.stages.forEach(function (s) {
+      (s.requiredFields || []).forEach(function (c) { if (codes.indexOf(c) < 0) codes.push(c); });
+    });
+    return codes.map(function (c) { return S.customField(c); }).filter(Boolean).concat(
+      S.all('customFields').filter(function (f) {
+        return f.status === '启用' && codes.indexOf(f.code) < 0 &&
+          (!f.businessLines.length || f.businessLines.indexOf(mainLine().businessLine) >= 0);
+      })
+    );
+  }
+  function ordinaryFieldsForPage() {
+    var required = stage() ? (stage().requiredFields || []) : [];
+    var eligibleLines = [mainLine().businessLine].concat(collabLines().filter(function (l) { return l.status === '当前参与'; }).map(function (l) { return l.businessLine; }));
+    var applicable = S.all('customFields').filter(function (f) {
+      return f.status === '启用' && (!f.businessLines.length || f.businessLines.some(function (line) { return eligibleLines.indexOf(line) >= 0; }));
+    });
+    return applicable.concat(customFieldsOfTemplate().filter(function (f) {
+      return required.indexOf(f.code) >= 0 && !applicable.some(function (x) { return x.code === f.code; });
+    }));
+  }
+
+  /* ---------------------------------------------------------------- 头部 */
+
+  function renderHead() {
+    var t = tpl(), s = stage(), c = S.customer(o.customerId), st = stagnant();
+    ui.qs('#od-objhead').innerHTML = '<div class="ry-card"><div class="ry-card__body">' +
+      '<div class="od-hero">' +
+        '<div class="od-hero__main"><h2 style="margin:0;font-size:18px">' + ui.esc(o.name) + (isDemo ? ' ' + ui.tag('演示商机', 'brand') : '') + '</h2>' +
+          '<p class="ry-hint" style="margin:6px 0 0"><code>' + o.id + '</code>　客户：' +
+          (c ? '<a href="../customer/detail.html?id=' + c.id + '&from=opp">' + ui.esc(c.name) + '</a>' : '客户不可用') +
+          '</p>' +
+          '<div class="od-flags">' + ui.statusTag(o.processStatus) +
+            (o.closeResult ? ui.statusTag(o.closeResult) : '') +
+            (s ? ui.tag('当前阶段：' + s.name, 'brand') : ui.tag('阶段不可用', 'warn')) +
+            (s ? ui.tag('统一阶段：' + s.unified, 'muted') : '') +
+            (st.on ? ui.tag('停滞提醒', 'warn') + '<button type="button" data-pcn-rule="oppStagnation"></button>' : '') +
+            (o.predictedClose ? '' : ui.tag('缺预计成交时间（系统固定门禁）', 'warn')) +
+            (S.qualityPending(o.customerId) ? ui.tag('客户带待治理数据质量标签', 'warn') : '') +
+          '</div>' +
+          '<div class="od-hero__meta">主负责人：' + ui.esc(S.userName(o.owner)) + '　创建：' + ui.esc((o.createdAt || '').slice(0, 16) || '—') + '　最近更新：' + ui.esc((o.updatedAt || '').slice(0, 16) || '—') + '　来源：' + ui.esc(o.source || '—') + '</div>' +
+        '</div>' +
+        '<div class="ry-actions-row od-head-actions"><button class="ryn-perm-link" type="button" data-perm-note="OPP-D-P2">② 操作权限</button>' +
+          '<button class="ry-btn ry-btn--sm" data-od-customer' + (can('opp.customer.change', o) ? '' : ' disabled title="' + ui.esc(deny('opp.customer.change')) + '"') + '>变更关联客户</button>' +
+          '<button class="ry-btn ry-btn--sm" data-od-next' + (can('opp.nextAction', o) ? '' : ' disabled title="' + ui.esc(deny('opp.nextAction')) + '"') + '>编辑下一步行动</button>' +
+          actionBtn('opp.advance', '推进阶段', ' data-od-act="advance"' + (o.closeResult || !t || S.stageIndex(o) >= t.stages.length - 1 ? ' disabled' : ''), 'ry-btn--primary ry-btn--sm') +
+          actionBtn('opp.rollback', '回退阶段', ' data-od-act="rollback"' + (o.closeResult ? ' disabled' : ''), 'ry-btn--sm') +
+
+          (o.closeResult ? (o.closeResult === '关闭' ? actionBtn('opp.reopen', '重新激活', ' data-od-act="reopen"', '') : '') :
+            actionBtn('opp.close', '赢单', ' data-od-act="win"', 'ry-btn--sm') +
+            actionBtn('opp.close', '输单', ' data-od-act="lose"', 'ry-btn--sm') +
+            actionBtn('opp.close', '关闭', ' data-od-act="terminate"', 'ry-btn--sm')) +
+        '</div>' +
+      '</div>' +
+      '' +
+      (o.closeResult ? ui.banner('该商机已结束：<b>' + ui.esc(o.closeResult) + '</b>　关闭时间 ' + ui.esc(o.closedAt || '—') +
+        '　依据／原因：' + ui.esc(o.closeBasis || o.closeReason || '—') + '。仅关闭结果可由有权人重新激活。', 'info') : '') +
+    '</div></div>';
+    ui.qs('#od-flowbar').innerHTML = stageOverview();
+    var demoSelect = ui.qs('#od-demo-stage');
+    if (demoSelect) demoSelect.addEventListener('change', function () { demoStageCode = demoSelect.value; renderHead(); });
+    ui.qsa('[data-od-tab]', ui.qs('#od-objhead')).forEach(function (b) {
+      b.addEventListener('click', function (e) { e.preventDefault(); go(b.getAttribute('data-od-tab')); });
+    });
+    ui.qsa('[data-od-act]', ui.qs('#od-objhead')).forEach(function (b) {
+      b.addEventListener('click', function () { if (!b.disabled) doAct(b.getAttribute('data-od-act')); });
+    });
+    bindMetaActions(ui.qs('#od-objhead'));
+  }
+
+  /* ---------------------------------------------------------------- 页签 */
+
+  function renderTabs() {
+    ui.qs('#od-tabs').innerHTML = TABS.map(function (t) {
+      var badge = '';
+      if (t[0] === 'advance') {
+        var n = tasks('current').filter(function (x) { return x.must && x.status !== '已完成' && x.status !== '已失效'; }).length;
+        if (n) badge = '<i class="ry-badge">' + n + '</i>';
+      }
+      return '<a class="ry-tab' + (tab === t[0] ? ' is-on' : '') + '" href="#' + t[0] + '" data-od-go="' + t[0] + '">' + t[1] + badge + '</a>';
+    }).join('');
+    ui.qsa('[data-od-go]').forEach(function (a) {
+      a.addEventListener('click', function (e) { e.preventDefault(); go(a.getAttribute('data-od-go')); });
+    });
+  }
+  function go(t) {
+    tab = TAB_ALIAS[t] || t;
+    window.location.hash = t;
+    renderTabs();
+    renderPanel();
+  }
+  window.addEventListener('hashchange', function () {
+    var t = TAB_ALIAS[ui.hash()] || ui.hash() || 'info';
+    if (t !== tab && TABS.some(function (x) { return x[0] === t; })) go(t);
+  });
+
+  /* ---------------------------------------------------------------- 面板 */
+
+  function renderPanel() {
+    var host = ui.qs('#od-panel');
+    var R = {
+      info: pOverview, advance: pAdvance, lines: pLines, timeline: pTimeline
+    };
+    host.innerHTML = (R[tab] || pOverview)();
+    bindPanel();
+    ui.bindDenied('#ry-page');
+  }
+
+  /* -------------------------------------------------------------- 概览 */
+
+  function stageOverview() {
+    var t = tpl(), idx = S.stageIndex(o);
+    var displayIdx = idx;
+    if (isDemo && t) {
+      var chosen = t.stages.findIndex(function (x) { return x.code === demoStageCode; });
+      if (chosen >= 0) displayIdx = chosen;
+    }
+    var demoControl = isDemo ? '<div class="od-demo-control"><div class="od-demo-control__row"><b>阶段演示</b><label>演示阶段 <select class="ry-input" id="od-demo-stage">' +
+      (t ? t.stages.map(function (x) { return '<option value="' + ui.esc(x.code) + '"' + (x.code === demoStageCode ? ' selected' : '') + '>' + ui.esc(x.name) + '</option>'; }).join('') : '') +
+      '</select></label><span class="ry-hint">仅预览阶段进度，不修改商机实际阶段</span></div></div>' : '';
+    return demoControl + ui.section('阶段进度',
+      '<div class="od-flow" role="list" aria-label="商机阶段进度">' + (t ? t.stages.map(function (x, i) {
+        var status = i < displayIdx ? '已通过' : i === displayIdx ? '进行中' : '未通过';
+        var cls = i < displayIdx ? 'is-done' : i === displayIdx ? 'is-cur' : 'is-next';
+        return '<div class="od-flow__i ' + cls + '" role="listitem" aria-label="' + ui.esc(x.name + '，' + status + '，统一阶段：' + x.unified) + '">' +
+          '<span class="od-flow__mark" aria-hidden="true">' + (i < displayIdx ? '✓' : i === displayIdx ? '●' : '○') + '</span>' +
+          '<span class="od-flow__copy"><b>' + ui.esc(x.name) + '</b><small>' + status + '</small></span></div>';
+      }).join('') : '<span class="ry-hint">模板版本不可用</span>') + '</div>',
+      '<span class="ry-hint">' + (displayIdx >= 0 ? displayIdx + 1 : '—') + ' / ' + (t ? t.stages.length : '—') + '</span>');
+  }
+
+  function pOverview() {
+    return '<div class="od-info-layout"><div>' + ui.section('商机信息',
+      ui.kv([
+        ['商机名称', ui.esc(o.name)],
+        ['客户', (S.customer(o.customerId) || {}).name ? ui.esc(S.customer(o.customerId).name) : '—'],
+        ['主业务线', ui.esc(S.businessLineName(mainLine().businessLine)) + '（唯一）'],
+        ['协同业务线', collabLines().map(function (l) { return ui.esc(S.businessLineName(l.businessLine)) + '（' + ui.esc(l.status) + '）'; }).join('、') || '无'],
+        ['销售场景', ui.esc(sceneName(mainLine().scene))],
+        ['本次范围说明', ui.esc(mainLine().scope || '—')],
+        ['创建时间 / 创建来源', ui.esc(o.createdAt || '—') + '　' + ui.esc(o.source || '—')],
+        ['最近更新', ui.esc(o.updatedAt || '—')]
+      ]).replace('<ul class="ry-kv">', '<ul class="ry-kv od-info-kv">') + pFields()) + '</div><div>' +
+      ui.section('当前经营与下一步', ui.kv([
+        ['主负责人', ui.esc(S.userName(o.owner))],
+        ['销售归属地区', ui.esc(o.salesRegionProvince && o.salesRegionCity ? o.salesRegionProvince + ' · ' + o.salesRegionCity : '未填写')],
+        ['预计成交时间', o.predictedClose ? ui.esc(o.predictedClose) : ui.tag('未填写', 'warn')],
+        ['下一步行动', ui.esc(o.nextAction || '未填写')],
+        ['下一步行动时间', ui.esc(o.nextActionAt || '未填写')]
+      ]).replace('<ul class="ry-kv">', '<ul class="ry-kv od-info-kv">') +
+        '<details><summary>查看下一步行动历史（' + ((o.nextActionHistory || []).length) + '）</summary>' + (o.nextActionHistory || []).map(function (h) { return '<p class="ry-hint">' + ui.esc(h.changedAt || '') + '　' + ui.esc(h.action || '未填写') + '　' + ui.esc(h.at || '') + '</p>'; }).join('') + '</details>',
+      canManageOpportunity() ? '<button class="ry-btn ry-btn--sm" data-od-region>编辑销售归属地区</button>' : '') + pTeam() + '</div></div>';
+  }
+
+  function gateFixBtn(p) {
+    if (p.kind === 'system') return '<button class="ry-btn ry-btn--sm" data-od-fix="close">填写预计成交时间</button>';
+    if (p.kind === 'field') return '<button class="ry-btn ry-btn--sm" data-od-fix="fields">去填写字段</button>';
+    if (p.kind === 'task') return '<button class="ry-btn ry-btn--sm" data-od-fix="tasks">去完成阶段任务</button>';
+    if (p.kind === 'dormant') return '<button class="ry-btn ry-btn--sm" data-od-fix="resume">恢复商机</button>';
+    if (p.kind === 'closed') return '<button class="ry-btn ry-btn--sm" data-od-fix="reopen">去重新激活商机</button>';
+    return '';
+  }
+
+  /* ------------------------------------------------------- 阶段推进与门禁 */
+
+  function pAdvance() {
+    var t = tpl(), idx = S.stageIndex(o);
+    /* 关闭态必须在本函数内判定：原代码用的 closed 定义在 pClose() 里，作用域不通，
+       实际取到浏览器全局 window.closed（恒为 false），导致已关闭商机的动作按钮从未真正禁用。 */
+    if (!t || idx < 0) return ui.section('阶段推进', '<p class="ry-hint">当前商机未匹配到有效模板版本或当前阶段不在模板中，无法推进。请联系销售运营核实模板配置。</p>');
+    var gate = S.gateCheck(o, 'forward');
+    var last = idx >= t.stages.length - 1;
+    return ui.section('当前阶段',
+      ui.kv([
+        ['详细阶段', ui.esc(t.stages[idx].name) + '（第 ' + (idx + 1) + ' / ' + t.stages.length + ' 个）'],
+        ['统一阶段', ui.esc(t.stages[idx].unified)],
+        ['进入时间', ui.esc(o.stageEnteredAt || '—') + '　有效停留 ' + stagnant().days + ' 天'],
+        ['系统固定门禁', '预计成交时间必须在离开「机会确认」前填写（不可由模板或角色关闭）'],
+        ['模板门禁', (t.stages[idx].requiredFields || []).length ? t.stages[idx].requiredFields.map(function (cf) { var f = S.customField(cf); return ui.esc(f ? f.name : cf); }).join('、') : '无必填字段'],
+        ['必须完成的任务', tasks('current').filter(function (x) { return x.must; }).length + ' 项']
+      ])) +
+    ui.section('推进前还需完成',
+      gate.pass ? ui.banner('当前条件已满足，可以推进到「' + ui.esc(last ? '已到末阶段' : t.stages[idx + 1].name) + '」。阶段按顺序推进。', 'brand')
+        : '<div class="od-gate"><h4>还需完成 ' + gate.problems.length + ' 项</h4><ul>' +
+          gate.problems.map(function (p) { return '<li>' + ui.esc(p.text) + '　' + gateFixBtn(p) + '</li>'; }).join('') + '</ul></div>',
+      '<span class="ry-hint">阶段门禁不可跳过、不可豁免</span>') + pTasks();
+  }
+
+  /* ------------------------------------------------------------ 阶段任务 */
+
+  function pTasks() {
+    var list = tasks();
+    var cur = tasks('current');
+    return ui.section('当前阶段任务（' + (stage() ? ui.esc(stage().name) : '—') + '）',
+      cur.length ? cur.map(function (x) { return taskHtml(x); }).join('') : '<p class="ry-hint">当前阶段没有生成的阶段任务。</p>') +
+    ui.section('全部阶段任务',
+      list.length ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr><th>任务</th><th>所属阶段</th><th>是否必须</th><th>截止</th><th>状态</th><th>负责人</th></tr></thead><tbody>' +
+        list.map(function (x) {
+          var t = tpl(), st = null;
+          (t ? t.stages : []).forEach(function (s) { if (s.code === x.stageCode) st = s; });
+          return '<tr><td>' + ui.esc(x.title) + '<div class="ry-tl__b">' + ui.esc(x.id) + '　模板版本 ' + ui.esc(x.templateVersion) + '</div></td>' +
+            '<td>' + ui.esc(st ? st.name : x.stageCode) + '</td>' +
+            '<td>' + (x.must ? ui.tag('必须完成', 'warn') : ui.tag('非必须', 'muted')) + '</td>' +
+            '<td>' + ui.esc((x.due || '').slice(0, 10)) + (x.overdue && x.status !== '已完成' ? ' ' + ui.tag('已逾期', 'bad') : '') + '</td>' +
+            '<td>' + ui.statusTag(x.status) + '</td><td>' + ui.esc(S.userName(x.owner)) + '</td></tr>';
+        }).join('') + '</tbody></table></div>'
+        : '<p class="ry-hint">还没有阶段任务。</p>',
+      '<button type="button" data-pcn-rule="oppTasks"></button>');
+  }
+
+  function taskHtml(x) {
+    return '<div class="od-task"><div class="od-task__h">' +
+      '<b>' + ui.esc(x.title) + '</b>' + (x.must ? ui.tag('必须完成', 'warn') : ui.tag('非必须', 'muted')) +
+      ui.statusTag(x.status) + (x.due ? ui.tag('截止 ' + x.due.slice(0, 10), 'muted') : '') +
+      (x.overdue && x.status !== '已完成' ? ui.tag('已逾期', 'bad') : '') + '</div>' +
+      '<div class="od-task__m">' + ui.esc(x.desc || '') + '<br>' +
+        '负责人：' + ui.esc(S.userName(x.owner)) + '　生成来源：' + ui.esc(x.generatedBy || '—') +
+        (x.assigneeChanged ? '　' + ui.tag('负责人已变更', 'warn') : '') + '</div>' +
+      '<div class="ry-actions-row"><a class="ry-btn ry-btn--sm" href="../task/detail.html?id=' + encodeURIComponent(x.id) + '">打开正式任务</a></div></div>';
+  }
+
+  /* -------------------------------------------------------- 业务线与协同 */
+
+  function pLines() {
+    var main = mainLine(), collab = collabLines();
+    var lineActions = can('opp.lines', o) ? '' : ' data-denied="1" data-action="opp.lines" title="' + ui.esc(deny('opp.lines')) + '"';
+    if (o.closeResult) lineActions += ' disabled title="已关闭商机不能修改业务线"';
+    return ui.section('业务线与协同',
+      '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr><th>业务线</th><th>是否主业务线</th><th>状态</th><th>范围说明</th><th>场景／模板</th><th>操作</th></tr></thead><tbody>' +
+      [main].concat(collab).map(function (l) {
+        var isMain = l.role === '主业务线';
+        var actions = isMain ? actionBtn('opp.migrate', '变更主业务线', ' data-od-act="migrate"' + (o.closeResult ? ' disabled' : ''), 'ry-btn--sm') :
+          (l.status === '当前参与' ? actionBtn('opp.split', '拆分', ' data-od-act="split" data-line="' + l.code + '"', 'ry-btn--sm') + '<button class="ry-btn ry-btn--sm"' + lineActions + ' data-od-act="removeLine" data-line="' + ui.esc(l.businessLine) + '">移除</button>' : '');
+        return '<tr><td>' + ui.esc(S.businessLineName(l.businessLine)) + '</td><td>' + (isMain ? ui.tag('是', 'brand') : '否') + '</td>' +
+          '<td>' + ui.statusTag(l.status) + (l.splitTo ? ' ' + ui.tag('已拆分', 'info') : '') + '</td><td>' + ui.esc(l.scope || '—') + '</td>' +
+          '<td>' + (isMain ? ui.esc(sceneName(l.scene)) + ' · ' + ui.esc(tpl() ? tpl().name + ' ' + tpl().version : '—') : ui.esc(l.scene || '—')) + '</td><td>' + actions + '</td></tr>';
+      }).join('') + '</tbody></table></div>',
+      '<button type="button" data-pcn-rule="oppSplit"></button><button class="ry-btn ry-btn--sm"' + lineActions + ' data-od-act="addLine">增加协同业务线</button>');
+  }
+
+  /* ---------------------------------------------------------------- 团队 */
+
+  function pTeam() {
+    var manage = canManageOpportunity();
+    var teamActions = '<div class="od-table-actions">' +
+      (manage && can('opp.team', o) ? actionBtn('opp.team', '添加成员', ' data-od-act="addteam"', 'ry-btn--sm') : '') +
+      (can('opp.reassign', o) ? actionBtn('opp.reassign', '转派主负责人', ' data-od-act="reassign"', 'ry-btn--sm') : '<button class="ry-btn ry-btn--sm" disabled title="仅有权限的主管可转派主负责人">转派主负责人</button>') + '</div>';
+    return ui.section('商机团队',
+      '<div class="ry-table__wrap"><table class="ry-table ry-table--tight od-tbl"><thead><tr><th>成员</th><th>角色</th><th>说明</th><th style="width:150px">操作</th></tr></thead><tbody>' +
+      (o.team || []).map(function (m) {
+        return '<tr><td>' + ui.esc(S.userName(m.userId)) + '<div class="ry-tl__b">' + ui.esc(m.userId) + '</div></td>' +
+          '<td>' + (m.role === '主负责人' ? ui.tag('主负责人', 'brand') : ui.tag(m.role, 'muted')) + '</td>' +
+          '<td class="ry-hint">' + (m.role === '主负责人' ? '商机的唯一主负责人，承担推进与关闭责任' : '协同参与销售过程；阶段推进与关闭由主负责人或有范围权限的主管处理') + '</td>' +
+          '<td class="ry-tbl-act">' +
+            (m.role === '主负责人' || !manage ? '' : '<button class="ry-btn ry-btn--sm" data-od-rm="' + m.userId + '">移出团队</button>') +
+          '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<button type="button" data-pcn-rule="oppOwner"></button>', teamActions);
+  }
+
+  /* ------------------------------------------------------------ 普通字段 */
+
+  function pFields() {
+    var fields = ordinaryFieldsForPage();
+    var required = stage() ? (stage().requiredFields || []) : [];
+    return '<div class="od-ordinary"><div class="od-ordinary__head"><h4>普通字段</h4><div class="od-ordinary__actions">' +
+      '<button type="button" data-pcn-rule="oppOrdinaryFields"></button>' +
+      (canManageOpportunity() && fields.length ? '<button class="ry-btn ry-btn--sm" type="button" id="od-edit-fields">编辑普通字段</button>' : '') +
+      '</div></div>' + (fields.length ? '<div class="od-fields">' + fields.map(function (f) {
+        var v = (o.custom || {})[f.code] || '';
+        var need = required.indexOf(f.code) >= 0;
+        return '<div class="' + (f.type === '多行文本' ? 'od-field--long' : '') + '">' +
+          ui.field(f.name + (need ? '' : '（选填）'), '<span>' + ui.esc(v || '未填写') + '</span>', need ? '当前阶段必填' : '') + '</div>';
+      }).join('') + '</div>' : '<p class="ry-hint">当前没有适用的普通字段。</p>') + '</div>';
+  }
+
+  function editOrdinaryFieldsDrawer() {
+    if (!canManageOpportunity()) { ui.toast(deny('opp.customer.change'), 'warn'); return; }
+    var fields = ordinaryFieldsForPage();
+    var required = stage() ? (stage().requiredFields || []) : [];
+    ui.drawer({
+      title: '编辑商机（普通字段）', subtitle: '保存后更新商机信息；阶段必填字段仍在推进时校验。',
+      body: fields.map(function (f) {
+        var v = (o.custom || {})[f.code] || '';
+        var ctl = f.type === '单选' ? ui.select('cf_' + f.code, [{ value: '', label: '未填写' }].concat((f.options || []).map(function (x) { return { value: x.code, label: x.name }; })), v) :
+          f.type === '多行文本' ? ui.textarea('cf_' + f.code, v, '', 3) : ui.input('cf_' + f.code, v, f.type === '数字' ? '仅数字' : '');
+        return ui.field(f.name, ctl, required.indexOf(f.code) >= 0 ? '当前阶段必填' : '可留空');
+      }).join(''),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-save-fields">保存</button>',
+      onOpen: function (el) {
+        ui.qs('#od-save-fields', el).addEventListener('click', function () {
+          var patch = {};
+          fields.forEach(function (f) {
+            var input = ui.qs('[name=cf_' + f.code + ']', el);
+            if (input) patch[f.code] = input.value;
+          });
+          o.custom = o.custom || {};
+          Object.keys(patch).forEach(function (key) { o.custom[key] = patch[key]; });
+          o.updatedAt = S.now();
+          S.audit('商机', o.id, '更新普通字段', '—', Object.keys(patch).join('、'));
+          S.save();
+          ui.close(); ui.toast('普通字段已保存。', 'success'); renderPanel(); renderHead();
+        });
+      }
+    });
+  }
+
+  /* ------------------------------------------------------------ 时间线 */
+
+  function pTimeline() {
+    var evs = S.all('audits').filter(function (a) { return a.objectId === o.id; }).map(function (a) {
+      var action = a.action || '', type = /关闭/.test(action) ? '结束／重新激活' : /重开/.test(action) ? '结束／重新激活' : /阶段|推进|回退/.test(action) ? '阶段与任务' : /任务/.test(action) ? '阶段与任务' : /休眠|恢复/.test(action) ? '业务过程' : /团队|负责人/.test(action) ? '团队变更' : /模板|业务线|销售场景/.test(action) ? '配置变更' : '信息变更';
+      return { at: a.at, type: type, text: action + '：' + (a.from || '—') + ' → ' + (a.to || '—'), by: a.actor };
+    });
+    tasks().forEach(function (x) {
+      if (x.enteredAt) evs.push({ at: x.enteredAt, type: '阶段与任务', text: '生成阶段任务「' + x.title + '」（' + x.status + '）', by: x.owner });
+    });
+    evs = evs.filter(function (x) { return x.at; }).sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
+    var shown = historyFilter === '全部' ? evs : evs.filter(function (x) { return x.type === historyFilter; });
+    return ui.section('日志记录',
+      ui.field('日志类型', ui.select('od-history-filter', ['全部', '阶段与任务', '业务过程', '结束／重新激活', '配置变更', '团队变更', '信息变更'], historyFilter)) +
+      (shown.length ? '<div class="od-tl">' + shown.map(function (x) {
+        return '<div class="od-tl__i"><div class="od-tl__t">' + ui.tag(x.type, /关闭/.test(x.type) ? 'bad' : /重开/.test(x.type) ? 'info' : /业务过程/.test(x.type) ? 'warn' : 'muted') +
+          ' ' + ui.esc(x.text) + '</div><div class="od-tl__m">' + ui.esc(String(x.at).slice(0, 16)) + '　操作人 ' + ui.esc(S.userName(x.by) || x.by || '—') + '</div></div>';
+      }).join('') + '</div>' : '<p class="ry-hint">该类型暂无日志记录。</p>'),
+      '<button type="button" data-pcn-rule="oppHistory"></button>');
+  }
+
+  function stageName(code) {
+    var t = tpl();
+    if (!t) return code || '—';
+    for (var i = 0; i < t.stages.length; i++) if (t.stages[i].code === code) return t.stages[i].name;
+    return code || '起点';
+  }
+
+  /* ------------------------------------------------------- 关闭 / 重开 */
+
+  function pClose() {
+    var closed = !!o.closeResult;
+    return ui.section('结束商机',
+      closed ? ui.kv([
+        ['已结束结果', ui.statusTag(o.closeResult)],
+        ['关闭依据／原因', ui.esc(o.closeBasis || o.closeReason || '—')],
+        ['关闭说明', ui.esc(o.closeNote || '—')],
+        ['关闭时间 / 关闭人', ui.esc(o.closedAt || '—') + '　' + ui.esc(S.userName(o.closedBy) || '—')]
+      ]) + ui.banner('仅已结束（关闭）商机可填写原因后重新激活；赢单和输单不可重新激活。', 'info')
+        : ui.banner('已结束结果只有三种：<b>赢单 / 输单 / 关闭</b>。0.1 <b>不支持部分赢单</b>；' +
+          '赢单必须给出成交依据；输单与关闭必须填写原因。', 'warn'),
+      '<span class="ry-hint">结束结果影响流程状态，不删除任何历史</span>') +
+    ui.section('结束动作',
+      '<div class="ry-actions-row" style="margin-top:0">' +
+        actionBtn('opp.close', '赢单', ' data-od-act="win"' + (closed ? ' disabled' : ''), 'ry-btn--primary') +
+        actionBtn('opp.close', '输单', ' data-od-act="lose"' + (closed ? ' disabled' : ''), '') +
+        actionBtn('opp.close', '关闭', ' data-od-act="terminate"' + (closed ? ' disabled' : ''), '') +
+        actionBtn('opp.reopen', '重新激活', ' data-od-act="reopen"' + (o.closeResult === '关闭' ? '' : ' disabled'), '') +
+      '</div>');
+  }
+
+  /* ---------------------------------------------------------------- 动作 */
+
+  function bindMetaActions(root) {
+    ui.qsa('[data-od-next]', root).forEach(function (b) { b.addEventListener('click', function () {
+      ui.drawer({ title: '维护下一步行动', body: ui.field('下一步行动', ui.textarea('action', o.nextAction || '', '说明计划采取的销售行动'), '', true) + ui.field('计划时间', ui.input('at', o.nextActionAt || '', '', 'datetime-local')), footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-next-save">保存</button>', onOpen: function (el) { ui.qs('#od-next-save', el).addEventListener('click', function () { var v=ui.formValues(el), r=S.updateOpportunityNextAction(o,v.action,v.at); if(!r.ok){ui.toast(r.reason,'warn');return;} ui.close();renderPanel();renderHead(); }); } });
+    }); });
+    ui.qsa('[data-od-customer]', root).forEach(function (b) { b.addEventListener('click', function () {
+      var opts=S.all('customers').filter(function(c){return c.status==='正常'&&RY.perm.inScope('customers',c);}).map(function(c){return {value:c.id,label:c.name};});
+      ui.drawer({ title:'变更关联客户', body:ui.field('新客户',ui.select('customerId',opts,o.customerId),'历史关联保留在商机历史中。',true)+ui.field('变更原因',ui.textarea('reason','','必填并记入审计'),'',true), footer:'<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-customer-save">保存</button>', onOpen:function(el){ui.qs('#od-customer-save',el).addEventListener('click',function(){var v=ui.formValues(el),r=S.changeOpportunityCustomer(o,v.customerId,v.reason);if(!r.ok){ui.toast(r.reason,'warn');return;}ui.close();renderPanel();renderHead();});}});
+    }); });
+  }
+  function bindPanel() {
+    var regionButton = ui.qs('[data-od-region]');
+    if (regionButton) regionButton.addEventListener('click', function () {
+      var provinces = ['北京市','天津市','上海市','重庆市','河北省','山西省','辽宁省','吉林省','黑龙江省','江苏省','浙江省','安徽省','福建省','江西省','山东省','河南省','湖北省','湖南省','广东省','海南省','四川省','贵州省','云南省','陕西省','甘肃省','青海省','台湾省','内蒙古自治区','广西壮族自治区','西藏自治区','宁夏回族自治区','新疆维吾尔自治区','香港特别行政区','澳门特别行政区'];
+      ui.drawer({ title: '编辑销售归属地区', body: ui.grid2(ui.field('省份', ui.select('province', [{ value: '', label: '未填写' }].concat(provinces.map(function (x) { return { value: x, label: x }; })), o.salesRegionProvince || '')), ui.field('城市', ui.input('city', o.salesRegionCity || '', '填写城市'))), footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-region-save">保存</button>', onOpen: function (el) { ui.qs('#od-region-save', el).addEventListener('click', function () { var v = ui.formValues(el), r = S.updateOpportunitySalesRegion(o, v.province, v.city); if (!r.ok) { ui.toast(r.reason, 'warn'); return; } o = r.opportunity; ui.close(); renderPanel(); renderHead(); }); } });
+    });
+    var hf = ui.qs('[name=od-history-filter]');
+    if (hf) hf.addEventListener('change', function () { historyFilter = hf.value; renderPanel(); });
+    ui.qsa('[data-od-fix]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var k = b.getAttribute('data-od-fix');
+        if (k === 'resume') return doAct('resume');
+        if (k === 'reopen') return doAct('reopen');
+        if (k === 'close') return showCloseFill();
+        if (k === 'fields') { go('info'); return editOrdinaryFieldsDrawer(); }
+        go(k);
+      });
+    });
+    ui.qsa('[data-od-act]', ui.qs('#od-panel')).forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]') || b.disabled) return;
+        doAct(b.getAttribute('data-od-act'), b.getAttribute('data-line'));
+      });
+    });
+    ui.qsa('[data-od-rm]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var uid = b.getAttribute('data-od-rm');
+        if (!canManageOpportunity()) { ui.toast(deny('opp.team'), 'warn'); return; }
+        var count = S.all('tasks').filter(function (t) { return t.owner === uid && t.related && t.related.type === '商机' && t.related.id === o.id && ['已完成', '已取消', '已失效', '已拒绝'].indexOf(t.status) < 0; }).length;
+        ui.confirm({ title: '移出团队成员', message: '<p>该成员当前有 <b>' + count + '</b> 项未完成关联任务。移出团队不会自动取消或转派任务。</p>', confirmText: '确认移出', requireReason: true, reasonLabel: '移出原因', onConfirm: function () {
+          var r = S.removeTeamMember(o, uid);
+          if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+          ui.toast('已移出团队。', 'success'); renderPanel(); renderHead();
+        }});
+      });
+    });
+    var editFields = ui.qs('#od-edit-fields');
+    if (editFields) editFields.addEventListener('click', editOrdinaryFieldsDrawer);
+    ui.qsa('[data-od-tab]', ui.qs('#od-panel')).forEach(function (a) {
+      a.addEventListener('click', function (e) { e.preventDefault(); go(a.getAttribute('data-od-tab')); });
+    });
+  }
+
+  function showCloseFill() {
+    ui.drawer({
+      title: '补齐预计成交时间',
+      subtitle: '系统固定门禁：未填写不能离开「机会确认」阶段，模板与角色都不能关闭该门禁。',
+      body: ui.field('预计成交时间', ui.input('close', o.predictedClose || '', 'YYYY-MM-DD', 'date'), '', true),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-cf-ok">保存</button>',
+      onOpen: function (el) {
+        ui.qs('#od-cf-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!v.close) { ui.toast('请填写预计成交时间。', 'warn'); return; }
+          o.predictedClose = v.close;
+          o.updatedAt = S.now();
+          S.audit('商机', o.id, '填写预计成交时间', '—', v.close);
+          S.save();
+          ui.close(); ui.toast('已保存，门禁项已满足。', 'success');
+          renderPanel(); renderHead();
+        });
+      }
+    });
+  }
+
+  function doAct(kind, lineCode) {
+    var permMap = {
+      advance: 'opp.advance', rollback: 'opp.rollback', sleep: 'opp.sleep', resume: 'opp.resume',
+      win: 'opp.close', lose: 'opp.close', terminate: 'opp.close', reopen: 'opp.reopen',
+      split: 'opp.split', reassign: 'opp.reassign', addteam: 'opp.team', migrate: 'opp.migrate', addLine: 'opp.lines', removeLine: 'opp.lines'
+    };
+    var perm = permMap[kind];
+    if (perm && !can(perm, o)) {
+      ui.modal({
+        title: '该动作当前不可执行', size: 'sm',
+        body: '<p>' + ui.esc(deny(perm)) + '</p>' +
+          '<p class="ry-hint">入口保留并说明原因，不用前端隐藏替代权限校验；数据范围与对象状态也会参与判定。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+      });
+      return;
+    }
+    var R = {
+      advance: function () {
+        var tt = tpl(), ii = S.stageIndex(o);
+        if (!tt || ii < 0 || ii >= tt.stages.length - 1) { ui.toast('当前阶段不可推进：无有效模板版本或已处于最后阶段。', 'warn'); return; }
+        var g2 = S.gateCheck(o, 'forward');
+        if (!g2.pass) {
+          ui.modal({
+            title: '阶段门禁未通过', size: 'md',
+            subtitle: '阶段推进不可跳过、不可豁免。',
+            body: '<div class="od-gate"><h4>未满足项（' + g2.problems.length + '）</h4><ul>' +
+              g2.problems.map(function (p) { return '<li>' + ui.esc(p.text) + '　' + gateFixBtn(p) + '</li>'; }).join('') + '</ul></div>' +
+              '<p class="ry-hint">补齐后可直接重新推进；当前阶段与全部历史不会改变。</p>',
+            footer: '<button class="ry-btn" data-close>关闭</button>',
+            onOpen: function (el) {
+              ui.qsa('[data-od-fix]', el).forEach(function (b) {
+                b.addEventListener('click', function () {
+                  var k = b.getAttribute('data-od-fix');
+                  ui.close();
+                  if (k === 'close') return showCloseFill();
+                  if (k === 'resume') return doAct('resume');
+                  if (k === 'reopen') return doAct('reopen');
+                  if (k === 'fields') { go('info'); return editOrdinaryFieldsDrawer(); }
+                  go(k);
+                });
+              });
+            }
+          });
+          return;
+        }
+        ui.drawer({
+          title: '推进阶段',
+          subtitle: stage().name + ' → ' + tpl().stages[S.stageIndex(o) + 1].name,
+          body: ui.field('推进说明', ui.textarea('note', '', '记录本次推进的依据，将写入阶段历史'), '建议填写，便于后续追溯。'),
+          footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-adv-ok">确认推进</button>',
+          onOpen: function (el) {
+            ui.qs('#od-adv-ok', el).addEventListener('click', function () {
+              var v = ui.formValues(el);
+              var r = S.advanceStage(o, v.note);
+              if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+              ui.close(); ui.toast('已推进到「' + r.stage.name + '」。', 'success');
+              renderHead(); renderTabs(); renderPanel();
+            });
+          }
+        });
+      },
+      addLine: function () { return doAddOpportunityLine(); },
+      removeLine: function () { return doRemoveOpportunityLine(lineCode); },
+      rollback: function () {
+        var t = tpl(), idx = S.stageIndex(o);
+        var history = t.stages.slice(0, idx);
+        if (!history.length) { ui.toast('当前已在首个阶段，没有可回退的历史阶段。', 'warn'); return; }
+        ui.drawer({
+          title: '回退到历史阶段',
+          subtitle: '只能回退到已经走过的阶段；回退不删除历史。',
+          body: ui.field('目标阶段', ui.select('target', history.map(function (s) { return { value: s.code, label: s.name + '（统一阶段 ' + s.unified + '）' }; })), '', true) +
+            ui.field('回退原因', ui.textarea('note', '', '必填，将写入阶段历史与审计'), '', true) +
+            ui.banner('回退后，当前阶段的阶段任务不自动取消；重新推进时需要再次满足门禁。', 'warn'),
+          footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-rb-ok">确认回退</button>',
+          onOpen: function (el) {
+            ui.qs('#od-rb-ok', el).addEventListener('click', function () {
+              var v = ui.formValues(el);
+              if (!v.target || !v.note) { ui.toast('请选择目标阶段并填写原因。', 'warn'); return; }
+              var r = S.rollbackStage(o, v.target, v.note);
+              if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+              ui.close(); ui.toast('已回退到「' + r.stage.name + '」。', 'success');
+              renderHead(); renderTabs(); renderPanel();
+            });
+          }
+        });
+      },
+      win: function () { closeDrawer('赢单'); },
+      lose: function () { closeDrawer('输单'); },
+      terminate: function () { closeDrawer('关闭'); },
+      reopen: function () {
+        ui.confirm({
+          title: '重新激活商机',
+          message: '<p>商机当前关闭结果为 <b>' + ui.esc(o.closeResult) + '</b>，重新激活后清除关闭结果并回到「进行中」。</p>' +
+            '<p class="ry-hint">仅关闭结果允许重新激活，需填写原因并保留原结束记录。</p>',
+          confirmText: '确认重新激活', requireReason: true, reasonLabel: '重新激活原因',
+          onConfirm: function (reason) {
+            var reopened = S.reopenOpp(o, reason);
+            if (reopened && reopened.ok === false) { ui.toast(reopened.reason, 'warn'); return; }
+            ui.toast('商机已重新激活。', 'success'); renderHead(); renderTabs(); renderPanel();
+          }
+        });
+      },
+      split: function () {
+        var l = (o.lines || []).filter(function (x) { return x.code === lineCode; })[0];
+        ui.drawer({
+          title: '拆分为新商机',
+          subtitle: '协同业务线：' + S.businessLineName(l.businessLine),
+          body: ui.field('新商机名称', ui.input('name', o.name + '（' + S.businessLineName(l.businessLine) + '）'), '', true) +
+            ui.field('销售场景', ui.select('scene', [{ value: '', label: '请选择' }].concat(S.scenarioOptions(l.businessLine).map(function (s) { return { value: s.code, label: s.name }; }))), '新商机必须唯一匹配一个生效模板', true) +
+            ui.field('新负责人', ui.select('owner', S.all('users').map(function (y) { return { value: y.id, label: y.name }; }), o.owner), '', true) +
+            ui.field('拆分原因', ui.textarea('reason', '', '填写新商机拆分依据'), '', true) +
+            ui.banner('拆分由人主动发起，<b>不自动创建、不批量拆分</b>。拆分后本条协同业务线标记为「已拆分为新商机」，' +
+              '新商机独立匹配模板、独立推进阶段；两个商机的阶段不联动。', 'warn'),
+          footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-sp-ok">确认拆分</button>',
+          onOpen: function (el) {
+            ui.qs('#od-sp-ok', el).addEventListener('click', function () {
+              var v = ui.formValues(el);
+              if (!v.name || !v.scene || !v.owner || !v.reason) { ui.toast('请确认名称、销售场景、负责人并填写拆分原因。', 'warn'); return; }
+              var r = S.splitLine(o, lineCode, { name: v.name, scene: v.scene, owner: v.owner, reason: v.reason });
+              if (!r.ok) {
+                ui.modal({ title: '拆分被阻断', size: 'sm', body: '<p>' + ui.esc(r.reason) + '</p><p class="ry-hint">新商机没有创建，原商机与协同业务线状态不变。</p>', footer: '<button class="ry-btn ry-btn--primary" data-close>继续修正</button>' });
+                return;
+              }
+              ui.close(); ui.toast('已拆分为新商机 ' + r.opportunity.id + '。', 'success');
+              renderHead(); renderPanel();
+            });
+          }
+        });
+      },
+      addteam: function () {
+        ui.drawer({
+          title: '添加团队成员',
+          body: ui.field('成员', ui.select('userId', S.all('users').map(function (y) { return { value: y.id, label: y.name + '（' + RY.perm.ROLES[y.role].code + '）' }; })), '', true) +
+            ui.field('团队角色', ui.select('role', D.teamRole, '协同销售')),
+          footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-at-ok">添加</button>',
+          onOpen: function (el) {
+            ui.qs('#od-at-ok', el).addEventListener('click', function () {
+              var v = ui.formValues(el);
+              var r = S.addTeamMember(o, v.userId, v.role);
+              if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+              ui.close(); ui.toast('已添加团队成员。', 'success'); renderHead(); renderPanel();
+            });
+          }
+        });
+      },
+      reassign: function () {
+        ui.drawer({
+          title: '转派主负责人',
+          subtitle: '当前主负责人：' + S.userName(o.owner),
+          body: ui.field('新主负责人', ui.select('userId', S.all('users').map(function (y) { return { value: y.id, label: y.name + '（' + RY.perm.ROLES[y.role].code + '）' }; }), ''), '', true) +
+            ui.field('转派原因', ui.textarea('reason', '', '必填，将写入审计'), '', true) +
+            ui.banner('转派后原主负责人保留在团队中并变为「协同销售」；符合条件的系统阶段任务同步转交，人工改派任务保持原负责人。', 'info'),
+          footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-ra-ok">确认转派</button>',
+          onOpen: function (el) {
+            ui.qs('#od-ra-ok', el).addEventListener('click', function () {
+              var v = ui.formValues(el);
+              if (!v.userId || !v.reason) { ui.toast('请选择新主负责人并填写原因。', 'warn'); return; }
+              S.reassignOwner(o, v.userId, v.reason);
+              ui.close(); ui.toast('已转派主负责人。', 'success'); renderHead(); renderPanel();
+            });
+          }
+        });
+      },
+      migrate: function () {
+        ui.drawer({
+          title: '变更主业务线（模板迁移）',
+          subtitle: '主业务线变更必须重新匹配模板，并显式迁移',
+          body: ui.field('新主业务线', ui.select('line', S.all('businessLines').filter(function (b) { return b.status === '启用'; }).map(function (b) { return { value: b.code, label: b.name }; }), mainLine().businessLine), '', true) +
+            ui.field('新销售场景', ui.select('scene', S.scenarioOptions(mainLine().businessLine).map(function (s) { return { value: s.code, label: s.name }; }), mainLine().scene), '随主业务线联动', true) +
+            ui.field('变更原因', ui.textarea('note', '', '必填，将写入阶段历史与审计'), '', true) +
+            ui.banner('迁移后果（执行前先确认）：<br>1. 模板版本更新为新模板当前生效版本；<br>' +
+              '2. 阶段位置按新模板重新映射（取当前阶段序号，在新模板中就近落位）；<br>' +
+              '3. 原阶段任务<b>标记失效</b>（不删除），并在新阶段生成新任务；<br>' +
+              '4. 若新组合无唯一生效模板，迁移被阻断，商机保持原样。', 'warn'),
+          footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-mg-ok">确认迁移</button>',
+          onOpen: function (el) {
+            var ln = ui.qs('[name=line]', el);
+            ln.addEventListener('change', function () {
+              var sc = ui.qs('[name=scene]', el);
+              var opts = S.scenarioOptions(ln.value).map(function (s) { return { value: s.code, label: s.name }; });
+              sc.outerHTML = ui.select('scene', opts.length ? [{ value: '', label: '请选择' }].concat(opts) : [{ value: '', label: '该业务线暂无可用销售场景' }], '');
+            });
+            ui.qs('#od-mg-ok', el).addEventListener('click', function () {
+              var v = ui.formValues(el);
+              if (!v.note) { ui.toast('请填写变更原因。', 'warn'); return; }
+              var r = S.changeMainLine(o, v.line, v.scene, v.note);
+              if (r.needsStageChoice && r.candidates && r.candidates.length) {
+                ui.modal({ title: '选择迁移后的详细阶段', size: 'sm', body: ui.field('目标详细阶段', ui.select('targetStage', r.candidates.map(function(s){return {value:s.code,label:s.name+'（'+s.unified+'）'};})), '', true), footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-mg-stage-ok">继续迁移</button>', onOpen: function(box){ui.qs('#od-mg-stage-ok',box).addEventListener('click',function(){var chosen=ui.formValues(box).targetStage;var retry=S.changeMainLine(o,v.line,v.scene,v.note,chosen);if(!retry.ok){ui.toast(retry.reason,'warn');return;}ui.closeAll();ui.toast('模板迁移完成，当前阶段「'+retry.stage.name+'」。','success');renderHead();renderTabs();renderPanel();});} });
+                return;
+              }
+              if (!r.ok) {
+                ui.modal({ title: '模板迁移被阻断', size: 'sm',
+                  body: '<p>' + ui.esc(r.reason) + '</p><p class="ry-hint">没有做任何降级：主业务线未变更、阶段未迁移、阶段任务未失效。</p>',
+                  footer: '<button class="ry-btn ry-btn--primary" data-close>继续修正</button>' });
+                return;
+              }
+              ui.close(); ui.toast('已迁移到「' + r.template.name + ' ' + r.template.version + '」，当前阶段「' + r.stage.name + '」。', 'success');
+              renderHead(); renderTabs(); renderPanel();
+            });
+          }
+        });
+      }
+    };
+    (R[kind] || function () {})();
+  }
+
+  function doAddOpportunityLine() {
+    var main = mainLine();
+    var choices = S.all('businessLines').filter(function (b) {
+      if (b.status !== '启用' || b.code === main.businessLine) return false;
+      var existing = (o.lines || []).filter(function (l) { return l.businessLine === b.code; })[0];
+      return !existing || (!existing.splitTo && existing.status !== '当前参与');
+    }).map(function (b) { return { value: b.code, label: b.name }; });
+    if (!choices.length) { ui.toast('没有可增加的其他启用业务线。', 'warn'); return; }
+    ui.drawer({
+      title: '增加协同业务线',
+      subtitle: '协同业务线共享本商机的客户、阶段和主负责人，不单独匹配流程模板。',
+      size: 'md',
+      body: ui.field('业务线', ui.select('line', [{ value: '', label: '请选择业务线' }].concat(choices), ''), '', true) +
+        ui.field('参与范围说明', ui.textarea('scope', '', '说明该业务线参与本商机的范围', 3)) +
+        ui.field('增加原因', ui.textarea('reason', '', '将记录到商机历史', 3), '', true),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-line-add-ok">增加业务线</button>',
+      onOpen: function (el) {
+        ui.qs('#od-line-add-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!v.line || !String(v.reason || '').trim()) { ui.toast('请选择业务线并填写增加原因。', 'warn'); return; }
+          var r = S.addOpportunityLine(o, v.line, v.scope, v.reason);
+          if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+          ui.close(); ui.toast('已增加协同业务线。', 'success'); renderHead(); renderPanel();
+        });
+      }
+    });
+  }
+
+  function doRemoveOpportunityLine(lineCode) {
+    var line = (o.lines || []).filter(function (x) { return x.businessLine === lineCode && x.role !== '主业务线' && x.status === '当前参与'; })[0];
+    if (!line) { ui.toast('当前协同业务线不存在。', 'warn'); return; }
+    ui.confirm({
+      title: '移除协同业务线',
+      message: '<p>将把「' + ui.esc(S.businessLineName(lineCode)) + '」标记为已移除。记录和范围说明会保留，历史不会删除。</p>',
+      confirmText: '确认移除', requireReason: true, reasonLabel: '移除原因',
+      onConfirm: function (reason) {
+        var r = S.removeOpportunityLine(o, lineCode, reason);
+        if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+        ui.toast('协同业务线已移除，历史记录已保留。', 'success'); renderHead(); renderPanel();
+      }
+    });
+  }
+
+  function closeDrawer(result) {
+    var isWin = result === '赢单';
+    var pendingTasks = S.all('tasks').filter(function (t) { return t.related && t.related.type === '商机' && t.related.id === o.id && ['已完成', '已取消', '已失效', '已拒绝'].indexOf(t.status) < 0; });
+    var futureSchedules = S.all('schedules').filter(function (a) { return a.status === '有效' && a.related && a.related.id === o.id && a.startAt > S.now(); });
+    ui.drawer({
+      title: '关闭商机：' + result,
+      subtitle: isWin ? '赢单必须给出成交依据' : '输单与关闭必须填写原因',
+      body: '<p class="ry-hint">关闭前未完成任务：' + pendingTasks.length + ' 项；未来日程：' + futureSchedules.length + ' 项。</p>' +
+        (pendingTasks.length ? '<div class="ry-hint">待处理任务：' + pendingTasks.map(function(t){return '<a href="../task/detail.html?id=' + encodeURIComponent(t.id) + '">' + ui.esc(t.name || t.title) + '</a>';}).join('、') + '</div>' : '') +
+        (futureSchedules.length ? '<div class="ry-hint">未来日程：' + futureSchedules.map(function(a){return '<a href="../schedule/detail.html?id=' + encodeURIComponent(a.id) + '">' + ui.esc(a.title) + '（' + ui.esc(a.startAt) + '）</a>';}).join('、') + '</div>' : '') + (isWin
+        ? ui.field('成交依据', ui.select('basis', D.wonBasis, ''), '依据决定赢单口径，写入审计', true)
+        : ui.field(result === '输单' ? '输单原因' : '关闭原因', ui.select('reason', result === '输单' ? D.lostReason : D.stopReason, ''), '', true)) +
+        ui.field('关闭说明', ui.textarea('note', '', '选择“其他”时必填，可补充背景与后续动作'), '成交依据／原因选“其他”后必填') +
+        ui.banner('结束后阶段不再推进；仅关闭结果可由有权人重新激活。' +
+          '重复提交关闭不会产生第二条关闭记录。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-cl-ok">确认关闭</button>',
+      onOpen: function (el) {
+        ui.qs('#od-cl-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (isWin && !v.basis) { ui.toast('赢单必须选择成交依据。', 'warn'); return; }
+          if (!isWin && !v.reason) { ui.toast('请选择原因。', 'warn'); return; }
+          var closeResult = S.closeOpp(o, result, { basis: v.basis || '', reason: v.reason || '', note: v.note || '' });
+          if (!closeResult.ok) { ui.toast(closeResult.reason, 'warn'); return; }
+          ui.close(); ui.toast('商机已关闭：' + result + '。', 'success');
+          renderHead(); renderTabs(); renderPanel();
+        });
+      }
+    });
+  }
+
+  renderHead();
+  renderTabs();
+  renderPanel();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

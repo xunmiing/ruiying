@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>全国公海规则 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<link rel="stylesheet" href="../../assets/css/config-rule-ui.css">
+<style>
+  /* 页面专属样式：A 类全国公海规则（单对象配置） */
+  .cp-cols { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 16px; align-items: start; }
+  .cp-act { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .cp-act__i { display:flex;align-items:center;justify-content:space-between;gap:12px;border: 1px solid var(--line); border-radius: var(--r-btn); padding: 12px 14px; background: var(--surface); }
+  .cp-act__n { font-size: 12.5px; font-weight: 600; }
+  .cp-act__d { font-size: 11.5px; color: var(--muted); line-height: 1.7; margin-top: 3px; }
+  .cp-act__i input { width:18px;height:18px;accent-color:var(--brand);cursor:pointer;flex:none; }
+  .cp-act__i input:disabled { cursor:not-allowed; }
+  .cp-hist { font-size: 12px; color: var(--muted); line-height: 1.9; }
+  .cp-diff { font-size: 12.5px; line-height: 1.95; color: var(--muted); }
+  .cp-diff b { color: var(--ink); margin-right: 4px; }
+  .cp-hist li { margin-bottom: 4px; }
+  @media (max-width: 1100px) { .cp-cols { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 700px) { .cp-act { grid-template-columns:1fr; } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="cp-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var PAGE = 'cfg.cusPool';
+  var canEdit = RY.perm.can('config.editA');
+
+  RY.nav.shell({
+    nav: 'cfg.cusPool',
+    title: '全国公海规则',
+    subtitle: '<b>A 类配置</b>：持有上限｜保护期｜认领／分派。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '配置中心' }, { label: '全国公海规则' }]
+  });
+
+  var g = RY.perm.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#cp-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入全国公海规则',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示规则取值、动作开关与变更历史。</p>'
+    });
+    return;
+  }
+
+  var editing = false;
+
+  function cfg() { return S.configA('cusPool') || {}; }
+  function poolCount() {
+    return S.arr('poolRecords').filter(function (r) { return r.status === '有效'; }).length;
+  }
+  function activeHold() {
+    var used = S.arr('businessRelations').filter(function (r) { return r.status === '有效' && r.owner; }).length;
+    return Math.max(0, Math.round(used / Math.max(1, S.arr('users').filter(function (x) { return x.role === 'R1'; }).length)));
+  }
+
+  function render() {
+    var c = cfg();
+    var hist = (c.history || []).slice().reverse();
+    ui.qs('#cp-host').innerHTML =
+      '<div class="cr-hero"><div><div class="cr-hero__eyebrow">A 类配置 · 保存即生效</div><h2>全国公海规则</h2><p>管理认领与分派、持有上限和保护期。</p></div>' +
+      '<div class="cr-hero__stats"><div><span>公海客户</span><b>' + poolCount() + '</b></div><div><span>销售人均持有</span><b>' + activeHold() + '</b></div></div></div>' +
+      '<div class="cp-cols">' +
+        '<div>' +
+          ui.section('认领与分派',
+            '<div class="cp-act">' + Object.keys(c.claimActions || {}).map(function (k) {
+              var on = !!c.claimActions[k];
+              return '<label class="cp-act__i"><span><span class="cp-act__n">' + ui.esc(k) + '</span>' +
+                '<div class="cp-act__d">' + (k === '认领'
+                  ? '销售认领池内客户，并指定初始区域和业务线。'
+                  : '主管将池内客户分派给指定销售，并创建初始经营关系。') + '</div></span>' +
+                '<input type="checkbox" name="action_' + ui.esc(k) + '" aria-label="启用' + ui.esc(k) + '"' + (on ? ' checked' : '') + (canEdit ? '' : ' disabled') + '></label>';
+            }).join('') + '</div>',
+            '<button type="button" data-pcn-rule="cfgCusPoolActions"></button>') +
+
+          ui.section('持有与保护',
+            '<div class="ry-grid2">' +
+              ui.field('持有上限（条／人）', ui.input('holdLimit', c.holdLimit, '', 'number') + '<button type="button" data-pcn-rule="cfgCusPoolHold"></button>') +
+              ui.field('保护期（天）', ui.input('protectDays', c.protectDays, '', 'number') + '<button type="button" data-pcn-rule="cfgCusPoolProtect"></button>') +
+            '</div>' +
+            ui.field('启用保护期', ui.select('protectEnabled', [{ value: '1', label: '启用' }, { value: '0', label: '不启用' }], c.protectEnabled ? '1' : '0')) +
+            ui.field('规则说明', ui.textarea('protectNote', c.protectNote || '', '', 3)) +
+            '<div class="ry-divider"></div>' +
+            '<div class="ry-acts-row">' +
+              (canEdit ? '<button class="ry-btn ry-btn--primary" id="cp-save">保存生效</button>' +
+                '<button class="ry-btn" id="cp-reset">还原为当前配置</button>'
+                : '<button class="ry-btn" data-denied="1" data-action="config.editA">保存生效<i class="ry-btn__lock">无权限</i></button>') +
+              '<span class="ry-hint" id="cp-change-state">当前没有未保存的修改</span>' +
+              '<button type="button" data-pcn-rule="cfgCusPoolSave"></button>' +
+            '</div>') +
+        '</div>' +
+
+        '<div>' +
+          ui.section('固定入池方式', '<p class="cp-hist">' + ui.esc(c.recycleMode) + '</p><button type="button" data-pcn-rule="cfgCusPoolScope"></button>') +
+          ui.section('变更历史',
+            '<ul class="cp-hist">' + (hist.length ? hist.map(function (h) {
+              return '<li>' + ui.esc(h.at) + '　' + ui.esc(S.userName(h.by) || h.by) + '　' + ui.esc(h.action) +
+                (h.reason ? '<br>原因：' + ui.esc(h.reason) : '') + '</li>';
+            }).join('') : '<li>暂无变更记录。</li>') + '</ul>') +
+        '</div>' +
+      '</div>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    var host = ui.qs('#cp-host');
+    function changes() {
+      var v = ui.formValues(host), current = cfg();
+      var actions = Object.keys(current.claimActions || {}).reduce(function (out, key) { out[key] = !!v['action_' + key]; return out; }, {});
+      return { values: v, actions: actions, changed: parseInt(v.holdLimit, 10) !== current.holdLimit ||
+        (v.protectEnabled === '1') !== !!current.protectEnabled ||
+        ((v.protectEnabled === '1') && parseInt(v.protectDays, 10) !== current.protectDays) ||
+        (v.protectNote || '') !== (current.protectNote || '') ||
+        Object.keys(actions).some(function (key) { return actions[key] !== !!current.claimActions[key]; }) };
+    }
+    function updateState() {
+      var state = changes(), indicator = ui.qs('#cp-change-state');
+      if (indicator) indicator.textContent = state.changed ? '有未保存的修改' : '当前没有未保存的修改';
+      var saveButton = ui.qs('#cp-save'); if (saveButton) saveButton.disabled = !state.changed;
+    }
+    host.addEventListener('input', updateState);
+    host.addEventListener('change', updateState);
+    updateState();
+    var sv = ui.qs('#cp-save');
+    if (sv) sv.addEventListener('click', function (e) {
+      if (e.target.closest('[data-denied]')) return;
+      var pending = changes(), v = pending.values;
+      if (!pending.changed) return;
+      var hl = parseInt(v.holdLimit, 10), pd = parseInt(v.protectDays, 10);
+      var actions = pending.actions;
+      if (!(hl > 0)) { ui.toast('持有上限必须是大于 0 的整数。', 'warn'); return; }
+      var pe = v.protectEnabled === '1';
+      if (pe && !(pd > 0)) { ui.toast('启用保护期时，保护期天数必须大于 0。', 'warn'); return; }
+      ui.modal({
+        title: '保存生效（A 类全国公海规则）', size: 'sm',
+        body: '<div class="cp-diff"><b>持有上限</b>：' + cfg().holdLimit + ' → ' + hl + '<br>' +
+          '<b>保护期</b>：' + (cfg().protectEnabled ? cfg().protectDays + ' 天' : '不启用') + ' → ' + (pe ? pd + ' 天' : '不启用') + '<br>' +
+          '<b>认领／分派</b>：' + Object.keys(actions).map(function (key) { return ui.esc(key) + ' ' + (actions[key] ? '开启' : '关闭'); }).join('、') + '</div>' +
+          ui.field('变更原因', ui.textarea('reason', '', '写入历史与审计', 3), '', true),
+        footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="cp-ok">确认保存</button>',
+        onOpen: function (el) {
+          ui.qs('#cp-ok', el).addEventListener('click', function () {
+            var r = ui.formValues(el);
+            var reason = (r.reason || '').trim();
+            if (!reason) { ui.toast('变更原因必填。', 'warn'); return; }
+            var res = S.configASave('cusPool', {
+              claimActions: actions,
+              holdLimit: hl, protectEnabled: pe, protectDays: pe ? pd : 0,
+              protectNote: v.protectNote || '', recycleMode: '最后一条有效经营关系停止后自动入池'
+            }, reason);
+            if (!res.ok) { ui.toast(res.msg, 'warn'); return; }
+            ui.close(); ui.toast('全国公海规则已保存生效。', 'success'); render();
+          });
+        }
+      });
+    });
+    var rs = ui.qs('#cp-reset');
+    if (rs) rs.addEventListener('click', function () { render(); ui.toast('已还原为当前配置。', 'info'); });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

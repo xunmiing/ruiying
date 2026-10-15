@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>线索整条转换 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：线索整条转换 */
+  .cv-step { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); margin-bottom: 14px; }
+  .cv-step__h { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); }
+  .cv-step__n { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 50%; background: var(--brand-soft); color: var(--brand-ink); font-size: 12px; font-weight: 600; }
+  .cv-step__b { padding: 14px 16px; }
+  .cv-opp { border: 1px solid var(--line); border-radius: var(--r-btn); padding: 12px; margin-bottom: 10px; background: #FCFDFD; }
+  .cv-opp__h { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .cv-sum { border: 1px solid var(--brand-line); background: var(--brand-soft); border-radius: var(--r-btn); padding: 12px; }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="cv-guard"></div>
+      <div id="cv-body" style="display:none">
+        <div id="cv-lead"></div>
+        <div id="cv-form"></div>
+      </div>
+    
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script src="../../assets/js/lead-convert-flow.js"></script>
+<script>RY.leadConvertFlow('pc');
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

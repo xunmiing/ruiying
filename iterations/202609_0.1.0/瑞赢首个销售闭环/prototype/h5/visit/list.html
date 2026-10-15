@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>正式拜访 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：正式拜访列表（我的／团队 + 状态与异常筛选 + 签到状态）。 */
+  .vl-scope { position: sticky; top: 0; z-index: 6; background: var(--bg); padding: 8px 0 6px; }
+  .vl-hint { font-size: 11px; color: var(--faint); margin: 6px 2px 0; line-height: 1.6; }
+  .vl-head { display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px; }
+  .vl-head b { font-size:14px; }
+  .vl-head__actions { display:flex;align-items:center;gap:6px;min-width:0; }
+  .vl-head .ry-btn { padding:6px 8px;font-size:12px;white-space:nowrap; }
+  .vl-head #vl-filter.is-on { border-color:var(--brand);color:var(--brand-ink);background:var(--brand-soft); }
+  .vl-filter-group { margin-bottom:16px; }
+  .vl-filter-group h4 { margin:0 0 8px;font-size:13px; }
+  .vl-filter-options { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
+  .vl-filter-options button { border:1px solid var(--line);border-radius:9px;background:var(--surface);padding:10px 8px;color:var(--ink);font:inherit;font-size:12px;text-align:center;cursor:pointer; }
+  .vl-filter-options button.is-on { border-color:var(--brand);background:var(--brand-soft);color:var(--brand-ink);font-weight:700; }
+  .vl-more { text-align: center; padding: 14px 0 4px; }
+  .vl-more.is-hidden { display: none; }
+  .vl-list { list-style:none;margin:0;padding:0;display:grid;gap:9px; }
+  .vl-card { min-width:0;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--sh-sm); }
+  .vl-card__title { font-size:14px;font-weight:700;line-height:1.45;overflow-wrap:anywhere; }
+  .vl-card__tags { display:flex;gap:5px;flex-wrap:wrap;margin-top:7px; }
+  .vl-card__meta { display:flex;gap:3px 12px;flex-wrap:wrap;margin-top:8px;color:var(--muted);font-size:11px;line-height:1.5; }
+  .vl-card__meta b { color:var(--ink);font-weight:500; }
+  .vl-card__note { margin:7px 0 0;color:var(--muted);font-size:11px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere; }
+  .vl-card__foot { display:flex;justify-content:flex-end;gap:7px;flex-wrap:wrap;margin-top:9px; }
+  .vl-card__foot .ry-btn { padding:6px 11px;font-size:12px; }
+  #vl-scope-seg { width:100%; }
+  #vl-scope-seg button { flex:1; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+
+  <div class="vl-scope">
+    <div class="vl-head"><b>拜访清单</b><div class="vl-head__actions"><button type="button" class="ry-btn" id="vl-filter">筛选状态与异常</button><button type="button" class="ry-btn ry-btn--primary" id="vl-create">＋ 新建拜访计划</button></div></div>
+    <div class="ry-fbar" style="position:static;padding:0;">
+      <div class="ry-fbar__seg" id="vl-scope-seg" style="flex:1">
+        <button type="button" data-scope="mine" class="is-on">我的拜访</button>
+        <button type="button" data-scope="team">团队</button>
+      </div>
+    </div>
+    <p class="vl-hint" id="vl-hint">—</p>
+  </div>
+
+  <div id="vl-host"></div>
+
+  <div class="vl-more is-hidden" id="vl-more">
+    <button class="ry-btn" id="vl-more-btn">加载更多</button>
+  </div>
+
+  <!-- 本页契约：评审对照用，列出页面契约编号与边界，不承载业务事实 -->
+  <div class="ry-hcard ry-hcard--flat" style="margin-top:14px">
+    <div class="ry-hcard__head"><h3>本页契约</h3><div class="ry-hcard__extra"><span class="h5-sec-note">PG-VISIT-LIST</span></div></div>
+    <div class="ry-hcard__body">
+      <ul class="ry-kv ry-kv--tight">
+        <li><span>页面契约</span><b>PG-VISIT-LIST · 正式拜访 · H5</b></li>
+        <li><span>可进入角色</span><b>R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员（ALL5）</b></li>
+        <li><span>依据</span><b>prd/04 §4</b></li>
+        <li><span>覆盖验收</span><b>AC-31</b></li>
+        <li><span>本页视图</span><b>我的｜团队、状态与异常筛选</b></li>
+        <li><span>演示数据</span><b>固定 H5 演示账号的我的拜访展示计划中、进行中、已完成各一条；团队卡片按手机宽度换行</b></li>
+        <li><span>对象边界</span><b>正式拜访是独立业务对象，不是销售活动子类；以稳定 visit_id 贯穿签到、签退、纪要与复核</b></li>
+        <li><span>异常边界</span><b>异常状态（待复核／待补充／已复核）与拜访主状态相互独立，不自动改变主状态</b></li>
+        <li><span>拜访规则</span><b>新建计划时按负责人、业务线和区域绑定适用规则版本；签到时冻结计划快照。签到半径、定位精度及签到签退间隔只产生风险提示；计划地址无坐标时不判断半径。签退不要求回到签到地点，图片不阻断完成。异常由主管人工复核，不自动判定拜访无效或改变主状态；每条拜访的规则版本在详情中查看。</b></li>
+        <li><span>执行边界</span><b>H5 不做拜访规则配置、不做批量复核；批量复核属主管 PC 能力</b></li>
+        <li><span>正式权限</span><b>新建需有本人有效客户经营关系；签到／签退由负责人执行；主管按团队范围查看并处理异常。正式系统在服务端校验角色、数据范围、对象状态与版本。</b></li>
+        <li><span>评审交互</span><b>本 HTML 原型的拜访操作按钮不按演示账号角色权限锁定；仍按业务状态展示，方便逐项评审。</b></li>
+      </ul>
+      <p class="ry-hint" id="vl-scope-note">—</p>
+    </div>
+  </div>
+
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var SIZE = 20;
+  var STATUS = ['', '计划中', '进行中', '已完成', '已取消', '未到访'];
+  var EXC = ['', '待复核', '待补充', '已复核', '无异常'];
+  var teamEntry = ui.q('scope') === 'team' || ui.q('exception') === '1';
+  var state = { scope: teamEntry ? 'team' : 'mine', status: '', exception: ui.q('exception') === '1' ? '待复核' : '', page: 1 };
+
+  RY.nav.h5shell({
+    title: '正式拜访',
+    sub: '签到与签退 · 提交后进入复核',
+    back: 'h5/activity/list.html?tab=visit',
+    nav: 'activity',
+    tabbar: true
+  });
+
+  /* ---------------------------------------------------------- 鉴权 */
+  /* 评审原型不以固定演示账号的页面或按钮权限阻断拜访流程；正式权限见页面说明。 */
+
+  /* ---------------------------------------------------------- 数据 */
+
+  /* 先按数据范围过滤，再渲染。 */
+  function scoped() {
+    return S.arr('visits').filter(function (v) { return P.inScope('visit', v); });
+  }
+  function isMine(v) { return v.owner === S.currentUser().id; }
+
+  /* 签到状态：由签到事实与异常说明派生，不是独立主状态。 */
+  function checkState(v) {
+    if (v.status === '未到访') return { n: '未到访', tone: 'warn' };
+    if (v.checkInAt) return { n: '已签到', tone: 'ok' };
+    if (v.checkInIssue === '定位失败' || (v.exceptionReason && !v.checkInAt)) return { n: '定位失败（已说明）', tone: 'warn' };
+    if (v.status === '计划中') return { n: '未签到', tone: 'muted' };
+    return { n: '无签到事实', tone: 'muted' };
+  }
+
+  function filtered() {
+    return scoped().filter(function (v) {
+      if (state.scope === 'mine' && !isMine(v)) return false;
+      if (state.status && v.status !== state.status) return false;
+      if (state.exception === '无异常' && v.exception) return false;
+      if (state.exception && state.exception !== '无异常' && v.exception !== state.exception) return false;
+      return true;
+    }).sort(function (a, b) { return (b.planAt || '').localeCompare(a.planAt || ''); });
+  }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function row(v) {
+    var c = S.customer(v.customerId);
+    var cs = checkState(v);
+    var tags = ui.statusTag(v.status) + ' ' + ui.tag(cs.n, cs.tone);
+    if (v.exception) tags += ' ' + ui.tag('异常：' + v.exception, v.exception === '已复核' ? 'ok' : 'warn');
+
+    var acts = '<a class="ry-btn" href="' + RY.nav.href('h5/visit/detail.html?id=' + encodeURIComponent(v.id)) + '">查看详情</a>';
+    if (v.status === '计划中') {
+      acts += '<button class="ry-btn ry-btn--primary" data-ci="' + ui.esc(v.id) + '">签到</button>';
+    }
+    return '<li><article class="vl-card">' +
+      '<div class="vl-card__title">' + ui.esc((c ? c.name : '未知客户') + ' · ' + (v.type || '正式拜访')) + '</div>' +
+      '<div class="vl-card__tags">' + tags + '</div>' +
+      '<div class="vl-card__meta"><span>计划 <b>' + ui.esc(v.planAt || '—') + '</b></span>' +
+        (state.scope === 'team' ? '<span>负责人 <b>' + ui.esc(S.userName(v.owner)) + '</b></span>' : '') + '</div>' +
+      '<div class="vl-card__meta"><span>签到 <b>' + ui.esc(v.checkInAt || '—') + '</b></span>' +
+        '<span>签退 <b>' + ui.esc(v.checkOutAt || '—') + '</b></span>' +
+        '<span>证据 <b>' + ((v.evidence || []).length + ' 项') + '</b></span></div>' +
+      (v.exceptionDetail ? '<p class="vl-card__note">异常说明：' + ui.esc(v.exceptionDetail) + '</p>' : '') +
+      (v.review && v.review.reason ? '<p class="vl-card__note">复核结论：' + ui.esc(v.review.result + '，' + v.review.reason) + '</p>' : '') +
+      '<div class="vl-card__foot">' + acts + '</div></article></li>';
+  }
+
+  function render() {
+    var activeFilters = [state.status, state.exception].filter(Boolean);
+    ui.qs('#vl-filter').textContent = activeFilters.length
+      ? '筛选状态与异常（' + activeFilters.length + '）' : '筛选状态与异常';
+    ui.qs('#vl-filter').classList.toggle('is-on', activeFilters.length > 0);
+    ui.qs('#vl-filter').title = activeFilters.length ? '已选：' + activeFilters.join(' · ') : '筛选拜访主状态与异常状态';
+    var list = filtered();
+    var shown = list.slice(0, state.page * SIZE);
+    if (!list.length) {
+      ui.qs('#vl-host').innerHTML = ui.stateCard('empty', {
+        title: '当前条件下没有正式拜访',
+        body: '<p class="ry-hint">本页不展示无权拜访，也不展示其数量与摘要；「没有结果」可能包含已被数据范围过滤的记录。' +
+              '正式拜访需要签到与签退，提交后进入复核；异常不自动改变拜访主状态。</p>',
+        actions: '<a class="ry-btn" href="' + RY.nav.href('index.html') + '">返回工作台</a>'
+      });
+      ui.qs('#vl-more').classList.add('is-hidden');
+    } else {
+      ui.qs('#vl-host').innerHTML = '<ul class="vl-list">' + shown.map(row).join('') + '</ul>' +
+        '<p class="ry-hint">完成最小门槛＝有效签到或已说明的异常签到＋签退＋拜访总结；签退不要求回到签到地点，图片与附件不作为完成阻断项。</p>';
+      var more = shown.length < list.length;
+      ui.qs('#vl-more').classList.toggle('is-hidden', !more);
+      ui.qs('#vl-more-btn').textContent = '加载更多（已显示 ' + shown.length + ' / ' + list.length + '）';
+    }
+    ui.qs('#vl-hint').textContent = '共 ' + list.length + ' 条可见正式拜访；' +
+      (state.scope === 'mine' ? '当前范围仅本人负责的拜访。' : '当前范围按数据范围口径展示。');
+
+    ui.qsa('#vl-host [data-ci]').forEach(function (b) {
+      b.addEventListener('click', function () { checkInSheet(b.getAttribute('data-ci')); });
+    });
+  }
+
+  /* 签到：定位成功进入进行中；定位失败必须填写原因后才能继续，不采集连续轨迹。 */
+  function checkInSheet(id) {
+    var v = S.visit(id);
+    if (!v) { ui.toast('拜访不存在或已不可用', 'warn'); return; }
+    RY.nav.sheet({
+      title: '签到', sub: (S.customer(v.customerId) || {}).name || '',
+      body: '<div class="ry-hform">' +
+        '<p class="ry-hint">签到后进入「进行中」并冻结计划快照，另存实际签到时间、位置、距离与异常事实。' +
+        '签到半径、定位精度与签到签退间隔提示值由创建时绑定的规则决定，H5 不做规则配置。</p>' +
+        '<div class="ry-field__label">定位结果</div>' +
+        '<div class="ry-fbar__seg" style="margin-bottom:12px">' +
+          '<button type="button" data-loc="ok" class="is-on">定位成功</button>' +
+          '<button type="button" data-loc="fail">定位失败</button>' +
+        '</div>' +
+        ui.field('定位失败原因', ui.textarea('reason', '', '定位失败时必须填写原因后才能继续进行', 2), '', false) +
+        '</div>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="vl-ci">确认签到</button>',
+      onOpen: function (host, close) {
+        var loc = 'ok';
+        host.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-loc]');
+          if (b) {
+            loc = b.getAttribute('data-loc');
+            b.parentNode.querySelectorAll('button').forEach(function (x) { x.classList.remove('is-on'); });
+            b.classList.add('is-on');
+            return;
+          }
+          if (!e.target.closest('#vl-ci')) return;
+          var reason = (ui.formValues(host).reason || '').trim();
+          if (loc === 'fail' && !reason) { ui.toast('定位失败必须填写原因后才能继续', 'warn'); return; }
+          var r = S.visitCheckIn(id, loc === 'ok'
+            ? { ok: true, loc: { lat: 31.2569, lng: 121.5902, addr: '（演示定位）', acc: 22 } }
+            : { ok: false, reason: reason, detail: '定位失败，销售填写原因后继续进行' });
+          if (!r.ok) { ui.toast(r.msg || '签到未完成', 'warn'); return; }
+          close();
+          ui.toast(r.msg || '签到成功', 'ok');
+          render();
+        });
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------- 交互 */
+
+  ui.qs('#vl-create').addEventListener('click', function () {
+    var owner = S.currentUser().id;
+    var relations = S.arr('businessRelations').filter(function (r) { return r.owner === owner && r.status === '有效'; });
+    if (!relations.length) { ui.toast('当前账号没有可用于新建拜访的客户经营关系', 'warn'); return; }
+    function relLabel(r) {
+      var customer = S.customer(r.customerId);
+      var line = S.arr('businessLines').filter(function (x) { return x.code === r.businessLine; })[0];
+      var region = S.arr('regions').filter(function (x) { return x.code === r.region; })[0];
+      return (customer ? customer.name : r.customerId) + ' · ' + (line ? line.name : r.businessLine) + ' · ' + (region ? region.name : r.region);
+    }
+    ui.modal({
+      title: '新建拜访计划', subtitle: '创建后进入正式拜访详情',
+      body: '<div class="ry-hform">' +
+        ui.field('客户与经营业务线／区域', ui.select('relationId', relations.map(function (r) { return { value: r.id, label: relLabel(r) }; }), relations[0].id), '', true) +
+        ui.field('拜访类型', ui.select('type', ['实地拜访', '远程拜访'], '实地拜访'), '', true) +
+        '<div class="ry-field"><label class="ry-field__label">计划时间 *</label><input class="ry-input" name="planAt" type="datetime-local"></div>' +
+        ui.field('关联联系人', ui.select('contactId', [], ''), '可选', false) +
+        ui.field('关联商机', ui.select('opportunityId', [], ''), '可选', false) +
+        ui.field('关联任务', ui.select('taskId', [], ''), '可选；任务与拜访状态不自动联动', false) +
+        ui.field('计划地址', ui.select('addressId', [], ''), '从所选客户已有地址中选择；无地址时可填写下面的详细地址', false) +
+        ui.field('本次详细地址', ui.input('addressDetail', '', '无地址时填写；也可覆盖已选地址'), '覆盖已选地址后不沿用原地址坐标', false) +
+        '<p class="ry-hint">签到时冻结计划地址。无计划坐标时不产生半径异常；本次规则以创建时的范围与负责人匹配。</p></div>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="vl-create-ok">保存计划</button>',
+      onOpen: function (host) {
+        function fillAddresses() {
+          var relation = relations.filter(function (r) { return r.id === host.querySelector('[name="relationId"]').value; })[0];
+          var addresses = S.arr('addresses').filter(function (a) { return a.ownerType === '客户' && a.ownerId === relation.customerId; });
+          var contactIds = S.arr('contactRelations').filter(function (x) { return x.customerId === relation.customerId; }).map(function (x) { return x.contactId; });
+          var contacts = S.arr('contacts').filter(function (x) { return contactIds.indexOf(x.id) >= 0 && P.inScope('contact', x); });
+          var opps = S.arr('opportunities').filter(function (x) { return x.customerId === relation.customerId && P.inScope('opp', x); });
+          var tasks = S.arr('tasks').filter(function (x) { return x.owner === owner &&
+            (x.customerId === relation.customerId || (x.related && x.related.id === relation.customerId) ||
+              (x.related && opps.some(function (o) { return o.id === x.related.id; }))); });
+          host.querySelector('[name="contactId"]').innerHTML = '<option value="">不关联</option>' + contacts.map(function (x) {
+            return '<option value="' + ui.esc(x.id) + '">' + ui.esc(x.name) + '</option>';
+          }).join('');
+          host.querySelector('[name="opportunityId"]').innerHTML = '<option value="">不关联</option>' + opps.map(function (x) {
+            return '<option value="' + ui.esc(x.id) + '">' + ui.esc(x.name || x.id) + '</option>';
+          }).join('');
+          host.querySelector('[name="taskId"]').innerHTML = '<option value="">不关联</option>' + tasks.map(function (x) {
+            return '<option value="' + ui.esc(x.id) + '">' + ui.esc(x.title || x.name || x.id) + '</option>';
+          }).join('');
+          host.querySelector('[name="addressId"]').innerHTML = '<option value="">手工填写／暂无地址</option>' + addresses.map(function (a) {
+            return '<option value="' + ui.esc(a.id) + '">' + ui.esc(a.type + ' · ' + a.region + ' ' + a.detail) + '</option>';
+          }).join('');
+        }
+        fillAddresses();
+        host.querySelector('[name="relationId"]').addEventListener('change', fillAddresses);
+        host.querySelector('#vl-create-ok').addEventListener('click', function () {
+          var vals = ui.formValues(host);
+          if (!vals.planAt) { ui.toast('计划时间必填', 'warn'); return; }
+          var relation = relations.filter(function (r) { return r.id === vals.relationId; })[0];
+          var address = S.arr('addresses').filter(function (a) { return a.id === vals.addressId && a.ownerId === relation.customerId; })[0];
+          var manualDetail = (vals.addressDetail || '').trim();
+          var detail = manualDetail || (address && address.detail) || '';
+          if (!detail) { ui.toast('请选择或填写本次拜访地址', 'warn'); return; }
+          var snapshot = { region: address ? address.region : (S.arr('regions').filter(function (x) { return x.code === relation.region; })[0] || {}).name || '',
+            detail: detail };
+          if (address && !manualDetail && address.lat != null && address.lng != null) { snapshot.lat = address.lat; snapshot.lng = address.lng; }
+          var visit = S.createVisit({ customerId: relation.customerId, owner: owner, businessLine: relation.businessLine,
+            contactIds: vals.contactId ? [vals.contactId] : [], opportunityId: vals.opportunityId || '', taskId: vals.taskId || '',
+            region: relation.region, type: vals.type, planAt: vals.planAt.replace('T', ' '), addressSnapshot: snapshot });
+          if (!visit) { ui.toast('新建拜访失败，请检查客户与计划信息', 'warn'); return; }
+          ui.close(); location.href = RY.nav.href('h5/visit/detail.html?id=' + encodeURIComponent(visit.id));
+        });
+      }
+    });
+  });
+
+  ui.qsa('#vl-scope-seg [data-scope]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      state.scope = b.getAttribute('data-scope'); state.page = 1;
+      ui.qsa('#vl-scope-seg [data-scope]').forEach(function (x) { x.classList.toggle('is-on', x === b); });
+      render();
+    });
+  });
+  ui.qs('#vl-more-btn').addEventListener('click', function () { state.page++; render(); });
+
+  ui.qs('#vl-filter').addEventListener('click', function () {
+    function options(name, label, opts, cur) {
+      return '<section class="vl-filter-group"><h4>' + label + '</h4><div class="vl-filter-options">' + opts.map(function (o) {
+        return '<button type="button" data-k="' + name + '" data-v="' + ui.esc(o) + '"' +
+          (cur === o ? ' class="is-on"' : '') + '>' + ui.esc(o || '全部') + '</button>';
+      }).join('') + '</div></section>';
+    }
+    ui.modal({
+      title: '筛选正式拜访', subtitle: '适用于我的拜访和团队',
+      body: options('status', '拜访主状态', STATUS, state.status) +
+        options('exception', '异常状态', EXC, state.exception) +
+        '<p class="ry-hint">异常状态独立于主状态：待复核／待补充／已复核都不会自动改变拜访主状态，' +
+        '也不自动形成无效、违规、真实性或绩效结论。</p>',
+      footer: '<button class="ry-btn" data-reset>重置</button><button class="ry-btn ry-btn--primary" data-apply>查看结果</button>',
+      onOpen: function (host) {
+        var draft = { status: state.status, exception: state.exception };
+        host.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-k]');
+          if (b) {
+            draft[b.getAttribute('data-k')] = b.getAttribute('data-v');
+            b.parentNode.querySelectorAll('button').forEach(function (x) { x.classList.remove('is-on'); });
+            b.classList.add('is-on');
+            return;
+          }
+          if (e.target.closest('[data-reset]')) {
+            draft = { status: '', exception: '' };
+            host.querySelectorAll('[data-k]').forEach(function (x) {
+              x.classList.toggle('is-on', x.getAttribute('data-v') === '');
+            });
+            return;
+          }
+          if (e.target.closest('[data-apply]')) {
+            state.status = draft.status; state.exception = draft.exception; state.page = 1;
+            ui.close(); render();
+          }
+        });
+      }
+    });
+  });
+
+  ui.qs('#vl-scope-note').textContent =
+    '当前数据范围：' + P.dataScope(S.currentUser()).label +
+    '　拜访需签到、签退与总结；图片不作为完成阻断项，异常由主管人工复核。';
+
+  ui.qsa('#vl-scope-seg [data-scope]').forEach(function (b) {
+    b.classList.toggle('is-on', b.getAttribute('data-scope') === state.scope);
+  });
+  render();
+  if (ui.q('create') === '1') ui.qs('#vl-create').click();
+  else if (ui.q('filter') === '1') ui.qs('#vl-filter').click();
+})();
+</script>
+</body>
+</html>

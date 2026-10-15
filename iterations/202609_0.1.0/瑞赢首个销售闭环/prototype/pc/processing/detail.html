@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>处理结果详情 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：处理结果详情 */
+  .pd-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .pd-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="pd-guard"></div>
+      <div id="pd-body" style="display:none"></div>
+    
+      <!-- 本页契约：评审对照用，列出页面契约编号与边界，不承载业务事实 -->
+      <section class="ry-card ry-card--flat">
+        <header class="ry-card__head">
+          <h3>本页契约</h3>
+          <div class="ry-card__extra"><span class="ry-hint">PG-GLOBAL-PROCESSING-DETAIL</span></div>
+        </header>
+        <div class="ry-card__body">
+          <ul class="ry-kv ry-kv--tight">
+            <li><span>页面契约</span><b>PG-GLOBAL-PROCESSING-DETAIL · PC · 首页与全局能力</b></li>
+            <li><span>依据</span><b>prd/00 §4／§8</b></li>
+            <li><span>可进入角色</span><b>管理员（运营）</b></li>
+            <li><span>覆盖验收</span><b>AC-45 AC-46</b></li>
+            <li><span>本页视图</span><b>总数、成功数、失败数、失败明细、文件下载、失败项按原参数重试</b></li>
+          </ul>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+
+  var id = ui.q('id') || 'JOB-202609-0001';
+  var from = ui.q('from') || 'list';
+  var j = S.job(id);
+  /* 第 1 层：页面权限。第 2 层：数据范围——处理记录仅本人可见。 */
+  var pageOk = RY.perm.page('processing');
+
+  RY.nav.shell({
+    nav: '',
+    title: '处理结果详情',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '处理记录', href: 'pc/processing/list.html' }, { label: j ? j.id : '处理结果' }],
+    actions: '<a class="ry-btn" href="list.html">返回处理记录</a>'
+  });
+
+  function guardFail(kind, title, reason) {
+    ui.renderState('#pd-guard', kind, {
+      title: title,
+      body: '<p>' + ui.esc(reason) + '</p>' +
+        '<p class="ry-hint">处理记录只对提交人本人可见。不可见时不展示批次编号、动作、对象、数量与逐项结果。</p>',
+      actions: '<a class="ry-btn" href="list.html">返回处理记录</a><a class="ry-btn" href="../../pc.html">返回工作台首页</a>'
+    });
+  }
+
+  if (!pageOk) {
+    guardFail('no-permission', '没有访问处理记录的权限', '当前账号没有「处理记录」的页面权限。');
+    return;
+  }
+  if (!j) {
+    guardFail('unavailable', '处理记录不可用', '该处理记录不存在，或已超过 7 天保留期被清理。');
+    return;
+  }
+  if (j.operator !== u.id) {
+    guardFail('no-permission', '该处理记录不属于当前操作人', '处理记录的可见范围仅限提交人本人；当前身份不是该批次的提交人。');
+    return;
+  }
+
+  var STATUS_TONE = { '已完成': 'ok', '部分成功': 'warn', '失败': 'bad', '处理中': 'info', '待执行': 'muted' };
+
+  function render() {
+    var failures = (j.items || []).filter(function (x) { return x.result === '失败'; });
+    var okItems = (j.items || []).filter(function (x) { return x.result === '成功'; });
+
+    ui.qs('#pd-guard').innerHTML = '';
+    ui.qs('#pd-body').style.display = '';
+    ui.qs('#pd-body').innerHTML =
+      '<div class="ry-card"><div class="ry-card__body">' +
+        '<div class="pd-head">' +
+          '<div><h2 style="margin:0;font-size:18px">' + ui.esc(j.action) + '</h2>' +
+            '<p class="ry-hint" style="margin:6px 0 0"><code>' + ui.esc(j.id) + '</code>　' + ui.tag(j.status, STATUS_TONE[j.status] || 'muted') +
+            '　类型：' + ui.esc(j.type) + '　对象：' + ui.esc(j.object) + '</p></div>' +
+          '<div class="pd-actions">' +
+            (j.failed > 0 ? '<button class="ry-btn ry-btn--primary" id="pd-retry">只重试失败项（' + j.failed + ' 项）</button>' : '') +
+            (j.status === '处理中' ? '<button class="ry-btn" id="pd-refresh">刷新进度</button>' : '') +
+            '<a class="ry-btn" href="list.html">返回处理记录</a>' +
+          '</div>' +
+        '</div>' +
+      '</div></div>' +
+
+      (j.status === '处理中'
+        ? ui.stateCard('processing', {
+            title: '批次正在异步处理',
+            body: '<p>本批次仍在执行中，逐项结果会随处理进度回写。</p>' +
+              '<p class="ry-hint">异步处理的含义：提交后即可离开页面或关闭浏览器，处理不会中断；' +
+              '完成后会通过消息提醒，并可在本页与处理记录中查看结果。</p>' +
+              ui.kv([['已执行 / 总数', j.success + ' / ' + j.total], ['当前状态', j.status], ['提交时间', j.submittedAt]])
+          })
+        : ui.section('处理结果', ui.jobResult(j), '<span class="ry-hint">逐项结果</span>')) +
+
+      ui.section('处理参数',
+        ui.kv([
+          ['处理编号', '<code>' + ui.esc(j.id) + '</code>'],
+          ['处理流水号', ui.esc(j.processId || '—')],
+          ['类型 / 动作', ui.esc(j.type) + '　' + ui.esc(j.action)],
+          ['对象', ui.esc(j.object)],
+          ['提交人 / 提交时间', ui.esc(S.userName(j.operator)) + '　' + ui.esc(j.submittedAt)],
+          ['来源文件', j.sourceFile ? ui.esc(j.sourceFile) + '　' + ui.tag('演示数据，不提供真实下载', 'muted') : '—'],
+          ['结果文件', j.fileName ? ui.esc(j.fileName) + '　' + ui.tag('演示数据，不提供真实下载', 'muted') : '—'],
+          ['导出字段', (j.fields && j.fields.length) ? j.fields.map(ui.esc).join('、') : '—'],
+          ['重试来源', j.retryOf ? ui.esc(j.retryOf) + '（只重试失败项）' : '—'],
+          ['有效期', ui.esc(j.expiresAt || '—') + '　保留 7 天']
+        ])) +
+
+      (failures.length ? ui.section('失败项与原因（' + failures.length + '）',
+        '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr><th>对象／行号</th><th>名称</th><th>失败原因</th></tr></thead><tbody>' +
+        failures.map(function (x) {
+          return '<tr><td><code>' + ui.esc(x.key) + '</code></td><td>' + ui.esc(x.name) + '</td><td>' + ui.esc(x.reason || '—') + '</td></tr>';
+        }).join('') + '</tbody></table></div>' +
+        ui.banner('失败项<b>不影响已成功项</b>：已成功的对象不会因为重试而重复创建或重复修改。重试会按原批次参数重新执行预检。', 'warn')) : '') +
+
+      (okItems.length ? ui.section('成功项（' + okItems.length + '）',
+        '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr><th>对象／行号</th><th>名称</th><th>结果</th></tr></thead><tbody>' +
+        okItems.map(function (x) {
+          return '<tr><td><code>' + ui.esc(x.key) + '</code></td><td>' + ui.esc(x.name) + '</td><td>' + ui.tag('成功', 'ok') + '</td></tr>';
+        }).join('') + '</tbody></table></div>') : '') +
+
+      ui.section('处理记录边界',
+        ui.banner('1. 本页属于<b>处理记录</b>：仅本人可见、保留 7 天、可只重试失败项；<br>' +
+          '2. 处理记录<b>不是正式审计的替代</b>。审计追加写入、业务不可删除、不随 7 天清理，0.1 不提供审计导出；<br>' +
+          '3. 结果文件在真实产品中受独立的下载鉴权约束；原型不提供真实文件，也不包含真实客户、联系人与联系方式数据。', 'info'));
+
+    var rb = ui.qs('#pd-retry');
+    if (rb) rb.addEventListener('click', function () {
+      ui.confirm({
+        title: '只重试失败项',
+        message: '<p>将按原批次参数<b>只重试 ' + j.failed + ' 个失败项</b>，并重新执行逐项预检。</p>' +
+          '<p class="ry-hint">已成功的 ' + j.success + ' 项不会重复执行；重试会生成一个新的处理批次，便于对照原批次结果。</p>',
+        confirmText: '确认重试',
+        onConfirm: function () { ui.retryJob(j.id); }
+      });
+    });
+    var fb = ui.qs('#pd-refresh');
+    if (fb) fb.addEventListener('click', function () {
+      ui.asyncRun({
+        title: '刷新处理进度', total: j.total, processId: j.processId,
+        onDone: function () {
+          ui.toast('进度已刷新（演示：本批次仍为「处理中」）。', 'info');
+        }
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

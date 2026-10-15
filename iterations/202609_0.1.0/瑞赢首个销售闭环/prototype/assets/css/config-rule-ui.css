@@ -1,0 +1,26 @@
+/* PC 业务规则页：先看当前配置，再处理草稿，最后查看历史。 */
+.cr-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:var(--r-card);padding:16px 18px;margin-bottom:16px}
+.cr-hero__eyebrow{font-size:11px;font-weight:700;color:var(--brand-ink);letter-spacing:.06em;margin-bottom:5px}
+.cr-hero h2{font-size:18px;line-height:1.4;margin:0 0 5px}
+.cr-hero p{color:var(--muted);font-size:12px;line-height:1.7;margin:0}
+.cr-hero__stats{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.cr-hero__stats span{display:block;color:var(--muted);font-size:11px}
+.cr-hero__stats b{display:block;font-size:17px;margin-top:3px}
+.cr-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 14px}
+.cr-toolbar__note{color:var(--muted);font-size:12px;margin-right:auto}
+.cr-grid{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:16px;align-items:start}
+.cr-grid--wide{grid-template-columns:minmax(0,1.2fr) minmax(270px,.8fr)}
+.cr-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.cr-list-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:15px 16px;min-width:0}
+.cr-list-card h3{font-size:14px;margin:0 0 4px}
+.cr-list-card__meta{font-size:11px;color:var(--muted);line-height:1.6}
+.cr-list-card__scope{font-size:12px;line-height:1.6;margin:10px 0;min-height:38px}
+.cr-list-card__foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;border-top:1px solid var(--line-soft);padding-top:10px;margin-top:10px}
+.cr-subtitle{font-size:12px;color:var(--muted);margin:0 0 12px}
+.cr-rule-fields{display:grid;grid-template-columns:1fr 1fr;gap:0 18px}
+.cr-rule-fields .ry-field{min-width:0}
+.cr-rule-fields .ry-field--wide{grid-column:1/-1}
+.cr-form-block{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:16px 18px;margin-bottom:14px}
+.cr-form-block h3{font-size:14px;margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line-soft)}
+@media(max-width:1100px){.cr-grid,.cr-grid--wide{grid-template-columns:1fr}}
+@media(max-width:760px){.cr-list,.cr-rule-fields{grid-template-columns:1fr}}

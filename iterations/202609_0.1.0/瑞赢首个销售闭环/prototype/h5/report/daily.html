@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>今日日报 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：PC/H5 共用的一份分段日报正文。 */
+  .rd-date { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 8px; }
+  .rd-date .ry-chip { flex: 0 0 auto; }
+  .rd-sec { display: none; }
+  .rd-sec.is-on { display: block; }
+  .rd-frz { border: 1px solid var(--info-line); background: var(--info-soft); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+  .rd-frz p { margin: 0; font-size: 12.5px; line-height: 1.8; }
+  .rd-fact { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; background: var(--surface); }
+  .rd-fact__t { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .rd-fact__t b { font-size: 13.5px; }
+  .rd-fact ul { list-style: none; margin: 0; padding: 0; }
+  .rd-fact li { font-size: 12.5px; line-height: 1.9; display: flex; gap: 8px; }
+  .rd-fact li code { color: var(--faint); font-size: 11.5px; }
+  .rd-body { white-space: pre-wrap; line-height: 1.9; font-size: 13.5px; margin: 0; }
+  .rd-src { display: flex; gap: 6px; flex-wrap: wrap; }
+  .rd-report-link { display:inline-flex; align-items:center; justify-content:center; height:30px; padding:0 8px; border:1px solid rgba(255,255,255,.35); border-radius:9px; color:#fff; font-size:12px; white-space:nowrap; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+
+  <div class="rd-date" id="rd-date"></div>
+  <div id="rd-host"></div>
+
+  <!-- 本页契约：评审对照用，列出页面约定与边界，不承载业务事实 -->
+  <div class="ry-hcard ry-hcard--flat" style="margin-top:14px">
+    <div class="ry-hcard__head"><h3>本页契约</h3><div class="ry-hcard__extra"><span class="h5-sec-note">PG-RPT-DAILY</span></div></div>
+    <div class="ry-hcard__body">
+      <ul class="ry-kv ry-kv--tight">
+        <li><span>页面契约</span><b>PG-RPT-DAILY · 日报和主管业务处理 · H5</b></li>
+        <li><span>可进入角色</span><b>R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员（ALL5）</b></li>
+        <li><span>依据</span><b>prd/04 §6</b></li>
+        <li><span>覆盖验收</span><b>AC-36 AC-20</b></li>
+        <li><span>本页视图</span><b>首次生成的分段可编辑正文、一次提交、历史、提交后冻结</b></li>
+        <li><span>事实边界</span><b>系统先按事实自动汇总，销售只补充文字；正文提交后冻结，不退回、不重提</b></li>
+        <li><span>正文边界</span><b>销售修改只作用于日报文字，不回写源业务事实；首次 AI 原始底稿仅 PC 查看</b></li>
+        <li><span>范围边界</span><b>H5 只做本人日报；他人日报由日报详情按数据范围查看，主管阅读状态按范围展示</b></li>
+        <li><span>能力边界</span><b>日报是事实汇总的阅读与补充入口，不做指标趋势、下钻与看板</b></li>
+      </ul>
+      <p class="ry-hint" id="rd-scope-note">—</p>
+    </div>
+  </div>
+
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.report.daily';
+  var state = { date: ui.q('date') || S.today() };
+  var me = S.currentUser();
+
+  RY.nav.h5shell({
+    title: state.date === S.today() ? '今日日报' : '日报',
+    back: 'h5/activity/list.html?tab=report',
+    nav: 'activity',
+    actions: '<a class="rd-report-link" href="' + RY.nav.href('h5/activity/list.html?tab=report') + '">我的日报</a>',
+    tabbar: true
+  });
+
+  /* ---------------------------------------------------------- 鉴权 */
+  if (!P.page(PAGE)) {
+    ui.qs('#rd-host').innerHTML = ui.stateCard('no-permission', {
+      title: '没有日报页面的访问权限',
+      body: '<p>' + ui.esc(P.whyNot('report.edit') || '当前身份没有「日报」页面权限。') + '</p>' +
+        '<p class="ry-hint">日报由系统先按事实自动汇总，销售只补充文字；正文提交后冻结，不退回、不重提。' +
+        '无权时本页不展示任何日报数量、事实条目与摘要。</p>' +
+        '<p class="ry-hint">页面权限、动作权限、数据范围与字段规则相互独立；获得其中一个不等于获得其余。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('index.html') + '">返回工作台</a>'
+    });
+    ui.qs('.rd-date').style.display = 'none';
+    ui.qs('#rd-scope-note').textContent = '当前身份无该页面权限，因此不展示任何日报数量与摘要。';
+    return;
+  }
+
+  /* ---------------------------------------------------------- 数据 */
+
+  /* 先按数据范围过滤，再渲染：H5 只做本人日报。 */
+  function mine() {
+    return S.reportList('mine').filter(function (r) { return P.inScope('report', r); });
+  }
+  function current() { return S.reportDraftOf(me.id, state.date); }
+
+  function linkOrText(type, id, name) {
+    var o = type === '客户' ? S.customer(id) : type === '商机' ? S.opp(id) : type === '线索' ? S.lead(id)
+      : type === '销售活动' ? S.activity(id) : type === '正式拜访' ? S.visit(id) : type === '任务' ? S.task(id) : null;
+    if (!o) return '<span>' + ui.esc(name || id) + ' <code>' + ui.esc(id) + '</code></span>';
+    var path = { '客户': 'h5/customer/detail.html', '商机': 'h5/opportunity/detail.html', '线索': 'h5/lead/detail.html',
+      '销售活动': 'h5/activity/detail.html', '正式拜访': 'h5/visit/detail.html', '任务': 'h5/task/detail.html' }[type];
+    return '<a href="' + RY.nav.href(path + '?id=' + encodeURIComponent(id)) + '">' + ui.esc(name || id) + '</a>' +
+      '<code>' + ui.esc(id) + '</code>';
+  }
+
+  /* ---------------------------------------------------------- 日报正文 */
+  function viewEdit(r) {
+    var frozen = r.status === '已提交';
+    var body = frozen ? (r.submittedBody || r.draftBody || '') : (r.draftBody || '');
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>日报正文</h3>' +
+      '<div class="ry-hcard__extra">' + (frozen ? ui.tag('已提交', 'ok') : ui.tag('草稿', 'warn')) + '</div></div>' +
+      '<div class="ry-hcard__body"><div class="ry-hform">' +
+      ui.field('今日工作记录', '<textarea class="ry-input" name="body" rows="16"' + (frozen ? ' readonly' : '') +
+        ' placeholder="当日无正式业务事实时，请填写实际工作情况与下一步计划">' + ui.esc(body) + '</textarea>', '', true) +
+      '</div>' +
+      (frozen ? '' : '<div class="ry-acts-row" style="margin-top:10px"><button class="ry-btn" id="rd-save">保存草稿</button>' +
+        ui.actionBtn('report.submit', '提交日报', ' id="rd-submit"', 'ry-btn--primary') + '</div>') +
+      '</div></div>';
+  }
+
+  function viewHis(r) {
+    var out = '';
+    out += '<div class="ry-hcard ry-hcard--flat"><div class="ry-hcard__head"><h3>来源</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">提交后冻结为快照</span></div></div><div class="ry-hcard__body">' +
+      ((r.sources && r.sources.length)
+        ? '<div class="rd-src">' + r.sources.map(function (s) {
+            return ui.tag(s.type + '：' + s.id, 'muted');
+          }) + '</div>'
+        : '<p class="ry-hint">该日报没有登记来源对象。</p>');
+    var fs = r.frozenSources || [];
+    out += (fs.length ? '<div class="rd-src" style="margin-top:8px">' + fs.map(function (s) {
+        return ui.tag('冻结：' + s.type + '：' + s.id, 'info');
+      }) + '</div>' : '') +
+      '<p class="ry-hint">提交时冻结事实快照与来源清单；此后源对象的变更不回写已提交日报。</p>' +
+      '</div></div>';
+    var hist = (r.history || []).slice().reverse();
+    out += '<div class="ry-hcard ry-hcard--flat"><div class="ry-hcard__head"><h3>历史</h3></div><div class="ry-hcard__body">' +
+      (hist.length ? '<ul class="ry-tl">' + hist.map(function (h) {
+        return '<li><p class="ry-tl__t"><b>' + ui.esc(h.action) + '</b>' +
+          (h.from || h.to ? '（' + ui.esc((h.from || '—') + ' → ' + (h.to || '—')) + '）' : '') + '</p>' +
+          '<p class="ry-tl__m">' + ui.esc(h.actor) + ' · ' + ui.esc(h.at) + '</p></li>';
+      }).join('') + '</ul>' : '<p class="ry-hint">暂无历史记录。</p>') +
+      '</div></div>';
+    var rb = r.readBy || {};
+    var readers = Object.keys(rb);
+    out += '<div class="ry-hcard ry-hcard--flat"><div class="ry-hcard__head"><h3>阅读信息</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">按数据范围展示</span></div></div><div class="ry-hcard__body">' +
+      (readers.length ? ui.kv(readers.map(function (k) {
+        var x = rb[k];
+        return [S.userName(k), x.read ? ('已读 ' + ui.esc(x.at || '')) : '未读'];
+      })) : '<p class="ry-hint">还没有主管阅读记录。</p>') +
+      '<p class="ry-hint">只有打开日报正文详情才会自动置为已读；允许单条手动改为未读，不提供批量已读／未读。</p>' +
+      '</div></div>';
+    var adv = r.advices || [];
+    out += '<div class="ry-hcard ry-hcard--flat"><div class="ry-hcard__head"><h3>主管建议</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">追加式，不覆盖</span></div></div><div class="ry-hcard__body">' +
+      (adv.length ? adv.map(function (a) {
+        return '<div class="rd-fact"><div class="rd-fact__t"><b>' + ui.esc(S.userName(a.by)) + '</b><span class="h5-sec-note">' + ui.esc(a.at) + '</span></div>' +
+          '<p class="rd-body">' + ui.esc(a.text) + '</p></div>';
+      }).join('') : '<p class="ry-hint">还没有主管建议。</p>') +
+      '<p class="ry-hint">建议只能追加，不能覆盖或删除；主管建议不改变已提交日报的正文与事实快照。</p>' +
+      '</div></div>';
+    return out;
+  }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function dateChips(r) {
+    var dates = mine().map(function (x) { return x.date; });
+    if (dates.indexOf(S.today()) < 0) dates.push(S.today());
+    dates = dates.filter(function (d, i) { return dates.indexOf(d) === i; }).sort().reverse();
+    return dates.map(function (d) {
+      var x = S.reportDraftOf(me.id, d);
+      var label = (d === S.today() ? '今日 ' : '') + d + (x ? '' : '（未生成）');
+      return '<button class="ry-chip' + (d === state.date ? ' is-on' : '') + '" data-date="' + d + '">' + label + '</button>';
+    }).join('');
+  }
+
+  function render() {
+    var headerTitle = ui.qs('.ry-bar__title');
+    if (headerTitle) headerTitle.textContent = state.date === S.today() ? '今日日报' : '日报';
+    if (state.date === S.today() && !current() && P.can('report.edit')) S.ensureReportDraft(me.id, state.date);
+    var draft = current();
+    if (draft && draft.status !== '已提交' && P.can('report.edit')) S.ensureReportEditableDraft(draft.id);
+    var r = current();
+    ui.qs('#rd-date').innerHTML = dateChips(r);
+    ui.qsa('#rd-date [data-date]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.date = b.getAttribute('data-date');
+        render();
+      });
+    });
+
+    if (!r) {
+      ui.qs('#rd-host').innerHTML = ui.stateCard('empty', {
+        title: ui.esc(state.date) + ' 还没有日报',
+        body: '<p>该日期尚无日报记录。</p>',
+        actions: '<a class="ry-btn" href="' + RY.nav.href('h5/report/team.html') + '">团队日报概览</a>'
+      });
+      return;
+    }
+
+    ui.qs('#rd-host').innerHTML =
+      '<div class="ry-brief"><div class="ry-brief__row">' +
+        '<div><div class="ry-brief__k">日报日期</div><div class="ry-brief__v">' + ui.esc(r.date) + '</div></div>' +
+        '<div><div class="ry-brief__k">状态</div><div class="ry-brief__v">' + ui.statusTag(r.status) + '</div></div>' +
+      '</div><p class="ry-brief__next">归属：<b>' + ui.esc(S.userName(r.userId)) + '</b>' +
+        (r.submittedAt ? '　提交：' + ui.esc(r.submittedAt) : '　尚未提交（草稿可多次保存）') + '</p></div>' +
+      (r.status === '已提交'
+        ? '<div class="rd-frz"><p><b>已提交并冻结：不退回、不重提。</b>日报正文、系统事实与来源在提交时冻结为快照；' +
+          '源对象后续变更不回写。如需更正，请在次日日报或由主管以建议追加说明，不在本页改历史。</p></div>'
+        : '') +
+      viewEdit(r) +
+      (r.status === '已提交' ? viewHis(r) : '') +
+      '<p class="ry-hint">' +
+        '<a href="' + RY.nav.href('h5/report/detail.html?id=' + encodeURIComponent(r.id)) + '">查看日报详情与事实来源</a></p>';
+
+    var save = ui.qs('#rd-save');
+    if (save) save.addEventListener('click', function () {
+      var v = ui.formValues(ui.qs('#rd-host'));
+      var res = S.saveReportDraft(r.id, (v.body || '').trim());
+      if (!res.ok) { ui.toast(res.msg, 'warn'); return; }
+      ui.toast('草稿已保存（可多次保存，提交只有一次）', 'ok');
+      render();
+    });
+    var sub = ui.qs('#rd-submit');
+    if (sub && !sub.hasAttribute('data-denied')) sub.addEventListener('click', function () { submitSheet(r); });
+    ui.bindDenied(document.body);
+  }
+
+  /* 一次提交：二次确认，提交后冻结，不退回、不重提。 */
+  function submitSheet(r) {
+    var text = (ui.formValues(ui.qs('#rd-host')).body || '').trim();
+    if (!text) { ui.toast('日报正文不能为空', 'warn'); return; }
+    RY.nav.sheet({
+      title: '提交日报', sub: r.date + ' · 提交只有一次',
+      body: '<div class="rd-frz"><p>提交后：正文、系统事实与来源一并冻结为快照；<b>不退回、不重提、不编辑</b>。</p></div>' +
+        '<div class="ry-hcard ry-hcard--flat"><div class="ry-hcard__body">' + ui.kv([
+          ['日报编号', '<code>' + ui.esc(r.id) + '</code>'],
+          ['日报日期', ui.esc(r.date)],
+          ['正文长度', text.length + ' 字'],
+          ['提交后可见范围', '数据范围内的主管可见；阅读状态按范围记录']
+        ]) + '</div></div>' +
+        '<p class="ry-hint">机器人不得代销售提交，主管也不能代销售提交或改写正文。</p>',
+      footer: '<button class="ry-btn" data-close>再检查一下</button><button class="ry-btn ry-btn--primary" id="rd-ok">确认提交</button>',
+      onOpen: function (host, close) {
+        host.addEventListener('click', function (e) {
+          if (!e.target.closest('#rd-ok')) return;
+          var res = S.submitReport(r.id, text);
+          if (!res.ok) { ui.toast(res.msg, 'warn'); return; }
+          close();
+          ui.toast('日报已提交并冻结快照', 'ok');
+          render();
+        });
+      }
+    });
+  }
+
+  ui.qs('#rd-scope-note').textContent =
+    '当前数据范围：' + P.dataScope(me).label +
+    '　H5 只做本人日报；他人日报在日报详情中按数据范围查看。';
+
+  render();
+})();
+</script>
+</body>
+</html>

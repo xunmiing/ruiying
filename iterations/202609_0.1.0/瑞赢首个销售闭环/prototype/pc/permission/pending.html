@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>权限待处理 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：权限待处理（失权不自动移交业务） */
+  .pd-item { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); margin-bottom: 12px; overflow: hidden; }
+  .pd-item__h { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 11px 13px; border-bottom: 1px solid var(--line-soft); background: #FBFCFC; }
+  .pd-item__t { font-size: 13.5px; font-weight: 600; }
+  .pd-item__b { padding: 11px 13px; }
+  .pd-scope { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-bottom: 10px; }
+  .pd-scope__c { border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; }
+  .pd-scope__c b { display: block; font-size: 12px; color: var(--muted); font-weight: 500; margin-bottom: 3px; }
+  .pd-scope__c--stop { background: var(--danger-soft); border-color: var(--danger-line); }
+  .pd-scope__c--keep { background: var(--brand-soft); border-color: var(--brand-line); }
+  @media (max-width: 1180px) { .pd-scope { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="pp2-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'perm.pending';
+  var canHandle = P.can('permPending.handle');
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '权限待处理',
+    subtitle: '组织或主管配置变化后，<b>停止受影响旧范围、保留未变化范围</b>；<b>不自动授予新范围</b>，<b>不自动完成业务移交</b>。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '人员与权限' }, { label: '权限待处理' }],
+    actions: '<a class="ry-btn" href="../handover/list.html">待移交</a><a class="ry-btn" href="config.html">权限配置</a>'
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#pp2-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入权限待处理',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示人员姓名、受影响范围与业务对象清单。</p>'
+    });
+    return;
+  }
+
+  var tab = ui.hash() || '待处理';
+  var STATUS = ['待处理', '处理中', '已完成'];
+
+  function list() { return S.permPendingList(); }
+
+  function render() {
+    if (STATUS.indexOf(tab) < 0) tab = '待处理';
+    var all = list(), rows = all.filter(function (p) { return p.status === tab; });
+    ui.qs('#pp2-host').innerHTML =
+      ui.banner('用户中心推送组织或主管配置变化后，瑞赢按<b>最小影响</b>处理：' +
+        '<b>只停止受影响的旧范围，保留未变化的范围</b>；' +
+        '<b>不自动授予新范围</b>——新增范围必须由 管理员（运营）在「权限配置」中显式授予，' +
+        '避免一次组织调整意外放大数据可见性。' +
+        '失权<b>不等于移交</b>：失去权限后，其名下未结束的业务对象会进入「待移交」，' +
+        '由人工指定接收人后执行，<b>不自动分配、不自动进入全国公海</b>。', 'info') +
+
+      '<div class="ry-tabs2" style="display:flex;gap:6px;margin:12px 0">' +
+        STATUS.map(function (s) {
+          var n = all.filter(function (p) { return p.status === s; }).length;
+          return '<button class="ry-btn ry-btn--sm' + (tab === s ? ' ry-btn--primary' : '') + '" data-pp2-t="' + s + '">' +
+            s + (n ? '（' + n + '）' : '') + '</button>';
+        }).join('') + '</div>' +
+
+      (rows.length ? rows.map(card).join('') : ui.stateCard('empty', {
+        title: '当前没有「' + tab + '」的权限待处理事项',
+        body: '<p>组织或主管配置变化后会自动产生待处理事项，并列出受影响的业务对象清单。</p>'
+      })) +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>处理口径</h3></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>停止范围</span><b>只停受影响的旧范围（区域／业务线），未变化范围保留</b></li>' +
+        '<li><span>新范围</span><b>不自动授予；需要 管理员（运营）在权限配置中显式授予</b></li>' +
+        '<li><span>业务归属</span><b>失权不自动移交业务；不自动进入全国公海</b></li>' +
+        '<li><span>主管关系</span><b>主管配置变化影响团队归属和队列可见范围，业务对象按源权限重新鉴权</b></li>' +
+        '<li><span>历史事实</span><b>历史操作人、工号与责任记录保留原值，不回填</b></li>' +
+        '<li><span>处理方式</span><b>开始处理 → 逐项处理 → 填写处理说明后完成</b></li>' +
+      '</ul></div></section>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-PERMPENDING</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-PERMPENDING · PC · 人员与权限</b></li>' +
+        '<li><span>依据</span><b>prd/07 §5</b></li>' +
+        '<li><span>可进入角色</span><b>销售主管/经理｜管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-68</b></li>' +
+        '<li><span>必须展示</span><b>受影响业务对象清单（类型／编号／名称）</b></li>' +
+        '<li><span>明确不做</span><b>不自动授予新范围、不自动移交业务、不自动回收至全国公海、不做权限审批流</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function card(p) {
+    var u = S.user(p.userId);
+    return '<div class="pd-item"><div class="pd-item__h">' +
+        '<div><div class="pd-item__t">' + ui.esc(p.userName) + '　<span class="ry-code">' + ui.esc(u ? u.empNo : '') + '</span></div>' +
+          '<div class="ry-hint">触发原因：' + ui.esc(p.trigger) + '　发生时间：' + ui.esc(p.at) + '</div></div>' +
+        ui.statusTag(p.status) + '</div>' +
+      '<div class="pd-item__b">' +
+        '<p style="margin:0 0 9px;font-size:12.5px">' + ui.esc(p.detail) + '</p>' +
+        '<div class="pd-scope">' +
+          '<div class="pd-scope__c pd-scope__c--stop"><b>停止的旧范围</b>' + ui.esc(p.stoppedScope) + '</div>' +
+          '<div class="pd-scope__c pd-scope__c--keep"><b>保留的范围</b>' + ui.esc(p.keptScope) + '</div>' +
+        '</div>' +
+        '<h4 style="margin:0 0 6px;font-size:12.5px">受影响的业务对象（' + (p.affected || []).length + ' 项）</h4>' +
+        ((p.affected || []).length
+          ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+            '<th style="width:150px">类型</th><th style="width:190px">编号</th><th>名称</th><th style="width:190px">建议处理</th></tr></thead><tbody>' +
+            (p.affected || []).map(function (a) {
+              return '<tr><td>' + ui.esc(a.type) + '</td><td><span class="ry-code">' + ui.esc(a.id) + '</span></td>' +
+                '<td>' + ui.esc(a.name) + '</td>' +
+                '<td class="ry-hint">' + ui.esc(suggest(a.type)) + '</td></tr>';
+            }).join('') + '</tbody></table></div>'
+          : '<p class="ry-hint">该变化不影响业务对象归属；页面和队列范围按最新权限重新计算。</p>') +
+        '<p class="ry-hint" style="margin-top:8px">' + ui.esc(p.note) + '</p>' +
+        '<div class="ry-acts-row" style="margin-top:9px">' +
+          (p.status === '待处理' && canHandle ? '<button class="ry-btn ry-btn--primary ry-btn--sm" data-pp2-go="' + p.id + '|开始处理">开始处理</button>' : '') +
+          (p.status === '处理中' && canHandle
+            ? '<button class="ry-btn ry-btn--sm" data-pp2-ho="' + p.id + '">去创建待移交</button>' +
+              '<button class="ry-btn ry-btn--primary ry-btn--sm" data-pp2-go="' + p.id + '|完成">完成处理</button>'
+            : '') +
+          (p.status === '已完成' ? '<span class="ry-hint">处理说明：' + ui.esc(p.note || '—') + '　完成时间：' + ui.esc(p.finishedAt || '—') + '</span>' : '') +
+          '<span class="ry-hint">' + (canHandle ? '处理动作会写入审计' : '当前身份只有查看权限') + '</span>' +
+        '</div>' +
+      '</div></div>';
+  }
+
+  function suggest(type) {
+    if (type.indexOf('客户经营') >= 0) return '在「待移交」指定接收人后移交；确定不再经营时停止关系，最后一条有效关系停止后客户自动入池';
+    if (type.indexOf('线索') >= 0) return '在「待移交」移交；无合适接收人时保持待移交，不自动回收';
+    if (type.indexOf('商机') >= 0) return '在「待移交」移交；需接收人具备对应业务线资格';
+    if (type.indexOf('任务') >= 0) return '在「待移交」移交，失效任务不计入待办';
+    return '人工确认后处理';
+  }
+
+  function bind() {
+    ui.qsa('[data-pp2-t]').forEach(function (b) {
+      b.addEventListener('click', function () { tab = b.getAttribute('data-pp2-t'); window.location.hash = tab; render(); });
+    });
+    ui.qsa('[data-pp2-go]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var parts = b.getAttribute('data-pp2-go').split('|'), id = parts[0], act = parts[1];
+        if (act === '开始处理') {
+          var r = S.permPendingAct(id, '开始处理');
+          ui.toast(r.ok ? '已开始处理，请逐项确认受影响对象。' : r.msg, r.ok ? 'success' : 'warn');
+          render(); return;
+        }
+        ui.confirm({
+          title: '完成权限待处理',
+          message: '<p>完成前请确认：受影响的业务对象<b>已经通过「待移交」处理，或已停止确定不再经营的关系</b>。</p>' +
+            '<p class="ry-hint">完成本事项<b>不会自动移交任何业务对象</b>：' +
+            '如果还有对象无人负责，它们会继续留在「待移交」中等待人工指定接收人。' +
+            '历史操作记录保留原人员与工号。</p>',
+          requireReason: true, reasonLabel: '处理说明', reasonPlaceholder: '如：已发起移交作业 HO-0001，3 项客户经营责任已指定接收人',
+          confirmText: '确认完成',
+          onConfirm: function (reason) {
+            var r = S.permPendingAct(id, '完成', reason);
+            ui.toast(r.ok ? '已标记完成。' : r.msg, r.ok ? 'success' : 'warn');
+            render();
+          }
+        });
+      });
+    });
+    ui.qsa('[data-pp2-ho]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        e.preventDefault();
+        window.location.href = '../handover/list.html?user=' + encodeURIComponent(b.getAttribute('data-pp2-ho'));
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

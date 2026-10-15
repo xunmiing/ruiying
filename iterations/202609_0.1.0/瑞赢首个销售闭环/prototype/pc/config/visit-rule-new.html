@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=1280"><title>新增拜访规则 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css"><link rel="stylesheet" href="../../assets/css/pc-common.css"><link rel="stylesheet" href="../../assets/css/config-rule-ui.css">
+<style>.vr-scope{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0 20px}.vr-scope>div{border:1px solid var(--line);border-radius:8px;padding:10px}.vr-scope b,.vr-check{display:block;margin-bottom:8px}.vr-check{font-size:12px}.vr-params{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}@media(max-width:1100px){.vr-scope{grid-template-columns:repeat(2,1fr)}}</style></head>
+<body data-root="../../"><div class="ry-app"><aside class="ry-side" id="ry-side"></aside><div class="ry-main"><header class="ry-top" id="ry-top"></header><div class="ry-head" id="ry-head"></div><main class="ry-page" id="ry-page"><div id="vr-host"></div></main></div></div>
+<script src="../../assets/js/demo-data.js"></script><script src="../../assets/js/prototype-store.js"></script><script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script><script src="../../assets/js/common-actions.js"></script><script src="../../assets/js/navigation.js"></script><script src="../../assets/js/page-manifest.js"></script><script src="../../assets/js/visit-rule-form.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store;
+  RY.nav.shell({ nav: 'cfg.visit', title: '新增拜访规则',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '拜访规则', href: 'pc/config/visit-rule.html' }, { label: '新增规则' }] });
+  var guard = RY.perm.guard('cfg.visit', null, null);
+  if (!guard.ok || !RY.perm.can('visitRule.edit')) { ui.qs('#vr-host').innerHTML = ui.stateCard('no-permission', { title: '无权新增拜访规则' }); return; }
+  ui.qs('#vr-host').innerHTML = '<div class="cr-hero"><div><div class="cr-hero__eyebrow">新增 · B 类规则</div><h2>新建拜访规则</h2><p>先填写适用范围和异常提示参数，再保存草稿。</p></div></div>' +
+    RY.visitRuleForm.render({ radius: 500, accuracy: 50, duration: 10, imageRequired: false }, true) +
+    '<div class="cr-toolbar"><a class="ry-btn" href="visit-rule.html">取消</a><span class="cr-toolbar__note"></span><button type="button" data-pcn-rule="cfgVisitVersion"></button><button class="ry-btn ry-btn--primary" id="vr-create">保存草稿</button></div>';
+  ui.qs('#vr-create').onclick = function () {
+    var data = RY.visitRuleForm.read(ui.qs('#vr-host'));
+    if (!data.name || !(data.radius > 0) || !(data.accuracy > 0) || !(data.duration > 0)) { ui.toast('名称和三个正数参数均必填。', 'warn'); return; }
+    data.scope = RY.visitRuleForm.scopeText(data);
+    var result = S.visitRuleCreateDraft(data);
+    if (!result.ok) { ui.toast(result.msg, 'warn'); return; }
+    location.href = 'visit-rule-detail.html?id=' + encodeURIComponent(result.item.id);
+  };
+})();
+</script><script src="../../assets/js/pc-page-notes.js"></script>
+</body></html>

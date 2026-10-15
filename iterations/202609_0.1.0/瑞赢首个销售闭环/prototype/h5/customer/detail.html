@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>客户详情 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：客户详情（概览 / 经营关系 / 联系人 / 客户关系网 / 地址 / 公海最小摘要）。 */
+  .cd-hd { display: flex; flex-direction: column; gap: 6px; }
+  .cd-hd__t { font-size: 17px; font-weight: 600; line-height: 1.4; }
+  .cd-hd__tags { display: flex; gap: 5px; flex-wrap: wrap; }
+  .cd-sec { display: none; }
+  .cd-sec.is-on { display: block; }
+  .cd-rel { border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px; background: var(--surface); }
+  .cd-rel__t { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .cd-rel__t b { font-size: 13.5px; }
+  .cd-rel__m { font-size: 11.5px; color: var(--muted); line-height: 1.75; margin-top: 6px; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom" id="cd-body">
+  <div id="cd-host"></div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm, D = RY.seed.dicts, me = S.currentUser();
+
+  var PAGE = 'h5.customer.detail';
+  var id = ui.q('id');
+  var c = id ? S.customer(id) : null;
+
+  RY.nav.h5shell({
+    title: c ? c.name : '客户详情',
+    sub: '客户与联系人主数据',
+    back: 'h5/customer/list.html',
+    nav: 'customer',
+    tabbar: false   /* 详情页隐藏底部五入口，避免与底部操作栏叠加 */
+  });
+
+  /* 进入即重新鉴权：无权限时不展示标题、摘要、数量与任何字段。
+     缺少 id 或对象不存在时不能按「有权限」继续渲染——否则会读到空对象并抛出未捕获错误。 */
+  var g = c ? P.guard(PAGE, 'customers', id)
+            : { ok: false, kind: 'unavailable', reason: '缺少客户标识，或该客户不存在、已被合并到其他主记录。' };
+  if (!g.ok) {
+    ui.qs('#cd-host').innerHTML = ui.stateCard(g.kind, {
+      title: g.kind === 'no-permission' ? '没有该客户的访问权限' : '该客户当前不可用',
+      body: '<p>' + ui.esc(g.reason) + '</p>' +
+            '<p class="ry-hint">无权数据不返回结果、数量、摘要与标题；也不展示被隐藏的关系数量。</p>' +
+            (g.kind === 'unavailable' && id ? '<p class="ry-hint">对象合并后旧链接会跳转主记录；对主记录无权时不泄露内容。</p>' : ''),
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/customer/list.html') + '">返回客户列表</a>'
+    });
+    return;
+  }
+
+  var ROLES_TAB = [
+    { k: 'ov', n: '概览' },
+    { k: 'rel', n: '经营关系' },
+    { k: 'con', n: '联系人' },
+    { k: 'net', n: '关系网' },
+    { k: 'adr', n: '地址' },
+    { k: 'pool', n: '公海' }
+  ];
+
+  function kv(list) {
+    return '<ul class="ry-kv ry-kv--tight">' + list.map(function (r) {
+      return '<li><span>' + ui.esc(r[0]) + '</span><b>' + (r[1] == null || r[1] === '' ? '—' : r[1]) + '</b></li>';
+    }).join('') + '</ul>';
+  }
+
+  /* ---------------------------------------------------------- 各视图 */
+
+  function viewOverview() {
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>客户资料</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">工商信息来自外部查询服务</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        '<div class="cd-hd"><div class="cd-hd__t">' + ui.esc(c.name) + '</div>' +
+        '<div class="cd-hd__tags">' + ui.valueTag(c.value) + ' ' + ui.statusTag(c.status) + ' ' +
+          ui.statusTag(c.identity) + ' ' +
+          ui.tag(c.type, 'muted') + '</div></div>' +
+        '<div style="margin-top:12px">' + kv([
+          ['别名', ui.esc(c.alias || '')],
+          ['统一社会信用代码', c.creditCode ? ui.esc(c.creditCode) : ui.tag('缺失', 'warn')],
+          ['法定代表人', ui.esc(c.legalPerson)],
+          ['注册资本', ui.esc(c.regCapital)],
+          ['成立日期', ui.esc(c.foundDate)],
+          ['所属行业', ui.esc(c.industry)],
+          ['来源', ui.esc(c.source)],
+          ['有效经营负责人', ui.esc(S.activeRelationsOf(c.id).map(function (r) { return S.userName(r.owner); }).filter(function (x, i, a) { return a.indexOf(x) === i; }).join('、') || '全国公海')]
+        ]) + '</div>' +
+        '<p class="ry-read" style="margin-top:10px">' + ui.esc(c.businessScope || '经营范围暂无') + '</p>' +
+      '</div></div>' +
+
+      /* 价值分层是销售经营标签：销售直接设置，然后进入主管轻复核。 */
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>价值分层</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">销售调整 · 主管轻复核</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        kv([
+          ['当前分层', ui.valueTag(c.value)],
+          ['复核状态', ui.esc(c.valueReview || '未复核')],
+          ['最近调整', ui.esc(c.valueAdjustedAt || '—')],
+          ['复核人', ui.esc(c.valueReviewer || '—')]
+        ]) +
+        '<p class="ry-hint">设置或调整后状态为“待复核”；首次设置理由选填，再次调整理由必填。</p>' +
+        '<div class="ry-acts-row" style="margin-top:10px">' +
+          ui.actionBtn('customer.grade', '调整价值分层', ' id="cd-submit-value"') +
+          ui.actionBtn('customer.identity', '调整身份核验', ' id="cd-identity"') +
+        '</div>' +
+      '</div></div>';
+  }
+
+  function viewRelations() {
+    var rels = S.relationsOf(c.id).filter(function (r) { return P.inScope('relation', r); });
+    return '<div class="ry-sec-title">经营关系 <span class="h5-sec-note">共 ' + rels.length + ' 条</span></div>' +
+      (rels.length ? rels.map(function (r) {
+        return '<div class="cd-rel">' +
+          '<div class="cd-rel__t"><b>' + ui.esc(S.businessLineName(r.businessLine)) + '</b>' + ui.statusTag(r.status) + '</div>' +
+          '<div class="cd-rel__m">' +
+            '区域：' + ui.esc(S.regionName(r.region)) + '<br>' +
+            '负责人：' + ui.esc(r.owner ? S.userName(r.owner) : '未分配') +
+            '　协同人：' + ui.esc((r.collaborators || []).length ? r.collaborators.map(S.userName).join('、') : '无') + '<br>' +
+            '最近活动：' + ui.esc(r.lastActivityAt || '暂无') +
+            (r.protectUntil ? '　保护期至 ' + ui.esc(r.protectUntil) : '') +
+          '</div><div class="ry-acts-row">' + (r.owner === me.id && r.status === '有效' ? ui.actionBtn('relation.stop', '停止经营', ' data-rel-stop="' + r.id + '"') : '') + '</div>' +
+        '</div>';
+      }).join('') : ui.empty('当前客户暂无可查看的经营关系。', '')) +
+      '<div class="ry-acts-row">' + ui.actionBtn('relation.create', '建立经营关系', ' id="h5-rel-new"') + '</div>';
+  }
+
+  function viewContacts() {
+    /* 联系人不自带 customerId：客户—联系人关系由 contactRelations 承载。 */
+    var rels = S.all('contactRelations').filter(function (r) {
+      return r.customerId === c.id && r.status === '有效';
+    });
+    var list = rels.map(function (r) {
+      var ct = S.contact(r.contactId);
+      return ct && P.inScope('contact', ct) ? { ct: ct, rel: r } : null;
+    }).filter(Boolean);
+    return '<div class="ry-sec-title">联系人 <span class="h5-sec-note">共 ' + list.length + ' 人</span></div>' +
+      (list.length ? '<div class="ry-hlist"><ul>' + list.map(function (x) {
+        var ct = x.ct;
+        var plain = P.canViewPlainPhone()
+          ? '<a class="ry-btn" href="tel:' + ui.esc(ct.phonePlain) + '">拨号</a>'
+          : '<span class="ry-btn is-off" data-denied="1" title="' +
+              ui.esc(P.whyNot('contact.plain') || '未获字段级明文授权') + '">拨号<i class="ry-btn__lock">无权限</i></span>';
+        return '<li><div class="ry-hrow">' +
+          '<div class="ry-hrow__top"><span class="ry-hrow__t">' + ui.esc(ct.name) + '</span>' +
+            '<span class="ry-hrow__tags">' + ui.tag(x.rel.title || ct.title, 'muted') +
+            (x.rel.primary ? ' ' + ui.tag('主要联系人', 'info') : '') + '</span></div>' +
+          '<div class="ry-hrow__meta">' +
+            '<span>手机 <b>' + ui.esc(ct.phone) + '</b></span>' +
+            '<span>邮箱 <b>' + ui.esc(ct.email) + '</b></span>' +
+          '</div>' +
+          '<div class="ry-hrow__meta">' +
+            '<span>在本客户角色 <b>' + ui.esc((x.rel.roles || []).join('、') || '—') + '</b></span>' +
+            '<span>部门 <b>' + ui.esc(x.rel.dept || '—') + '</b></span>' +
+          '</div>' +
+          '<div class="ry-hrow__meta"><span>最近联系 <b>' + ui.esc(ct.lastContactAt || '暂无') + '</b></span></div>' +
+          '<div class="ry-hrow__foot"><a class="ry-btn" href="' +
+            RY.nav.href('h5/contact/detail.html?id=' + encodeURIComponent(ct.id)) + '">详情</a>' + plain + '</div>' +
+        '</div></li>';
+      }).join('') + '</ul></div>' : ui.empty('当前客户暂无可查看的联系人。', '')) +
+      '<p class="ry-hint">号码默认脱敏。明文查看与导出属于两项互相独立的授权动作。</p><div class="ry-acts-row">' + ui.actionBtn('contact.create', '新增联系人', ' id="h5-contact-new"') + '</div>';
+  }
+
+  function viewNetwork() {
+    var list = S.all('customerNetworks').filter(function (r) { return r.sourceId === c.id || r.targetId === c.id; });
+    return '<div class="ry-sec-title">客户关系网 <span class="h5-sec-note">共 ' + list.length + ' 条</span></div>' +
+      (list.length ? list.map(function (r) {
+        var otherId = r.sourceId === c.id ? r.targetId : r.sourceId, other = S.customer(otherId);
+        return '<div class="cd-rel"><div class="cd-rel__t"><b>' + ui.esc(other ? other.name : '—') + '</b><span>' + ui.tag(r.type, 'brand') + ' ' + ui.tag(r.label) + '</span></div>' +
+          '<div class="cd-rel__m"><code>' + ui.esc(r.id) + '</code>　备注：' + ui.esc(r.note || '—') + '</div></div>';
+      }).join('') : ui.empty('当前客户暂无客户关系。', '')) +
+      '<p class="ry-hint">0.1 只维护关联客户、关系类型、关系标签和备注，不建设股权穿透与复杂审批。</p>';
+  }
+
+  function viewAddresses() {
+    var list = S.arr('addresses').filter(function (x) {
+      return x.ownerType === '客户' && x.ownerId === c.id && P.inScope('customer', c);
+    });
+    return '<div class="ry-sec-title">地址 <span class="h5-sec-note">共 ' + list.length + ' 条</span></div>' +
+      (list.length ? '<div class="ry-hlist"><ul>' + list.map(function (x) {
+        return '<li><div class="ry-hrow">' +
+          '<div class="ry-hrow__top"><span class="ry-hrow__t">' + ui.esc(x.type) + '</span>' +
+            '</div>' +
+          '<div class="ry-hrow__meta"><span>' + ui.esc(x.region + ' ' + x.detail) + '</span></div>' +
+          '<div class="ry-hrow__meta"><span>来源 <b>' + ui.esc(x.source) + '</b></span>' +
+            '<span>登记 <b>' + ui.esc(x.createdAt) + '</b></span></div><div class="ry-hrow__foot"><button class="ry-btn" data-addr-edit="' + x.id + '">编辑</button>' + (x.type === '注册地址' ? '' : '<button class="ry-btn" data-addr-remove="' + x.id + '">移除</button>') + '</div>' +
+        '</div></li>';
+      }).join('') + '</ul></div>' : ui.empty('当前客户暂无已登记地址。', '')) + '<div class="ry-acts-row">' + ui.actionBtn('customer.address.edit', '新增地址', ' id="h5-addr-new"') + '</div>';
+  }
+
+  /* 全国公海：H5 只展示授权范围内的最小摘要，单条操作，不提供批量。 */
+  function viewPool() {
+    var recs = S.poolRecords().filter(function (r) { return r.customerId === c.id; });
+    if (!recs.length) {
+      return ui.empty('该客户当前没有公海记录。', '') +
+        '<p class="ry-hint">全国公海是唯一固定对象，不区分区域公海；停止最后一条有效经营关系后由系统自动入池。</p>';
+    }
+    return '<div class="ry-sec-title">全国公海记录 <span class="h5-sec-note">最小摘要</span></div>' +
+      recs.map(function (r) {
+        return '<div class="cd-rel">' +
+          '<div class="cd-rel__t"><b>' + ui.esc(r.customerName) + '</b>' + ui.statusTag(r.status) + '</div>' +
+          '<div class="cd-rel__m">' +
+            '当前经营状态：无有效经营关系<br>' +
+            '进入时间：' + ui.esc(r.entryAt) + '　进入原因：' + ui.esc(r.entryReason) + '<br>' +
+            '原负责人：' + ui.esc(r.prevOwner ? S.userName(r.prevOwner) : '—') +
+            (r.protectUntil ? '　保护期至 ' + ui.esc(r.protectUntil) : '') +
+          '</div>' +
+          (r.claimable ? '<div class="ry-acts-row" style="margin-top:8px"><a class="ry-btn" href="' +
+            RY.nav.href('h5/customer/pool.html') + '">到公海页面认领</a></div>' : '') +
+        '</div>';
+      }).join('');
+  }
+
+  var VIEWS = { ov: viewOverview, rel: viewRelations, con: viewContacts, net: viewNetwork, adr: viewAddresses, pool: viewPool };
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function render(active) {
+    active = active || 'ov';
+    var tabbar = '<div class="ry-fbar" style="position:static;margin-bottom:10px"><div class="ry-fbar__seg" style="flex:1">' +
+      ROLES_TAB.map(function (t) {
+        return '<button type="button" data-tab="' + t.k + '"' + (t.k === active ? ' class="is-on"' : '') + '>' + t.n + '</button>';
+      }).join('') + '</div></div>';
+
+    ui.qs('#cd-host').innerHTML = tabbar + '<div id="cd-sec">' + VIEWS[active]() + '</div>' +
+      '<div class="ry-hcard ry-hcard--flat" style="margin-top:14px"><div class="ry-hcard__head"><h3>本页契约</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">PG-CUS-DETAIL</span></div></div>' +
+      '<div class="ry-hcard__body">' + kv([
+        ['页面契约', 'PG-CUS-DETAIL · H5 · 客户和联系人'],
+        ['依据', 'prd/01 §8～§12；00 §5.1'],
+        ['覆盖验收', 'AC-41 AC-42'],
+        ['本页视图', '概览、经营关系、联系人、客户关系网、地址、全国公海最小摘要'],
+        ['价值与核验', '价值由销售调整后轻复核；身份核验由独立动作权限控制'],
+        ['资料修改', '按编辑权限直接生效，所有修改统一记录在历史']
+      ]) + '</div></div>';
+
+    ui.qs('#cd-host').querySelectorAll('[data-tab]').forEach(function (b) {
+      b.addEventListener('click', function () { render(b.getAttribute('data-tab')); });
+    });
+
+    var sv = ui.qs('#cd-submit-value');
+    if (sv) sv.addEventListener('click', submitValue);
+    var si = ui.qs('#cd-identity');
+    if (si) si.addEventListener('click', changeIdentity);
+    var rn = ui.qs('#h5-rel-new'); if (rn) rn.addEventListener('click', createRelationH5);
+    ui.qsa('[data-rel-stop]').forEach(function (b) { b.addEventListener('click', function () { stopRelationH5(b.getAttribute('data-rel-stop')); }); });
+    var cn = ui.qs('#h5-contact-new'); if (cn) cn.addEventListener('click', createContactH5);
+    var an = ui.qs('#h5-addr-new'); if (an) an.addEventListener('click', function () { editAddressH5(null); });
+    ui.qsa('[data-addr-edit]').forEach(function (b) { b.addEventListener('click', function () { editAddressH5(S.find('addresses', b.getAttribute('data-addr-edit'))); }); });
+    ui.qsa('[data-addr-remove]').forEach(function (b) { b.addEventListener('click', function () { removeAddressH5(b.getAttribute('data-addr-remove')); }); });
+    ui.bindMasked(document.body);
+  }
+
+  function createRelationH5() {
+    var regions = (me.region || []).map(function (code) { return { value: code, label: S.regionName(code) }; });
+    var lines = (me.businessLine || []).map(function (code) { return { value: code, label: S.businessLineName(code) }; });
+    RY.nav.sheet({ title: '建立经营关系', sub: '主动建立默认本人主负责，不产生保护期', body: ui.field('区域', ui.select('region', regions, regions[0] ? regions[0].value : ''), '', true) + ui.field('业务线', ui.select('line', lines, lines[0] ? lines[0].value : ''), '', true), footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="rel-create-ok">建立</button>', onOpen: function (host, close) { ui.qs('#rel-create-ok', host).addEventListener('click', function () { var v = ui.formValues(host); var r = S.createRelation(c.id, { region: v.region, businessLine: v.line, owner: me.id, collaborators: [] }); if (!r.ok) { ui.toast(r.reason, 'warn'); return; } close(); ui.toast('经营关系已建立。', 'ok'); render('rel'); }); } });
+  }
+
+  function stopRelationH5(id) {
+    RY.nav.sheet({ title: '停止经营', sub: '若停止后无其他有效关系，客户将自动进入全国公海', body: ui.field('停止原因', ui.textarea('reason', '', '必填'), '', true), footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="rel-stop-ok">确认停止</button>', onOpen: function (host, close) { ui.qs('#rel-stop-ok', host).addEventListener('click', function () { var reason = ui.formValues(host).reason; if (!reason) { ui.toast('请填写停止原因。', 'warn'); return; } S.stopOperating(id, reason); close(); ui.toast(S.activeRelationsOf(c.id).length ? '已停止经营，客户仍有其他有效关系。' : '已停止经营，客户已自动进入全国公海。', 'ok'); render('rel'); }); } });
+  }
+
+  function createContactH5() {
+    function createNew(v, note) { var ct = S.createContact({ name: v.name, phonePlain: v.phone, title: v.title, org: c.name }); if (note) S.audit('联系人', ct.id, '手机号重复后继续创建', '—', note); S.addContactRelation(ct.id, c.id, [v.role], '', v.title, false); ui.closeAll(); ui.toast('联系人已创建并关联。', 'ok'); render('con'); }
+    RY.nav.sheet({ title: '新增联系人', sub: '将同时建立与当前客户的关系', body: ui.field('姓名', ui.input('name', '', ''), '', true) + ui.field('手机号', ui.input('phone', '', '命中时强提示复用')) + ui.field('客户角色', ui.select('role', D.contactRole, D.contactRole[0]), '', true) + ui.field('职务', ui.input('title', '', '')), footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="contact-new-ok">保存</button>', onOpen: function (host, close) { ui.qs('#contact-new-ok', host).addEventListener('click', function () { var v = ui.formValues(host); if (!v.name) { ui.toast('请填写姓名。', 'warn'); return; } var dup = v.phone ? S.all('contacts').filter(function (x) { return x.phonePlain === v.phone; })[0] : null; if (!dup) { createNew(v, ''); return; } ui.modal({ title: '手机号命中已有联系人', size: 'sm', body: '<p>建议复用 ' + ui.esc(dup.name) + '（' + dup.id + '）。若确认不是同一人，说明后可继续创建。</p><label class="ry-field"><span class="ry-field__label">继续创建说明</span><textarea class="ry-input" id="h5-contact-dup-note" rows="3"></textarea></label>', footer: '<button class="ry-btn" id="h5-contact-reuse">复用已有联系人</button><button class="ry-btn ry-btn--primary" id="h5-contact-create-anyway">继续新建</button>', onOpen: function (mh) { ui.qs('#h5-contact-reuse', mh).addEventListener('click', function () { S.addContactRelation(dup.id, c.id, [v.role], '', v.title, false); ui.closeAll(); ui.toast('已复用已有联系人。', 'ok'); render('con'); }); ui.qs('#h5-contact-create-anyway', mh).addEventListener('click', function () { var note = ui.qs('#h5-contact-dup-note', mh).value.trim(); if (!note) { ui.toast('请填写继续新建说明。', 'warn'); return; } createNew(v, note); }); } }); }); } });
+  }
+
+  function editAddressH5(a) {
+    var isReg = a && a.type === '注册地址';
+    if (isReg && !P.can('customer.edit.highImpact')) { ui.toast('当前无注册地址编辑权限，请联系有权限的主管或销售运营。', 'warn'); return; }
+    RY.nav.sheet({ title: a ? '编辑地址' : '新增地址', body: ui.field('类型', ui.select('type', isReg ? ['注册地址'] : ['办公地址', '经营地址', '项目／服务地址'], a ? a.type : '办公地址'), '', true) + ui.field('区域文本', ui.input('region', a ? a.region : '', '')) + ui.field('详细地址', ui.textarea('detail', a ? a.detail : '', ''), '', true), footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="address-save-ok">保存</button>', onOpen: function (host, close) { ui.qs('#address-save-ok', host).addEventListener('click', function () { var v = ui.formValues(host); if (!v.detail) { ui.toast('请填写详细地址。', 'warn'); return; } if (a) { var old = a.region + ' ' + a.detail; a.type = v.type; a.region = v.region; a.detail = v.detail; S.audit('客户', c.id, '修改字段·' + v.type, old, v.region + ' ' + v.detail); S.save(); } else S.createAddress({ ownerType: '客户', ownerId: c.id, type: v.type, region: v.region, detail: v.detail, source: '人工录入' }); close(); ui.toast('地址已保存。', 'ok'); render('adr'); }); } });
+  }
+
+  function removeAddressH5(id) { var r = S.removeAddress(id, 'H5 用户移除'); if (!r.ok) { ui.toast(r.reason, 'warn'); return; } ui.toast('地址已移除。', 'ok'); render('adr'); }
+
+  /* 销售直接调整价值，然后进入轻复核。 */
+  function submitValue() {
+    var opts = ['', '战略', '重点', '普通', '机会'];
+    RY.nav.sheet({
+      title: '调整客户价值', sub: '提交后待主管轻复核',
+      body: '<p class="ry-hint">首次设置理由选填；已有分层后再次调整，理由必填。</p>' +
+        '<div class="ry-field__label">申请调整为</div>' +
+        '<div class="ry-fbar__seg" style="margin-bottom:12px">' + opts.map(function (o) {
+          return '<button type="button" data-v="' + o + '">' + (o || '未分级') + '</button>';
+        }).join('') + '</div>' +
+        '<div class="ry-field"><label class="ry-field__label">调整理由' + (c.value ? '（必填）' : '（选填）') + '</label>' +
+        '<textarea class="ry-input" id="cd-note" rows="3" placeholder="说明客户当前经营状况与调整依据"></textarea></div>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="cd-do">提交变更</button>',
+      onOpen: function (host, close) {
+        var picked = c.value || null;
+        host.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-v]');
+          if (b) {
+            picked = b.getAttribute('data-v');
+            b.parentNode.querySelectorAll('button').forEach(function (x) { x.classList.remove('is-on'); });
+            b.classList.add('is-on');
+            return;
+          }
+          if (e.target.closest('#cd-do')) {
+            var note = ui.qs('#cd-note').value.trim();
+            if (picked === null) { ui.toast('请选择目标分层', 'warn'); return; }
+            if (c.value && !note) { ui.toast('再次调整时理由必填', 'warn'); return; }
+            S.setCustomerValue(c.id, picked, note);
+            close();
+            ui.toast('价值分层已更新，等待主管复核。', 'ok');
+            render('ov');
+          }
+        });
+      }
+    });
+  }
+
+  function changeIdentity() {
+    RY.nav.sheet({
+      title: '调整身份核验', sub: '独立动作权限',
+      body: '<div class="ry-field__label">目标状态</div><div class="ry-fbar__seg" id="identity-opts">' +
+        ['未核验', '已核验', '需复核'].map(function (x) { return '<button type="button" data-i="' + x + '"' + (x === c.identity ? ' class="is-on"' : '') + '>' + x + '</button>'; }).join('') +
+        '</div><label class="ry-field"><span class="ry-field__label">说明（选填）</span><textarea class="ry-input" id="identity-note" rows="3"></textarea></label>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="identity-save">保存</button>',
+      onOpen: function (host, close) {
+        var picked = c.identity;
+        host.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-i]');
+          if (b) { picked = b.getAttribute('data-i'); host.querySelectorAll('[data-i]').forEach(function (x) { x.classList.remove('is-on'); }); b.classList.add('is-on'); }
+          if (e.target.closest('#identity-save')) { S.setCustomerIdentity(c.id, picked, ui.qs('#identity-note').value.trim()); close(); ui.toast('身份核验状态已更新。', 'ok'); render('ov'); }
+        });
+      }
+    });
+  }
+
+  render('ov');
+})();
+</script>
+</body>
+</html>

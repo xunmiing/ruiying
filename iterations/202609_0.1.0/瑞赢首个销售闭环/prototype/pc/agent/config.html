@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>Agent 配置 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：Agent 配置（单页面四页签，不得拆成四个一级页面） */
+  .ac-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; overflow-x: auto; }
+  .ac-tab { padding: 9px 15px; border: none; border-bottom: 2px solid transparent; background: none;
+    font: inherit; font-size: 13px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+  .ac-tab.is-on { color: var(--brand-ink); border-bottom-color: var(--brand); font-weight: 600; }
+  .ac-abil { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .ac-card { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); padding: 12px 13px; }
+  .ac-card.is-off { background: var(--surface-2); }
+  .ac-card__h { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
+  .ac-card__n { font-size: 13.5px; font-weight: 600; }
+  .ac-card__c { font-size: 11.5px; color: var(--muted); }
+  .ac-card__k { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 6px; font-size: 12.5px; line-height: 1.8; }
+  .ac-card__k > span { color: var(--muted); }
+  .ac-src { font-size: 12px; }
+  .ac-pilot { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  @media (max-width: 1180px) { .ac-abil, .ac-pilot { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="ac-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var PAGE = 'agent.config';
+  var canEdit = RY.perm.can('agentConfig.edit');
+  var TABS = [['abil', '能力'], ['src', '来源'], ['pilot', '试点范围'], ['pregen', '预生成']];
+  var tab = ui.hash() || 'abil';
+
+  RY.nav.shell({
+    nav: 'agent.config',
+    title: 'Agent 配置',
+    subtitle: '能力｜来源｜试点范围｜预生成，<b>单页面四页签</b>。配置<b>不能取消人工确认</b>。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: 'Agent 配置' }]
+  });
+
+  var g = RY.perm.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#ac-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入 Agent 配置',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示能力清单、来源与试点范围。</p>'
+    });
+    return;
+  }
+
+  function cfg() { return S.configA('agentConfig') || {}; }
+  function save(patch, reason) {
+    var r = S.configASave('agentConfig', patch, reason);
+    if (!r.ok) { ui.toast(r.msg, 'warn'); return false; }
+    ui.toast('Agent 配置已保存生效。', 'success'); render(); return true;
+  }
+
+  function render() {
+    if (TABS.map(function (t) { return t[0]; }).indexOf(tab) < 0) tab = 'abil';
+    var c = cfg();
+    var uid = '';
+    var out =
+      ui.banner('Agent 的配置能力只决定<b>能不能用、能用哪些来源、在哪个范围试点、什么时候预生成</b>。' +
+        '所有配置都<b>不能取消人工确认</b>：Agent 产出永远是候选，必须由人确认后才写入正式客户、联系人、线索、商机、任务与正式拜访。' +
+        '关闭某个来源只是不再从该来源取内容，<b>不改变已经确认过的正式事实</b>。', 'info') +
+
+      '<div class="ac-tabs" id="ac-tabs" style="margin-top:12px">' + TABS.map(function (t) {
+        return '<button class="ac-tab' + (tab === t[0] ? ' is-on' : '') + '" data-t="' + t[0] + '">' + t[1] + '</button>';
+      }).join('') + '</div>' +
+      '<div id="ac-pane"></div>';
+
+    ui.qs('#ac-host').innerHTML = out;
+    ui.qs('#ac-pane').innerHTML = ({
+      abil: paneAbil, src: paneSrc, pilot: panePilot, pregen: panePregen
+    })[tab](c);
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  /* ---------------------------------------------------------- 能力 */
+
+  function paneAbil(c) {
+    return ui.section('能力清单',
+      '<div class="ac-abil">' + (c.abilities || []).map(function (a) {
+        return '<div class="ac-card' + (a.enabled ? '' : ' is-off') + '">' +
+          '<div class="ac-card__h"><div><div class="ac-card__n">' + ui.esc(a.name) + '</div>' +
+            '<div class="ac-card__c">' + ui.esc(a.code) + '</div></div>' +
+            (a.enabled ? ui.tag('启用', 'ok') : ui.tag('停用', 'muted')) + '</div>' +
+          '<div class="ac-card__k">' +
+            '<span>必需来源</span><b>' + ui.esc((a.requiredSources || []).join('、') || '无') + '</b>' +
+            '<span>可选来源</span><b>' + ui.esc((a.optionalSources || []).join('、') || '无') + '</b>' +
+            '<span>试点范围</span><b>' + (a.scopeRequired ? '必须限定试点范围' : '不限') + '</b>' +
+            '<span>预生成</span><b>' + (a.pregen ? '参与定时预生成' : '不预生成，按需触发') + '</b>' +
+          '</div>' +
+          '<p class="ry-hint" style="margin:7px 0 0">' + ui.esc(a.note || '') + '</p>' +
+          '<div class="ry-acts-row" style="margin-top:9px">' +
+            (canEdit ? '<button class="ry-btn ry-btn--sm" data-ac-tog="' + a.code + '">' + (a.enabled ? '停用能力' : '启用能力') + '</button>' : '') +
+            '<span class="ry-hint">' + (a.enabled ? '停用后入口隐藏且任务不生成' : '启用后需确认试点范围包含使用者') + '</span>' +
+          '</div></div>';
+      }).join('') + '</div>' +
+      '<div class="ry-divider"></div>' +
+      '<h4 style="margin:0 0 6px;font-size:13px">不可配置的硬约束</h4>' +
+      '<ul class="ry-kv ry-kv--tight">' +
+        '<li><span>人工确认</span><b>不可关闭：任何候选都必须由人确认后才写入正式对象</b></li>' +
+        '<li><span>写入对象</span><b>Agent 不直接生成正式客户、联系人、线索或商机</b></li>' +
+        '<li><span>对象 AI</span><b>只读摘要与问答，不写正式字段</b></li>' +
+        '<li><span>失败降级</span><b>来源不可用或处理失败时降级为手工录入，不留半成品</b></li>' +
+        '<li><span>权限叠加</span><b>Agent 只能读取「发起人权限 ∩ 服务身份权限」，不扩大任何人的可见范围</b></li>' +
+      '</ul>',
+      (c.abilities || []).filter(function (a) { return a.enabled; }).length + ' 个能力启用');
+  }
+
+  /* ---------------------------------------------------------- 来源 */
+
+  function paneSrc(c) {
+    return ui.section('输入来源',
+      '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+        '<th>来源</th><th>编码</th><th>性质</th><th>接入状态</th><th>说明</th><th style="width:130px">操作</th>' +
+      '</tr></thead><tbody>' + (c.sources || []).map(function (s) {
+        var notIn = s.kind === '未接入';
+        return '<tr>' +
+          '<td><span class="ry-cellname ac-src">' + ui.esc(s.name) + '</span></td>' +
+          '<td><span class="ry-code">' + ui.esc(s.code) + '</span></td>' +
+          '<td>' + ui.tag(s.kind, s.kind === '必需' ? 'brand' : (notIn ? 'muted' : 'info')) + '</td>' +
+          '<td>' + (notIn ? ui.tag('未接入', 'muted') : (s.enabled ? ui.tag('启用', 'ok') : ui.tag('关闭', 'muted'))) + '</td>' +
+          '<td class="ry-hint">' + ui.esc(s.note || '—') + '</td>' +
+          '<td class="ry-tbl-act">' + (notIn
+            ? '<span class="ry-faint">不在 0.1 范围</span>'
+            : (canEdit ? '<button class="ry-btn ry-btn--sm" data-ac-src="' + s.code + '">' + (s.enabled ? '关闭' : '启用') + '</button>' : '')) +
+          '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<p class="ry-hint" style="margin-top:8px">' +
+        '<b>必需来源</b>是能力的前置条件：必需来源关闭时对应能力不可用，系统不给出「勉强可用」的假象。' +
+        '录音、图片、文档等可选来源失败时<b>降级为手工录入</b>，不阻断整条流程。' +
+        '「工作手机自动采集」已彻底退出 0.1，本页只做只读展示，不提供启用入口。</p>',
+      (c.sources || []).length + ' 个来源');
+  }
+
+  /* ---------------------------------------------------------- 试点范围 */
+
+  function panePilot(c) {
+    return ui.section('试点范围',
+      '<div class="ac-pilot">' + (c.pilots || []).map(function (p) {
+        return '<div class="ac-card">' +
+          '<div class="ac-card__h"><div><div class="ac-card__n">' + ui.esc(p.name) + '</div>' +
+            '<div class="ac-card__c">' + ui.esc(p.code) + '　' + p.userCount + ' 人</div></div></div>' +
+          '<div class="ac-card__k">' +
+            '<span>已启用人员</span><b>' + ((p.users || []).length
+              ? ui.esc((p.users || []).map(function (id) { return S.userName(id) || id; }).join('、')) : '无') + '</b>' +
+          '</div>' +
+          ((p.blockedUsers || []).length
+            ? '<p class="ry-hint" style="margin:8px 0 0"><b style="color:var(--danger)">阻塞人员</b>：' +
+              ui.esc((p.blockedUsers || []).map(function (x) { return (x.name || x.id) + '（' + x.reason + '）'; }).join('；')) + '</p>'
+            : '') +
+          '<div class="ry-acts-row" style="margin-top:9px">' +
+            (canEdit ? '<button class="ry-btn ry-btn--sm" data-ac-pilot="' + p.code + '">调整人员</button>' : '') +
+            '<span class="ry-hint">只有试点范围内的人员能看到 Agent 入口</span>' +
+          '</div></div>';
+      }).join('') + '</div>' +
+      '<div class="ry-divider"></div>' +
+      '<p class="ry-hint">试点范围决定<b>谁能看到 Agent 入口</b>；不在试点范围内的用户看不到入口，' +
+        '也不会收到 Agent 产出的任何候选。<b>试点范围不等于数据范围</b>：' +
+        '范围内的用户仍然只能读取自己本来就有权访问的对象内容。</p>' +
+      '<p class="ry-hint">历史回溯范围：<b>' + (c.historyBacklogDays || 0) + ' 天</b>（仅用于日报底稿与今日总结的输入窗口）。</p>',
+      (c.pilots || []).length + ' 个试点');
+  }
+
+  /* ---------------------------------------------------------- 预生成 */
+
+  function panePregen(c) {
+    return ui.section('定时预生成',
+      '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+        '<th>任务</th><th>编码</th><th>对应能力</th><th>执行时间</th><th>执行者</th><th>最近执行</th><th>状态</th><th style="width:130px">操作</th>' +
+      '</tr></thead><tbody>' + (c.pregen || []).map(function (p) {
+        return '<tr>' +
+          '<td><span class="ry-cellname">' + ui.esc(p.name) + '</span></td>' +
+          '<td><span class="ry-code">' + ui.esc(p.code) + '</span></td>' +
+          '<td>' + ui.esc(p.ability) + '</td>' +
+          '<td>' + ui.esc(p.at) + '</td>' +
+          '<td>' + ui.esc(p.owner) + '<div class="ry-hint">服务身份</div></td>' +
+          '<td>' + ui.esc(p.lastRunAt || '—') + '</td>' +
+          '<td>' + (p.enabled ? ui.tag('启用', 'ok') : ui.tag('停用', 'muted')) + '</td>' +
+          '<td class="ry-tbl-act">' + (canEdit ? '<button class="ry-btn ry-btn--sm" data-ac-pregen="' + p.code + '">' + (p.enabled ? '停用' : '启用') + '</button>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<p class="ry-hint" style="margin-top:8px">预生成能力<b>固定时间生成内容、不主动推送</b>：' +
+        '生成结果只出现在对应位置，用户打开时才看到。' +
+        '预生成使用<b>服务身份权限与用户权限的交集</b>，不会因为「预先算好」而扩大可见范围。' +
+        '预生成失败<b>不影响</b>用户正常使用其他功能，也不产生半成品记录。</p>',
+      (c.pregen || []).filter(function (p) { return p.enabled; }).length + ' 个预生成任务启用');
+  }
+
+  /* ---------------------------------------------------------- 交互 */
+
+  function bind() {
+    ui.qsa('.ac-tab').forEach(function (b) {
+      b.addEventListener('click', function () { tab = b.getAttribute('data-t'); window.location.hash = tab; render(); });
+    });
+    ui.qsa('[data-ac-tog]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var code = b.getAttribute('data-ac-tog');
+        var a = (cfg().abilities || []).filter(function (x) { return x.code === code; })[0];
+        if (a.enabled) {
+          ui.confirm({
+            title: '停用能力「' + a.name + '」',
+            message: '<p>停用后对应入口<b>不再展示</b>，新候选不再生成；<b>已经确认并写入的正式事实不受影响</b>。</p>' +
+              '<p class="ry-hint">已经生成但未确认的候选会保留在「Agent 待处理」中，需要人工决定确认或忽略。</p>',
+            requireReason: true, reasonLabel: '变更原因', confirmText: '确认停用',
+            onConfirm: function (reason) {
+              a.enabled = false; save({}, '停用能力 ' + code + '：' + reason);
+            }
+          });
+        } else {
+          a.enabled = true;
+          save({}, '启用能力 ' + code);
+        }
+      });
+    });
+    ui.qsa('[data-ac-src]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var code = b.getAttribute('data-ac-src');
+        var s = (cfg().sources || []).filter(function (x) { return x.code === code; })[0];
+        if (s.enabled) {
+          /* 必需来源关闭会连带能力不可用，这里明确告知，不悄悄放过。 */
+          ui.confirm({
+            title: '关闭来源「' + s.name + '」',
+            message: '<p>关闭后不再从「' + ui.esc(s.name) + '」取内容。</p>' +
+              (s.kind === '必需' ? '<p class="ry-hint"><b>该来源是必需来源</b>：关闭后依赖它的能力将不可用，依赖它的候选不再生成。</p>'
+                : '<p class="ry-hint">可选来源关闭后，相关能力降级为其余来源；录音／图片等来源失败时仍降级为手工录入。</p>'),
+            requireReason: true, reasonLabel: '变更原因', confirmText: '确认关闭',
+            onConfirm: function (reason) {
+              s.enabled = false; save({}, '关闭来源 ' + code + '：' + reason);
+            }
+          });
+        } else { s.enabled = true; save({}, '启用来源 ' + code); }
+      });
+    });
+    ui.qsa('[data-ac-pregen]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var code = b.getAttribute('data-ac-pregen');
+        var p = (cfg().pregen || []).filter(function (x) { return x.code === code; })[0];
+        p.enabled = !p.enabled;
+        save({}, (p.enabled ? '启用' : '停用') + '预生成 ' + code);
+      });
+    });
+    ui.qsa('[data-ac-pilot]').forEach(function (b) {
+      b.addEventListener('click', function () { pilotEditor(b.getAttribute('data-ac-pilot')); });
+    });
+  }
+
+  function pilotEditor(code) {
+    var p = (cfg().pilots || []).filter(function (x) { return x.code === code; })[0];
+    var users = S.all('users').filter(function (x) { return ['R1', 'R2'].indexOf(x.role) >= 0; });
+    ui.drawer({
+      title: '调整试点人员　' + p.name,
+      subtitle: 'A 类：保存即生效并写入历史。',
+      size: 'md',
+      body:
+        ui.field('试点人员',
+          '<div class="ry-checks">' + users.map(function (x) {
+            var on = (p.users || []).indexOf(x.id) >= 0;
+            return '<label class="ry-check"><input type="checkbox" name="pu" value="' + x.id + '"' + (on ? ' checked' : '') + '>' +
+              '<span>' + ui.esc(x.name) + '　' + ui.esc(x.dept) + '</span></label>';
+          }).join('') + '</div>') +
+        ui.field('变更原因', ui.textarea('reason', '', '写入历史与审计', 3), '', true) +
+        ui.banner('试点范围只决定<b>入口是否可见</b>。<b>试点范围不等于数据范围</b>：' +
+          '加入试点不会让任何人看到原本无权访问的内容；Agent 读取的始终是「发起人权限 ∩ 服务身份权限」。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ac-pilot-ok">保存生效</button>',
+      onOpen: function (el) {
+        ui.qs('#ac-pilot-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!v.reason || !v.reason.trim()) { ui.toast('变更原因必填。', 'warn'); return; }
+          var ids = ui.qsa('input[name="pu"]', el).filter(function (x) { return x.checked; }).map(function (x) { return x.value; });
+          p.users = ids; p.userCount = ids.length;
+          save({}, '调整试点人员 ' + code + '：' + v.reason.trim());
+          ui.close();
+        });
+      }
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

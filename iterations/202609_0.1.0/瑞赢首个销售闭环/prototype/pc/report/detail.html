@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>日报详情 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：日报详情 */
+  .rd-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .rd-fact { border: 1px solid var(--line); border-radius: var(--r-btn); padding: 10px 12px; }
+  .rd-fact__h { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .rd-fact__i { font-size: 12.5px; line-height: 1.75; }
+  .rd-fact__i b { font-weight: 600; }
+  .rd-body { white-space: pre-wrap; line-height: 1.9; font-size: 13.5px; margin: 0; }
+  .rd-frozen { border: 1px solid var(--brand-line); background: var(--brand-soft); border-radius: var(--r-card); padding: 12px 14px; }
+  .rd-generated { border:1px solid var(--line-soft); background:var(--surface-2); border-radius:var(--r-btn); padding:14px 16px; }
+  .rd-content { display:grid; gap:14px; margin-top:14px; }
+  @media (max-width: 1180px) { .rd-facts { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="rd-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var PAGE = 'report.detail';
+  var id = ui.q('id');
+  var from = ui.q('from') || 'mine';
+  var date = ui.q('date');
+
+  /* 写今日日报入口：无 id 时按「本人 + 指定日期」定位草稿；没有草稿则给出明确提示，不伪造空白记录。 */
+  if (!id && date) {
+    var d = S.reportDraftOf(u.id, date);
+    if (!d) { var generated = S.ensureReportDraft(u.id, date); d = generated.ok ? generated.report : null; }
+    if (d) id = d.id;
+  }
+  var r = id ? S.report(id) : null;
+
+  /* backHref() 供页面内按钮使用：相对本页。面包屑的 href 由 navigation.js 统一加 data-root 前缀，
+     必须是「相对原型根」的路径，故单独提供 crumbHref()。 */
+  function backHref() { return 'list.html?scope=' + encodeURIComponent(from); }
+  function crumbHref() { return 'pc/report/list.html?scope=' + encodeURIComponent(from); }
+  function isMine() { return r && r.userId === u.id; }
+  function isSubmitted() { return r && r.status === '已提交'; }
+
+  RY.nav.shell({
+    nav: 'report.list',
+    title: r ? '日报 ' + (r.date || '') + '　' + (S.userName(r.userId) || '') : '日报详情',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '工作管理' },
+      { label: '日报', href: crumbHref() }, { label: r ? r.date : '未找到' }],
+    actions: '<span id="rd-top-acts"></span>'
+  });
+
+  if (!r) {
+    ui.qs('#rd-host').innerHTML = ui.stateCard('unavailable', {
+      title: date ? date + ' 尚无日报记录' : '日报不存在或不可见',
+      body: date
+        ? '<p>当前日期无法生成日报，请检查日期或账号权限。</p>'
+        : '<p>该日报编号不存在，或提交人不在当前数据范围内，或记录已被合并。</p>',
+      actions: '<a class="ry-btn" href="list.html">返回日报列表</a>'
+    });
+    return;
+  }
+  var g = RY.perm.guard(PAGE, 'reports', r.id);
+  if (!g.ok) {
+    ui.qs('#rd-host').innerHTML = ui.stateCard(g.kind, { title: '当前身份不可查看该日报', body: '<p>' + ui.esc(g.reason) + '</p>' });
+    return;
+  }
+  if (isMine() && !isSubmitted()) { S.ensureReportEditableDraft(r.id); r = S.report(r.id); }
+
+  if (!isMine() && RY.perm.can('report.read') && !((r.readBy || {})[u.id] || {}).read) {
+    var readResult = S.markReportRead(r.id, true);
+    if (readResult.ok) r = S.report(r.id);
+  }
+
+  function tip(key) { return '<button type="button" data-pcn-rule="reportDetail' + key.charAt(0).toUpperCase() + key.slice(1) + '"></button>'; }
+  var FACTS = [
+    ['customers', '客户'], ['leads', '线索'], ['opportunities', '商机'],
+    ['activities', '销售活动'], ['visits', '正式拜访'], ['tasks', '任务']
+  ];
+
+  function factHref(type, o) {
+    if (type === 'customers') return '../customer/detail.html?id=' + encodeURIComponent(o.id);
+    if (type === 'leads') return '../lead/detail.html?id=' + encodeURIComponent(o.id);
+    if (type === 'opportunities') return '../opportunity/detail.html?id=' + encodeURIComponent(o.id);
+    if (type === 'activities') return '../activity/detail.html?id=' + encodeURIComponent(o.id);
+    if (type === 'visits') return '../visit/detail.html?id=' + encodeURIComponent(o.id);
+    if (type === 'tasks') return '../task/detail.html?id=' + encodeURIComponent(o.id);
+    return '';
+  }
+
+  function visibleFact(type,id) {
+    var map={ customers:['customer',S.customer], leads:['lead',S.lead], opportunities:['opp',S.opp],
+      activities:['activity',S.activity], visits:['visit',S.visit], tasks:['task',S.task] };
+    var x=map[type], item=x && x[1](id);
+    return !!(item && RY.perm.inScope(x[0],item));
+  }
+  function sourceFactType(type) {
+    return { '客户':'customers','线索':'leads','商机':'opportunities','销售活动':'activities','正式拜访':'visits','任务':'tasks',
+      customers:'customers',leads:'leads',opportunities:'opportunities',activities:'activities',visits:'visits',tasks:'tasks' }[type] || '';
+  }
+
+  /* 业务来源只读；首次系统底稿仅在 PC 端提供核对入口。 */
+  function viewFacts() {
+    var f = isSubmitted() ? (r.frozenFacts || r.facts || {}) : (r.facts || {});
+    return '<section class="ry-card"><header class="ry-card__head"><h3>事实来源</h3>' +
+      '<div class="ry-card__extra">' + tip('facts') + '</div></header>' +
+      '<div class="ry-card__body">' +
+        '<h4 class="ry-subhead">关联业务事实</h4>' +
+        '<div class="rd-facts">' + FACTS.map(function (x) {
+          var list = f[x[0]] || [];
+          return '<div class="rd-fact"><div class="rd-fact__h">' + x[1] + '　' + list.length + ' 项</div>' +
+            (list.length ? list.map(function (o) {
+              if (!visibleFact(x[0],o.id)) return '<div class="rd-fact__i ry-faint">无权查看的来源</div>';
+              var href = factHref(x[0], o);
+              return '<div class="rd-fact__i">' + (href ? '<a href="' + href + '">' : '') + ui.esc(o.name) + (href ? '</a>' : '') +
+                '　<span class="ry-hint">' + ui.esc(o.change || '') + '</span></div>';
+            }).join('') : '<div class="rd-fact__i ry-faint">无</div>') +
+          '</div>';
+        }).join('') + '</div>' +
+        '<h4 class="ry-subhead">事实来源</h4>' +
+        (((isSubmitted() ? (r.frozenSources || r.sources) : r.sources) || []).length
+          ? '<ul class="ry-links">' + (isSubmitted() ? (r.frozenSources || r.sources) : r.sources).map(function (s) {
+              var href = s.type === '销售活动' ? '../activity/detail.html?id=' + encodeURIComponent(s.id)
+                : s.type === '正式拜访' ? '../visit/detail.html?id=' + encodeURIComponent(s.id)
+                : s.type === '线索' ? '../lead/detail.html?id=' + encodeURIComponent(s.id)
+                : s.type === '商机' ? '../opportunity/detail.html?id=' + encodeURIComponent(s.id) : '';
+              if (!visibleFact(sourceFactType(s.type),s.id)) return '<li>无权查看的来源</li>';
+              return '<li>' + ui.tag(s.type, 'muted') + ' ' + (href ? '<a href="' + href + '">' + ui.esc(s.id) + '</a>' : ui.esc(s.id)) + '</li>';
+            }).join('') + '</ul>'
+          : '<p class="ry-hint">本条日报没有可回溯的事实来源（当日无业务对象变化）。</p>') +
+        (r.aiDraft ? '<details class="rd-generated" style="margin-top:14px"><summary>查看 AI 原始底稿</summary><p class="rd-body">' + ui.esc(r.aiDraft) + '</p></details>' : '') +
+      '</div></section>';
+  }
+
+  /* 补充信息：草稿可编辑，提交后冻结。 */
+  function viewBody() {
+    var frozen = isSubmitted();
+    return '<section class="ry-card"><header class="ry-card__head"><h3>日报正文</h3></header>' +
+      '<div class="ry-card__body">' +
+        '<h4 class="ry-subhead">' + (frozen ? '提交内容（冻结快照）' : '我的日报正文') + '</h4>' +
+        (frozen
+          ? '<div class="rd-frozen"><p class="rd-body">' + ui.esc(r.submittedBody || '') + '</p></div>' +
+            ui.kv([['提交时间', r.submittedAt || '—'], ['提交幂等标识', r.submitIdem || '—'],
+              ['冻结时的事实来源', ((r.frozenSources || r.sources || []).length) + ' 处']]) +
+            tip('freeze')
+          : isMine() ? '<div id="rd-edit"></div>' + tip('freeze') : '<p class="ry-hint">尚未提交补充信息。</p>') +
+      '</div></section>';
+  }
+
+  /* 视图 3：主管建议（只追加） */
+  function viewAdvice() {
+    var list = (r.advices || []).slice().reverse();
+    return '<section class="ry-card"><header class="ry-card__head"><h3>追加建议</h3>' +
+      '<div class="ry-card__extra">' + tip('advice') + '</div></header>' +
+      '<div class="ry-card__body">' +
+        (list.length ? '<div class="ry-timeline">' + list.map(function (a) {
+          return '<div class="ry-tl-item"><div class="ry-tl-dot"></div><div class="ry-tl-body">' +
+            '<b>' + ui.esc(a.at || '') + '　' + ui.esc(S.userName(a.by) || a.by) + '</b>' +
+            '<div style="font-size:13px;line-height:1.8;margin-top:3px">' + ui.esc(a.text) + '</div>' +
+          '</div></div>';
+        }).join('') + '</div>'
+          : '<p class="ry-hint">暂无主管建议。</p>') +
+      '</div></section>';
+  }
+
+  function viewHistory() {
+    var h = (r.history || []).slice();
+    Object.keys(r.readBy || {}).forEach(function (id) {
+      var read = r.readBy[id], at = read.read ? read.at : read.unreadAt, action = read.read ? '标记已读' : '标记未读';
+      if (at && !h.some(function (x) { return x.at === at && x.action === action; })) h.push({ at:at, actor:S.userName(id) || id, action:action });
+    });
+    h.sort(function (a, b) { return String(b.at || '').localeCompare(String(a.at || '')); });
+    return '<section class="ry-card"><header class="ry-card__head"><h3>日志</h3>' +
+      '<div class="ry-card__extra">' + tip('history') + '</div></header>' +
+      '<div class="ry-card__body">' + (h.length
+        ? '<div class="ry-timeline">' + h.map(function (x) {
+            return '<div class="ry-tl-item"><div class="ry-tl-dot"></div><div class="ry-tl-body">' +
+              '<b>' + ui.esc(x.at || '') + '　' + ui.esc(x.actor || '') + '　' + ui.esc(x.action || '') + '</b>' +
+              (x.from || x.to ? '<div class="ry-hint">' + ui.esc(x.from || '—') + ' → ' + ui.esc(x.to || '—') + '</div>' : '') +
+            '</div></div>';
+          }).join('') + '</div>'
+        : '<p class="ry-hint">无历史记录。</p>') +
+      '</div></section>';
+  }
+
+  function render() {
+    ui.qs('#rd-host').innerHTML =
+      '<div class="ry-objhead"><div class="ry-objhead__top"><div>' +
+        '<div class="ry-objhead__name">' + ui.esc((S.userName(r.userId) || r.userId) + '　' + (r.date || '') + ' 日报') +
+          (isMine() ? ui.tag('本人', 'brand') : '') + '</div>' +
+        '<div class="ry-objhead__meta"><span><code>' + ui.esc(r.id) + '</code></span>' +
+          (isSubmitted() ? '<span>提交 ' + ui.esc(r.submittedAt || '—') + '</span>' : '') +
+          '<span>系统事实 ' + FACTS.reduce(function (n, x) { return n + (((isSubmitted() ? (r.frozenFacts || r.facts) : r.facts) || {})[x[0]] || []).length; }, 0) + ' 项</span>' +
+          (isSubmitted() ? '<span>主管建议 ' + ((r.advices || []).length) + ' 条</span>' : '') + '</div>' +
+      '</div></div></div>' +
+      '<div class="rd-content">' + viewBody() + viewFacts() + (isSubmitted() ? viewAdvice() + viewHistory() : '') + '</div>';
+    renderActs();
+    if (!isSubmitted() && isMine()) renderEditor();
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  /* 详情页最多 3 个主按钮，低频动作收进「更多」。 */
+  function renderActs() {
+    var out = ['<a class="ry-btn" href="' + backHref() + '">返回列表</a>'];
+    if (isMine() && !isSubmitted()) {
+      out.push('<button class="ry-btn" id="rd-save">保存草稿</button>');
+      out.push('<button class="ry-btn ry-btn--primary" id="rd-submit" type="button">提交日报</button>');
+    }
+    if (!isMine() && isSubmitted() && RY.perm.can('report.advice')) {
+      out.push(ui.actionBtn('report.advice', '追加建议', ' id="rd-adv"', 'ry-btn--primary'));
+      var mineRead=(r.readBy || {})[u.id] || {};
+      out.push(ui.actionBtn('report.read', mineRead.read ? '标记未读' : '标记已读', ' id="rd-read"'));
+    }
+    ui.qs('#rd-top-acts').innerHTML = out.join('');
+  }
+
+  function renderEditor() {
+    var host = ui.qs('#rd-edit');
+    if (!host) return;
+    host.innerHTML = ui.field('日报正文', ui.textarea('body', r.draftBody || '', '当日无正式业务事实时，请填写实际工作情况与下一步计划', 16), '', true);
+  }
+
+  function bind() {
+    var sv = ui.qs('#rd-save');
+    if (sv) sv.addEventListener('click', function () {
+      var v = ui.formValues(ui.qs('#rd-edit'));
+      var res = S.saveReportDraft(id, (v.body || '').trim());
+      if (!res.ok) { ui.toast(res.msg, 'warn'); return; }
+      r = S.report(id); ui.toast('草稿已保存。', 'success'); render();
+    });
+    var sb = ui.qs('#rd-submit');
+    if (sb) sb.addEventListener('click', function (e) {
+      submit();
+    });
+    var ab = ui.qs('#rd-adv');
+    if (ab) ab.addEventListener('click', function (e) { if (e.target.closest('[data-denied]')) return; advice(); });
+    var rdb = ui.qs('#rd-read');
+    if (rdb) rdb.addEventListener('click', function (e) {
+      if (e.target.closest('[data-denied]')) return;
+      var cur = (r.readBy || {})[u.id] || {};
+      S.markReportRead(id, !cur.read);
+      r = S.report(id); ui.toast(cur.read ? '已标记为未读。' : '已标记为已读。', 'success'); render();
+    });
+  }
+
+  function advice() {
+    ui.drawer({
+      title: '追加主管建议',
+      body: ui.kv([['日报编号', r.id], ['提交人', S.userName(r.userId)], ['日期', r.date]]) +
+        ui.field('建议内容', ui.textarea('text', '', '面向下一步动作的具体建议', 4), tip('advice'), true),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="rd-adv-ok">提交建议</button>',
+      onOpen: function (el) {
+        ui.qs('#rd-adv-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          var res = S.addReportAdvice(id, (v.text || '').trim());
+          if (!res.ok) { ui.toast(res.msg, 'warn'); return; }
+          r = S.report(id); ui.close(); ui.toast('建议已追加。', 'success'); render();
+        });
+      }
+    });
+  }
+
+  function submit() {
+    var v = ui.formValues(ui.qs('#rd-edit'));
+    var body = (v.body || '').trim();
+    if (!body) { ui.toast('日报正文不能为空。', 'warn'); return; }
+    ui.modal({
+      title: '确认提交日报', size: 'sm',
+      body: '<p>提交后日报将<b>冻结快照</b>：不能退回、不能重提，本人与主管都不能再改写正文。</p>' +
+        '<p class="ry-hint">系统事实（' + FACTS.reduce(function (n, x) { return n + (((isSubmitted() ? (r.frozenFacts || r.facts) : r.facts) || {})[x[0]] || []).length; }, 0) +
+        ' 项）与事实来源会一并冻结，便于日后追溯当时的判断依据。</p>' +
+        ui.field('提交正文预览', ui.textarea('preview', body, '', 6), '', false),
+      footer: '<button class="ry-btn" data-close>再改改</button><button class="ry-btn ry-btn--primary" id="rd-sub-ok">确认提交</button>',
+      onOpen: function (el) {
+        ui.qs('#rd-sub-ok', el).addEventListener('click', function () {
+          ui.submitWithRecovery({
+            onSubmit: function () {
+              var res = S.submitReport(id, body);
+              if (!res.ok) { ui.toast(res.msg, 'warn'); return; }
+              r = S.report(id);
+              ui.close(); ui.toast('日报已提交并冻结。', 'success'); render();
+            }
+          });
+        });
+      }
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

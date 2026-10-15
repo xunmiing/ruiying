@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>数据质量概览 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：数据质量概览（四类问题与检测链路） */
+  .qo-kpi { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .qo-kpi__c { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); padding: 12px 14px; }
+  .qo-kpi__t { font-size: 12px; color: var(--muted); }
+  .qo-kpi__n { font-size: 24px; font-weight: 600; line-height: 1.25; margin: 2px 0; }
+  .qo-kpi__d { font-size: 11.5px; color: var(--muted); }
+  .qo-kpi__c.is-warn .qo-kpi__n { color: var(--warn); }
+  .qo-kpi__c.is-danger .qo-kpi__n { color: var(--danger); }
+  .qo-kpi__c.is-ok .qo-kpi__n { color: var(--ok); }
+  .qo-chain { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; align-items: stretch; }
+  .qo-chain__s { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); padding: 10px 12px; position: relative; }
+  .qo-chain__n { font-size: 12.5px; font-weight: 600; }
+  .qo-chain__d { font-size: 11.5px; color: var(--muted); line-height: 1.65; margin-top: 3px; }
+  .qo-chain__s:not(:last-child)::after { content: '→'; position: absolute; right: -9px; top: 50%; transform: translateY(-50%);
+    color: var(--faint); font-size: 13px; background: var(--bg); padding: 0 2px; }
+  @media (max-width: 1180px) { .qo-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); } .qo-chain { grid-template-columns: repeat(2, minmax(0, 1fr)); } .qo-chain__s::after { display: none; } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="qo-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'quality.overview';
+  var canRerun = P.can('quality.rerun');
+  var TYPES = ['完整度缺失', '疑似重复', '关键映射缺失', '同步异常'];
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '数据质量概览',
+    subtitle: '四类问题：<b>完整度缺失｜疑似重复｜关键映射缺失｜同步异常</b>。' +
+      '结果是<b>检测结论</b>，不是业务状态，也不阻断正常经营。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '数据质量' }, { label: '数据质量概览' }],
+    actions: '<a class="ry-btn" href="issue.html">质量问题</a><a class="ry-btn" href="rule.html">质量规则</a>'
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#qo-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入数据质量概览',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示问题数量、命中对象与规则命中情况。</p>'
+    });
+    return;
+  }
+
+  function issues() { return S.qualityIssueList(); }
+  function rules() { return S.arr('qualityRules'); }
+  function cnt(t, s) {
+    return issues().filter(function (q) { return q.type === t && (!s || q.resultStatus === s); }).length;
+  }
+  function cur() { return issues().filter(function (q) { return q.resultStatus === '当前存在'; }); }
+  /* 质量问题不重复计入：同一对象同一规则只算一条当前问题。 */
+  function dupObj() {
+    var m = {}, n = 0;
+    cur().forEach(function (q) { var k = q.ruleCode + '|' + q.objectId; m[k] = (m[k] || 0) + 1; if (m[k] === 2) n++; });
+    return n;
+  }
+  function linkObj(type) {
+    if (type === '客户主档' || type === '客户') return 'issue.html?type=完整度缺失';
+    return 'issue.html';
+  }
+
+  function render() {
+    var all = issues(), c = cur();
+    ui.qs('#qo-host').innerHTML =
+      ui.banner('数据质量回答的是「<b>数据本身是否可信</b>」，与「业务是否正常推进」是两件事。' +
+        '质量问题状态是<b>检测结论</b>：<b>当前存在｜已消除｜已忽略</b>，' +
+        '<b>不复用异常事项的状态</b>。' +
+        '检测到问题<b>通常不阻断经营</b>：完整性缺失允许在「机会确认」阶段暂缺，' +
+        '疑似重复只做强提示。只有<b>统一社会信用代码规范化后精确相同</b>才阻断建档，' +
+        '因为那会直接产生两个主体。', 'info') +
+
+      '<div class="qo-kpi" style="margin-top:12px">' +
+        TYPES.map(function (t) {
+          var n = cnt(t, '当前存在');
+          return '<div class="qo-kpi__c' + (n ? (t === '同步异常' ? ' is-danger' : ' is-warn') : ' is-ok') + '">' +
+            '<div class="qo-kpi__t">' + ui.esc(t) + '</div>' +
+            '<div class="qo-kpi__n">' + n + '</div>' +
+            '<div class="qo-kpi__d">当前存在　已消除 ' + cnt(t, '已消除') + '　已忽略 ' + cnt(t, '已忽略') + '</div></div>';
+        }).join('') +
+      '</div>' +
+
+      ui.section('检测链路',
+        '<div class="qo-chain">' +
+          '<div class="qo-chain__s"><div class="qo-chain__n">1 规则执行</div>' +
+            '<div class="qo-chain__d">按四类规则定时检测；规则有版本，版本变更不追溯历史数据</div></div>' +
+          '<div class="qo-chain__s"><div class="qo-chain__n">2 产生结果</div>' +
+            '<div class="qo-chain__d">结果状态为「当前存在」，写入规则版本与检测时间</div></div>' +
+          '<div class="qo-chain__s"><div class="qo-chain__n">3 派生异常</div>' +
+            '<div class="qo-chain__d">需要人工治理时派生<b>统一异常事项</b>，治理动作只在源对象执行</div></div>' +
+          '<div class="qo-chain__s"><div class="qo-chain__n">4 修正源对象</div>' +
+            '<div class="qo-chain__d">在客户／商机等源页面按正式动作修正，不在这里直接改</div></div>' +
+          '<div class="qo-chain__s"><div class="qo-chain__n">5 重新检测</div>' +
+            '<div class="qo-chain__d">重新检测后问题消失即转为「已消除」，关联异常事项随之完成</div></div>' +
+        '</div>' +
+        (canRerun ? '<div class="ry-acts-row" style="margin-top:10px"><button class="ry-btn ry-btn--primary" id="qo-rerun">手工重新检测</button>' +
+          '<span class="ry-hint">重新检测会更新规则最近执行时间；已消除与已忽略的结果不重复计算</span></div>' : '') +
+        '<div id="qo-out" style="margin-top:10px"></div>') +
+
+      '<div style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:14px;margin-top:14px">' +
+        ui.section('按规则查看',
+          '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+            '<th>规则</th><th style="width:120px">类型</th><th style="width:70px">版本</th><th style="width:80px">命中</th>' +
+            '<th style="width:150px">最近执行</th><th style="width:110px">操作</th></tr></thead><tbody>' +
+            rules().map(function (r) {
+              var n = cnt(r.type, '当前存在');
+              return '<tr><td><span class="ry-cellname">' + ui.esc(r.name) + '</span>' +
+                  '<div class="ry-hint ry-code">' + ui.esc(r.code) + '</div></td>' +
+                '<td>' + ui.tag(r.type, r.type === '同步异常' ? 'bad' : 'warn') + '</td>' +
+                '<td><span class="ry-code">' + ui.esc(r.version) + '</span></td>' +
+                '<td>' + (n ? '<b style="color:var(--warn)">' + n + '</b>' : '<span class="ry-faint">0</span>') +
+                  '<div class="ry-hint">累计 ' + r.hitCount + '</div></td>' +
+                '<td class="ry-hint">' + ui.esc(r.lastRunAt) + '</td>' +
+                '<td class="ry-tbl-act"><a class="ry-btn ry-btn--sm" href="issue.html?rule=' + encodeURIComponent(r.code) + '">看结果</a></td>' +
+              '</tr>';
+            }).join('') + '</tbody></table></div>' +
+            '<p class="ry-hint" style="margin-top:8px">规则只做检测，<b>不改数据</b>。' +
+              '规则版本变化后新版本只用于<b>后续检测</b>，历史数据需要重新检测才按新版本判定。</p>') +
+
+        '<div>' +
+          ui.section('当前质量口径',
+            ui.kv([
+              ['当前存在的问题', c.length + ' 条'],
+              ['完整度缺失', cnt('完整度缺失', '当前存在') + ' 条'],
+              ['疑似重复', cnt('疑似重复', '当前存在') + ' 条'],
+              ['关键映射缺失', cnt('关键映射缺失', '当前存在') + ' 条'],
+              ['同步异常', cnt('同步异常', '当前存在') + ' 条'],
+              ['已消除', all.filter(function (q) { return q.resultStatus === '已消除'; }).length + ' 条'],
+              ['已忽略', all.filter(function (q) { return q.resultStatus === '已忽略'; }).length + ' 条'],
+              ['重复计入检查', dupObj() ? dupObj() + ' 组需要合并' : '无重复']
+            ])) +
+          ui.section('不阻断经营的原则',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>完整度缺失</span><b>组织客户与个体工商户允许暂缺信用代码</b></li>' +
+              '<li><span>疑似重复</span><b>名称相同或高度相似只做强提示，说明后可继续</b></li>' +
+              '<li><span>精确重复</span><b>信用代码规范化后全库精确相同必须阻断建档</b></li>' +
+              '<li><span>商机字段</span><b>离开「机会确认」前才强制补齐预计成交时间</b></li>' +
+              '<li><span>质量问题</span><b>不改变对象生命周期状态，不作为待治理标签之外的含义</b></li>' +
+            '</ul>' +
+            ui.banner('质量问题的价值在于「让人知道哪里需要修」，不在于「拦住人干活」。' +
+              '因此除精确重复外，检测结果不阻断正常销售活动。', 'info')) +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-QUALITY</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-QUALITY · PC · 数据质量</b></li>' +
+        '<li><span>依据</span><b>prd/00 §6；prd/08 §10</b></li>' +
+        '<li><span>可进入角色</span><b>管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-73</b></li>' +
+        '<li><span>四类问题</span><b>完整度缺失｜疑似重复｜关键映射缺失｜同步异常</b></li>' +
+        '<li><span>结果状态</span><b>当前存在｜已消除｜已忽略（不复用异常事项状态）</b></li>' +
+        '<li><span>明确不做</span><b>不做自由 BI 式数据看板、不做数据血缘图、不做批量删除质量问题</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    var b = ui.qs('#qo-rerun');
+    if (b) b.addEventListener('click', function () {
+      ui.confirm({
+        title: '手工重新检测',
+        message: '<p>将按当前生效的规则版本重新检测全部结果。</p>' +
+          '<p class="ry-hint">已经修正的源对象，其问题会转为「<b>已消除</b>」，' +
+          '关联的统一异常事项同时完成。已忽略的结果不会重复计入。</p>' +
+          '<p class="ry-hint">这是同步演示：生产环境中检测为异步任务，会出现在「处理记录」中。</p>',
+        confirmText: '开始检测',
+        onConfirm: function () {
+          var r = S.qualityRerun();
+          var el = ui.qs('#qo-out');
+          if (el) el.innerHTML = ui.banner('重新检测完成：<b>已消除 ' + r.cleared + ' 条</b>。' +
+            '规则「最近执行时间」已更新；关联的统一异常事项同步完成。', 'brand');
+          ui.toast('重新检测完成，已消除 ' + r.cleared + ' 条。', 'success');
+          render();
+        }
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

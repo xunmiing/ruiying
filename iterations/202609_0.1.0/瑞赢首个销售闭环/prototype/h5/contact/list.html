@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>联系人 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：联系人列表（范围过滤 + 核心字段搜索 + 默认脱敏）。 */
+  .cl-search { display: flex; gap: 8px; align-items: center; }
+  .cl-search .ry-input { flex: 1; }
+  .cl-scope { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 2px; }
+  .cl-aggregate { font-size: 11.5px; color: var(--muted); line-height: 1.7; }
+  .cl-rel { color: var(--ink-2); }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+
+  <div id="cl-host"></div>
+
+  <div id="cl-main">
+
+    <div class="ry-hcard">
+      <div class="ry-hcard__body">
+        <div class="cl-search">
+          <input class="ry-input" id="cl-q" type="search" placeholder="姓名／手机号／邮箱／职务／所属客户">
+          <button class="ry-btn ry-btn--primary" id="cl-go">搜索</button>
+        </div>
+        <div class="cl-scope" id="cl-scope"></div>
+        <p class="cl-aggregate" id="cl-note">—</p>
+      </div>
+    </div>
+
+    <div id="cl-list"></div>
+
+    <!-- 本页契约：评审对照用 -->
+    <div class="ry-hcard ry-hcard--flat" style="margin-top:14px">
+      <div class="ry-hcard__head"><h3>本页契约</h3><div class="ry-hcard__extra"><span class="h5-sec-note" id="cl-contract-no">PG-CON-LIST</span></div></div>
+      <div class="ry-hcard__body">
+        <ul class="ry-kv ry-kv--tight" id="cl-contract"></ul>
+        <p class="ry-hint">联系人没有独立经营权与独立数据权限：可见范围继承其关联客户。客户—联系人关系由 contactRelations 承载，联系人本身不保存 customerId。</p>
+        <p class="ry-hint">手机号与邮箱默认脱敏。明文查看与导出是两项互相独立的授权动作，获得其一不等于获得另一个；H5 不提供导出。</p>
+        <p class="ry-hint">无权数据不返回结果、数量、摘要与标题，也不展示被隐藏的关系数量。</p>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.contact.list';
+  var PATH = 'h5/contact/list.html';
+  var me = S.currentUser();
+
+  RY.nav.h5shell({
+    title: '联系人',
+    sub: '列表 · 搜索 · 默认脱敏',
+    back: false,
+    nav: 'customer',
+    tabbar: true
+  });
+
+  /* ---------------------------------------------------------- 本页契约 */
+
+  function contractRows(extra) {
+    var e = (RY.manifest && RY.manifest.byPath && RY.manifest.byPath[PATH]) || {};
+    function clean(list) {
+      return (list || []).map(function (x) { return String(x).trim(); }).filter(Boolean);
+    }
+    var rows = [
+      ['页面契约', (e.contract || 'PG-CON-LIST') + ' · ' + (e.end || 'H5') + ' · ' + (e.module || '客户和联系人')],
+      ['可进入角色', e.roles || 'ALL5'],
+      ['PRD 来源', e.prd || 'prd/01 §13'],
+      ['覆盖验收', clean(e.ac).join(' ') || 'AC-47 AC-39'],
+      ['本页视图', clean(e.views).join('、') || '列表、搜索']
+    ];
+    return rows.concat(extra || []);
+  }
+
+  function renderContract(extra) {
+    ui.qs('#cl-contract').innerHTML = contractRows(extra).map(function (r) {
+      return '<li><span>' + ui.esc(r[0]) + '</span><b>' + ui.esc(r[1]) + '</b></li>';
+    }).join('');
+    var e = (RY.manifest && RY.manifest.byPath && RY.manifest.byPath[PATH]) || {};
+    if (e.contract) ui.qs('#cl-contract-no').textContent = e.contract;
+  }
+
+  /* 进入页面即重新鉴权：无权限时不展示任何联系人姓名、数量与摘要。 */
+  if (!P.page(PAGE)) {
+    ui.qs('#cl-main').style.display = 'none';
+    ui.qs('#cl-host').innerHTML = ui.stateCard('no-permission', {
+      title: '没有联系人页面的访问权限',
+      body: '<p>' + ui.esc(P.whyNot('contact.view') || '当前身份没有联系人或客户相关页面权限。') + '</p>' +
+            '<p class="ry-hint">联系人可见范围继承其关联客户：没有客户数据权限时，联系人不返回结果、数量、摘要与标题。' +
+            '手机号明文查看与导出属于独立授权动作。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/more.html') + '">返回工作入口</a>'
+    });
+    return;
+  }
+
+  /* ---------------------------------------------- 有权数据范围（先过滤再渲染） */
+
+  /* 联系人没有独立经营权：P.inScope('contact', …) 内部按 contactRelations 落到客户，
+     再由客户的经营关系（主负责人／协作人）判定数据范围。 */
+  function visibleContacts() {
+    return S.all('contacts').filter(function (ct) { return P.inScope('contact', ct); });
+  }
+
+  /* 仅返回「有权客户关系」。无权关系不计入数量，也不出现在列表里。 */
+  function visibleRelations(contactId) {
+    return S.all('contactRelations').filter(function (r) {
+      if (r.contactId !== contactId) return false;
+      var cus = S.customer(r.customerId);
+      return cus ? P.inScope('customer', cus) : false;
+    });
+  }
+
+  /* ---------------------------------------------------------- 搜索与筛选 */
+
+  /* 只检索每个对象的预定义核心字段，不做全字段全文检索；
+     搜索只在当前用户有权数据范围内执行，不另建搜索权限模型。
+     注意：不提供「未关联客户」分类——正式联系人必须关联真实客户（prd/01 §4），
+     孤立联系人只是历史异常数据，不作为正常业务分类或新增入口。 */
+  var SCOPES = [
+    { k: 'all', n: '全部' },
+    { k: 'mine', n: '我负责的客户' }
+  ];
+  var scope = 'all';
+  var q = '';
+
+  function hit(ct) {
+    if (!q) return true;
+    var rels = visibleRelations(ct.id);
+    var orgs = rels.map(function (r) {
+      var c = S.customer(r.customerId);
+      return c ? c.name + ' ' + (c.alias || '') : '';
+    }).join(' ');
+    var hay = [
+      ct.name, ct.phone, ct.phonePlain, ct.email, ct.wechat, ct.title, ct.org, orgs
+    ].join(' ').toLowerCase();
+    return q.split(/\s+/).filter(Boolean).every(function (t) { return hay.indexOf(t) >= 0; });
+  }
+
+  function scoped(ct) {
+    if (scope === 'all') return true;
+    var rels = visibleRelations(ct.id);
+    /* 我负责的客户：我在该联系人的关联客户上拥有主负责或协作的经营关系。 */
+    return rels.some(function (r) {
+      return S.relationsOf(r.customerId).some(function (b) {
+        return b.owner === me.id || (b.collaborators || []).indexOf(me.id) >= 0;
+      });
+    });
+  }
+
+  /* ---------------------------------------------------------------- 渲染 */
+
+  function row(ct) {
+    var rels = visibleRelations(ct.id);
+    var main = rels.filter(function (r) { return r.primary; })[0] || rels[0];
+    var plain = P.canViewPlainPhone()
+      ? '<a class="ry-btn" href="tel:' + ui.esc(ct.phonePlain) + '">拨号</a>'
+      : '<span class="ry-btn is-off" data-denied="1" data-action="contact.plain" title="' +
+          ui.esc(P.whyNot('contact.plain') || '未获字段级明文授权') + '">拨号<i class="ry-btn__lock">无权限</i></span>';
+
+    var relLine = rels.length
+      ? rels.map(function (r) {
+          var c = S.customer(r.customerId);
+          return ui.esc(c ? c.name : r.customerId) + '<span class="cl-rel">（' + ui.esc((r.roles || []).join('、') || '—') + '）</span>';
+        }).join('、')
+      : '<span class="cl-rel">数据异常：无任何有效客户关系（历史数据，仅供核对，不提供新增入口）</span>';
+
+    return '<li><div class="ry-hrow">' +
+      '<div class="ry-hrow__top"><span class="ry-hrow__t">' + ui.esc(ct.name) + '</span>' +
+        '<span class="ry-hrow__tags">' + ui.tag(ct.title || '职务未填', 'muted') +
+        (main && main.primary ? ' ' + ui.tag('主要联系人', 'info') : '') +
+        (rels.length ? '' : ' ' + ui.tag('异常：无客户关系', 'bad')) + '</span></div>' +
+      '<div class="ry-hrow__meta">' +
+        '<span>手机 <b>' + ui.esc(ct.phone) + '</b></span>' +
+        '<span>邮箱 <b>' + ui.esc(ct.email || '—') + '</b></span>' +
+      '</div>' +
+      '<div class="ry-hrow__meta"><span>所属组织 <b>' + ui.esc(ct.org || '—') + '</b></span></div>' +
+      '<div class="ry-hrow__meta"><span>关联客户（仅有权）<b>' + rels.length + ' 个</b>：' + relLine + '</span></div>' +
+      '<div class="ry-hrow__meta"><span>最近联系 <b>' + ui.esc(ct.lastContactAt || '暂无') + '</b></span></div>' +
+      '<div class="ry-hrow__foot">' +
+        '<a class="ry-btn" href="' + RY.nav.href('h5/contact/detail.html?id=' + encodeURIComponent(ct.id)) + '">详情</a>' + plain +
+      '</div>' +
+    '</div></li>';
+  }
+
+  function render() {
+    ui.qs('#cl-scope').innerHTML = SCOPES.map(function (s) {
+      return '<button class="ry-chip' + (s.k === scope ? ' is-on' : '') + '" data-scope="' + s.k + '">' + ui.esc(s.n) + '</button>';
+    }).join('');
+    /* 筛选按钮先绑定：空结果会提前返回，绑定放在末尾会让筛选在空态下失效。 */
+    ui.qsa('#cl-scope [data-scope]').forEach(function (b) {
+      b.addEventListener('click', function () { scope = b.getAttribute('data-scope'); render(); });
+    });
+
+    var base = visibleContacts().filter(scoped);
+    var list = base.filter(hit);
+
+    ui.qs('#cl-note').textContent =
+      '本页可见联系人 ' + visibleContacts().length + ' 人；当前筛选命中 ' + list.length + ' 人。' +
+      '数量只统计有权数据，不含被隐藏的关系；无权联系人不返回结果与数量。' +
+      '搜索覆盖姓名的核心字段并在有权范围内执行：搜索只在当前用户有权数据范围内执行，不另建搜索权限模型。';
+
+    if (!list.length) {
+      ui.qs('#cl-list').innerHTML = ui.empty(
+        base.length ? '没有匹配「' + q + '」的联系人。' : '当前范围内没有可查看的联系人。',
+        '<button class="ry-btn" id="cl-clear">清空条件</button>');
+      var cb = ui.qs('#cl-clear');
+      if (cb) cb.addEventListener('click', function () { q = ''; scope = 'all'; ui.qs('#cl-q').value = ''; render(); });
+      return;
+    }
+
+    ui.qs('#cl-list').innerHTML = '<div class="ry-sec-title">联系人 <span class="h5-sec-note">共 ' + list.length + ' 人</span></div>' +
+      '<div class="ry-hlist"><ul>' + list.map(row).join('') + '</ul></div>' +
+      '<p class="ry-hint">手机号与邮箱默认脱敏；拨号与查看明文需独立的字段级授权。导出属于另一项独立授权，H5 不提供导出。</p>';
+  }
+
+  ui.qs('#cl-go').addEventListener('click', function () {
+    q = ui.qs('#cl-q').value.trim().toLowerCase();
+    render();
+  });
+  ui.qs('#cl-q').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); q = ui.qs('#cl-q').value.trim().toLowerCase(); render(); }
+  });
+
+  /* ---------------------------------------------------------- 初始化 */
+
+  renderContract([
+    ['范围口径', '联系人可见范围继承其关联客户；先按数据范围过滤再渲染'],
+    ['关系口径', '客户—联系人关系由 contactRelations 承载，联系人本身不保存 customerId'],
+    ['关系字段', '关系上有 roles（数组）、dept、title、primary、status'],
+    ['脱敏', '手机号默认脱敏；明文查看与导出是两项互相独立的授权动作，H5 不提供导出'],
+    ['隐藏数量', '无权关系不计入数量，也不出现在列表；不展示被隐藏的关系数量'],
+    ['搜索口径', '只检索预定义核心字段（姓名、手机号、邮箱、职务、所属组织、关联客户名称），不做全字段全文检索']
+  ]);
+
+  render();
+  /* 委托绑定只做一次：筛选与搜索会重建列表 DOM，重复绑定会叠加弹层。 */
+  ui.bindDenied(document.body);
+})();
+</script>
+</body>
+</html>

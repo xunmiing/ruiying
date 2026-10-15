@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>正式拜访 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：正式拜访列表 */
+  .vl-table { min-width: 1680px; white-space: nowrap; }
+  .vl-table th, .vl-table td { padding-left: 14px; padding-right: 14px; }
+  .vl-table .ry-tbl-act { min-width: 180px; }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div class="ry-tabs" role="tablist" aria-label="销售活动类型">
+        <a class="ry-tab" role="tab" aria-selected="false" href="../activity/list.html">普通活动</a>
+        <a class="ry-tab is-on" role="tab" aria-selected="true" href="list.html">正式拜访</a>
+      </div>
+      <div class="ry-actions-row" style="margin:10px 0"><button type="button" data-pcn-rule="visitScope">可见范围</button></div>
+      <div class="ry-tabs" id="vl-scopes" role="tablist" aria-label="正式拜访范围"></div>
+      <div id="vl-filter"></div>
+      <div class="ry-resultbar" id="vl-resultbar"></div>
+      <div id="vl-selbar-host"></div>
+      <div id="vl-batch"></div>
+      <div class="ry-card"><div class="ry-card__body ry-card__body--flush">
+        <div class="ry-table__wrap ry-standard-list-wrap ry-standard-list-wrap--select ry-standard-list-wrap--actions" role="region" aria-label="正式拜访列表，可左右滚动" tabindex="0"><table class="ry-table ry-table--tight vl-table">
+          <thead><tr id="vl-thead"></tr></thead>
+          <tbody id="vl-rows"></tbody>
+        </table></div>
+      </div></div>
+      <div id="vl-pager"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var KEY = 'visit.list';
+  function can(a, o) { return RY.perm.can(a, o); }
+
+  var st = S.listState(KEY);
+  var scope = ui.q('scope') || st.scope || 'mine';
+  var flt = st.flt || (st.flt = { kw: '', status: '', type: '', exception: '', owner: '', from: '', to: '' });
+  var page = st.page || 1, size = 10;
+
+  var STATUS = ['计划中', '进行中', '已完成', '未到访', '已取消'];
+  var EXC = ['待复核', '待补充', '已复核'];
+
+  function scopes() {
+    var list = [{ key: 'mine', name: '我的拜访', desc: '我是拜访负责人' }, { key: 'all', name: '全部拜访', desc: '按当前数据范围' }];
+    if (RY.perm.pcRole(u) === 'R2') list.splice(1, 0, { key: 'team', name: '团队拜访', desc: '我作为主管可见的团队范围' });
+    return list;
+  }
+  function visible(key) {
+    return S.arr('visits').filter(function (v) {
+      if (!RY.perm.inScope('visit', v)) return false;
+      if (key === 'mine') return v.owner === u.id;
+      if (key === 'team') return v.owner === u.id || S.inTeamOf(v.owner, u.id);
+      return true;
+    });
+  }
+  function inScope(v) {
+    if (!RY.perm.inScope('visit', v)) return false;
+    if (scope === 'mine') return v.owner === u.id;
+    if (scope === 'team') return v.owner === u.id || S.inTeamOf(v.owner, u.id);
+    return true;
+  }
+  function cusName(v) { var c = S.customer(v.customerId); return c ? c.name : v.customerId; }
+  function statusTag(s) {
+    return ui.tag(s, s === '已完成' ? 'ok' : s === '进行中' ? 'brand' : s === '计划中' ? 'info' : 'muted');
+  }
+  function scopeName() { var s = scopes().filter(function (x) { return x.key === scope; })[0]; return s ? s.name : scope; }
+  /* 可参与批量复核的候选：存在待复核异常。其余记录仍可被勾选，但批量执行时会逐条跳过并说明原因。 */
+  function reviewable(v) { return v.exception === '待复核'; }
+
+  RY.nav.shell({
+    nav: 'activity.list',
+    title: '销售活动',
+    subtitle: '按类型查看普通活动与正式拜访。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '销售管理' }, { label: '销售活动' }],
+    actions: (u.role === 'R2' ? '<a class="ry-btn" href="../config/visit-rule.html">查看适用规则</a>' : '') +
+      (can('visit.export') ? '<button class="ry-btn" id="vl-exp">导出</button>'
+      : '<button class="ry-btn" data-denied="1" data-action="visit.export">导出<i class="ry-btn__lock">无权限</i></button>') +
+      '<button type="button" data-pcn-rule="visitExport">导出口径</button>' +
+      '<button type="button" data-pcn-rule="visitEntry">H5 发起拜访</button>'
+  });
+
+  function renderScopes() {
+    ui.qs('#vl-scopes').innerHTML = scopes().map(function (s) {
+      return '<button class="ry-tab' + (scope === s.key ? ' is-on' : '') + '" role="tab" aria-selected="' + (scope === s.key) + '" data-scope="' + s.key + '" title="' + ui.esc(s.desc) + '">' +
+        ui.esc(s.name) + ' <b>' + visible(s.key).length + '</b></button>';
+    }).join('');
+    ui.qsa('[data-scope]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        scope = b.getAttribute('data-scope'); st.scope = scope; page = 1; st.page = 1;
+        S.selection(KEY, []); S.save(); render();
+      });
+    });
+  }
+
+  ui.qs('#vl-filter').className = 'ry-filter';
+  ui.qs('#vl-filter').innerHTML =
+    '<div class="ry-filter__row">' +
+      ui.field('关键词', ui.input('kw', flt.kw, '拜访编号／客户名称'), '', false) +
+      ui.field('拜访状态', ui.select('status', [{ value: '', label: '全部' }].concat(STATUS), flt.status), '', false) +
+      ui.field('拜访类型', ui.select('type', [{ value: '', label: '全部' }, { value: '实地拜访', label: '实地拜访' }, { value: '远程拜访', label: '远程拜访' }], flt.type), '', false) +
+      ui.field('异常复核', ui.select('exception', [{ value: '', label: '全部' }].concat(EXC), flt.exception), '', false) +
+    '</div>' +
+    '<div class="ry-filter__more" id="vl-more"><div class="ry-filter__row">' +
+      ui.field('负责人', ui.select('owner', [{ value: '', label: '全部' }].concat(S.all('users').map(function (x) { return { value: x.id, label: x.name }; })), flt.owner), '', false) +
+      ui.field('计划时间', '<div class="ry-daterange">' + ui.input('from', flt.from, '起') + '<span>~</span>' + ui.input('to', flt.to, '止') + '</div>', '', false) +
+    '</div></div>' +
+    '<div class="ry-filter__foot"><div class="ry-resultbar__tools"><button class="ry-btn" id="vl-toggle-more">更多筛选</button>' +
+      '<button class="ry-btn ry-btn--primary" id="vl-apply">查询</button><button class="ry-btn" id="vl-reset">重置条件</button></div></div>';
+  RY.nav.bindFilterToggle('#vl-toggle-more', '#vl-more');
+
+  function filtered() {
+    var k = flt.kw.trim();
+    return S.arr('visits').filter(function (v) {
+      if (!inScope(v)) return false;
+      if (k && v.id.indexOf(k) < 0 && cusName(v).indexOf(k) < 0) return false;
+      if (flt.status && v.status !== flt.status) return false;
+      if (flt.type && v.type !== flt.type) return false;
+      if (flt.exception && v.exception !== flt.exception) return false;
+      if (flt.owner && v.owner !== flt.owner) return false;
+      var d = String(v.planAt || '').slice(0, 10);
+      if (flt.from && (!d || d < flt.from)) return false;
+      if (flt.to && (!d || d > flt.to)) return false;
+      return true;
+    }).sort(function (a, b) { return String(b.planAt || '').localeCompare(String(a.planAt || '')); });
+  }
+
+  function render() {
+    renderScopes();
+    var list = filtered(), total = list.length;
+    var pages = Math.max(1, Math.ceil(total / size));
+    if (page > pages) page = pages;
+    var rows = list.slice((page - 1) * size, page * size);
+    var pageIds = rows.map(function (v) { return v.id; });
+    var filteredIds = list.map(function (v) { return v.id; });
+    var picked = S.selection(KEY);
+    var crossPage = picked.filter(function (id) { return filteredIds.indexOf(id) < 0; }).length;
+
+    ui.qs('#vl-thead').innerHTML =
+      '<th style="width:34px"><input type="checkbox" id="vl-all"></th><th>拜访编号</th><th>客户</th><th>拜访类型</th><th>计划时间</th><th>计划快照时间</th>' +
+      '<th>负责人</th><th>拜访状态</th><th>签到时间</th><th>签退时间</th>' +
+      '<th>异常状态</th><th>异常类型</th><th>操作</th>';
+    ui.qs('#vl-rows').innerHTML = rows.length ? rows.map(function (v) {
+      return '<tr>' +
+        '<td><input type="checkbox" data-vl-sel="' + ui.esc(v.id) + '"></td>' +
+        '<td><a class="ry-cellname" href="detail.html?id=' + encodeURIComponent(v.id) + '&from=' + encodeURIComponent(scope) + '">' + ui.esc(v.id) + '</a></td>' +
+        '<td>' + ui.esc(cusName(v)) + '</td>' +
+        '<td>' + ui.tag(v.type, 'muted') + '</td>' +
+        '<td>' + ui.esc(v.planAt || '—') + '</td>' +
+        '<td>' + ui.esc(v.planSnapshotAt || '—') + '</td>' +
+        '<td>' + ui.esc(S.userName(v.owner) || v.owner) + '</td>' +
+        '<td>' + statusTag(v.status) + '</td>' +
+        '<td>' + ui.esc(v.checkInAt || '—') + '</td>' +
+        '<td>' + ui.esc(v.checkOutAt || '—') + '</td>' +
+        '<td>' + (v.exception ? ui.tag(v.exception, reviewable(v) ? 'warn' : 'ok') : '<span class="ry-faint">无异常</span>') + '</td>' +
+        '<td>' + ui.esc(v.checkInIssue || '—') + '</td>' +
+        '<td class="ry-tbl-act">' +
+          '<a class="ry-btn ry-btn--sm" href="detail.html?id=' + encodeURIComponent(v.id) + '&from=' + encodeURIComponent(scope) + '">详情</a>' +
+          (can('visit.review') && ['待复核', '待补充'].indexOf(v.exception) >= 0
+            ? ui.actionBtn('visit.review', '异常复核', ' data-vl-rev="' + v.id + '"', 'ry-btn--sm') : '') +
+        '</td></tr>';
+    }).join('') : '<tr><td colspan="13" class="ry-hint">当前范围与筛选条件下没有正式拜访。</td></tr>';
+
+    ui.qs('#vl-resultbar').innerHTML = '<span>共 ' + total + ' 条正式拜访（范围：' + ui.esc(scopeName()) + '）</span>' +
+      '<span class="ry-resultbar__right">待复核 ' + list.filter(function (v) { return v.exception === '待复核'; }).length +
+      ' 条　待补充 ' + list.filter(function (v) { return v.exception === '待补充'; }).length + ' 条' +
+      ' <button type="button" data-pcn-rule="visitReview">复核规则</button></span>';
+    ui.qs('#vl-pager').innerHTML = ui.pager(total, page, size, KEY);
+
+    ui.bindPager('#vl-pager', function (p) { page = p; st.page = p; S.save(); render(); });
+
+    /* 选择区沿用公共组件：本页全选／选择本页／选择全部筛选结果／清空，单次上限 100 条。 */
+    ui.qs('#vl-selbar-host').innerHTML = ui.selectionBar({
+      id: 'vl-selbar', key: KEY, filteredTotal: total, crossPageCount: crossPage
+    });
+    ui.bindSelection({
+      id: 'vl-selbar', key: KEY, pageIds: pageIds, filteredIds: filteredIds,
+      filteredTotal: total, crossPageCount: crossPage,
+      onChange: function (ids) {
+        renderBatch(ids);
+        ui.qsa('[data-vl-sel]').forEach(function (x) { x.checked = ids.indexOf(x.getAttribute('data-vl-sel')) >= 0; });
+        ui.qs('#vl-all').checked = rows.length > 0 && rows.every(function (row) { return ids.indexOf(row.id) >= 0; });
+      }
+    });
+    ui.qsa('[data-vl-sel]').forEach(function (x) {
+      x.addEventListener('change', function () {
+        var ids = ui.selected(KEY).slice(), id = x.getAttribute('data-vl-sel');
+        if (x.checked && ids.indexOf(id) < 0) ids.push(id);
+        if (!x.checked) ids = ids.filter(function (value) { return value !== id; });
+        if (ids.length > 100) { x.checked = false; ui.toast('单次批量最多选择 100 条拜访。', 'warn'); return; }
+        ui.syncSel(KEY, ids);
+      });
+    });
+    ui.qs('#vl-all').addEventListener('change', function (e) {
+      var checked = e.target.checked;
+      ui.qsa('[data-vl-sel]').forEach(function (x) { x.checked = checked; x.dispatchEvent(new Event('change')); });
+    });
+
+    ui.qsa('[data-vl-rev]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]')) return;
+        reviewOne(b.getAttribute('data-vl-rev'));
+      });
+    });
+    ui.bindDenied('#ry-page');
+  }
+
+  function renderBatch(ids) {
+    var rows = ids.map(function (id) { return S.visit(id); }).filter(Boolean);
+    var eligible = rows.filter(reviewable);
+    var skipped = rows.filter(function (v) { return !reviewable(v); });
+    ui.qs('#vl-batch').innerHTML = ids.length
+      ? '<div class="ry-batchbar"><span>已选 <b>' + ids.length + '</b> 条，其中可批量复核 <b>' + eligible.length + '</b> 条</span>' +
+        (can('visit.batchReview')
+          ? '<button class="ry-btn ry-btn--sm ry-btn--primary" id="vl-b-rev"' + (eligible.length ? '' : ' data-denied="1"') + '>批量复核</button>'
+          : '<button class="ry-btn ry-btn--sm" data-denied="1" data-action="visit.batchReview">批量复核<i class="ry-btn__lock">无权限</i></button>') +
+        '<button class="ry-btn ry-btn--sm" id="vl-b-clear">取消选择</button>' +
+        '<span class="ry-hint ry-batchbar__hint">逐条重检；不符合条件的记录跳过' +
+        (skipped.length ? '　<b>已排除 ' + skipped.length + ' 条需单独处理</b>' : '') + '</span></div>'
+      : '';
+    var c = ui.qs('#vl-b-clear');
+    if (c) c.addEventListener('click', function () { S.selection(KEY, []); ui.syncSel(KEY, []); render(); });
+    var b = ui.qs('#vl-b-rev');
+    if (b) b.addEventListener('click', function (e) {
+      if (e.target.closest('[data-denied]')) return;
+      batchReview(ids);
+    });
+  }
+
+  function reviewOne(id) {
+    var v = S.visit(id);
+    if (!v) return;
+    ui.drawer({
+      title: '异常复核', subtitle: '复核只改变异常状态，不改写拜访事实与主状态。',
+      body: ui.kv([['拜访编号', v.id], ['客户', cusName(v)], ['拜访状态', v.status],
+          ['异常类型', v.checkInIssue || '—'], ['异常说明', v.exceptionDetail || '—'],
+          ['销售填写原因', v.exceptionReason || '—']]) +
+        ui.field('复核结论', ui.select('result', [{ value: '已复核', label: '已复核（异常关闭，不影响拜访事实）' },
+          { value: '待补充', label: '待补充（要求销售补充，必须填写原因）' }], '已复核'), '', true) +
+        ui.field('复核原因', ui.textarea('reason', '', '结论为「待补充」时必填', 3), '', false),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="vl-rev-ok">提交复核</button>',
+      onOpen: function (el) {
+        ui.qs('#vl-rev-ok', el).addEventListener('click', function () {
+          var val = ui.formValues(el);
+          var r = S.visitReview(id, val.result, (val.reason || '').trim());
+          if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+          ui.close(); ui.toast('复核结果已记录。', 'success'); render();
+        });
+      }
+    });
+  }
+
+  function batchReview(ids) {
+    var rows = ids.map(function (id) { return S.visit(id); }).filter(Boolean);
+    var eligible = rows.filter(reviewable);
+    var skipped = rows.length - eligible.length;
+    ui.modal({
+      title: '批量复核正式拜访', size: 'md',
+      body: '<p>所选 <b>' + ids.length + '</b> 条中，可批量复核 <b>' + eligible.length + '</b> 条' +
+        (skipped ? '，<b>' + skipped + '</b> 条需单独处理（待补充、已复核或异常状态已变化）' : '') + '。</p>' +
+        '<p class="ry-hint">系统会逐条重检规则版本、异常状态与结论一致性，不满足条件的记录会被跳过并给出原因，允许部分成功。</p>' +
+        ui.field('复核结论', ui.select('result', [{ value: '已复核', label: '已复核' }], '已复核'), '', true) +
+        ui.field('统一复核原因', ui.textarea('reason', '', '写入每条记录的复核说明', 3), '', false),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="vl-b-ok">执行批量复核</button>',
+      onOpen: function (el) {
+        ui.qs('#vl-b-ok', el).addEventListener('click', function () {
+          var val = ui.formValues(el);
+          var res = S.batchVisitReview(ids, val.result, (val.reason || '').trim());
+          var okn = res.filter(function (r) { return r.ok; }).length;
+          var fail = res.filter(function (r) { return !r.ok; });
+          var job = S.addJob({
+            type: '批量', action: '批正式拜访异常复核', object: '正式拜访',
+            status: fail.length ? '部分成功' : '已完成',
+            total: res.length, success: okn, failed: fail.length,
+            items: res.map(function (r) {
+              var v = S.visit(r.id);
+              return { key: r.id, name: v ? cusName(v) : r.id, result: r.ok ? '成功' : '失败', reason: r.ok ? '' : r.msg };
+            })
+          });
+          ui.close();
+          S.selection(KEY, []); ui.syncSel(KEY, []);
+          if (fail.length) {
+            ui.modal({
+              title: '批量复核结果', size: 'lg',
+              body: '<p>共 ' + res.length + ' 条，成功 <b>' + okn + '</b> 条，失败 <b>' + fail.length + '</b> 条。失败项已记入处理记录。</p>' +
+                ui.jobResult(job),
+              footer: '<button class="ry-btn ry-btn--primary" data-close>关闭</button>'
+            });
+          } else {
+            ui.toast('批量复核完成，共 ' + okn + ' 条。', 'success');
+          }
+          render();
+        });
+      }
+    });
+  }
+
+  ui.qs('#vl-apply').addEventListener('click', function () {
+    var v = ui.formValues(ui.qs('#vl-filter'));
+    flt.kw = v.kw; flt.status = v.status; flt.type = v.type; flt.exception = v.exception;
+    flt.owner = v.owner; flt.from = v.from; flt.to = v.to;
+    page = 1; st.page = 1; st.flt = flt; S.save(); render();
+  });
+  ui.qs('#vl-reset').addEventListener('click', function () {
+    Object.keys(flt).forEach(function (k) { flt[k] = ''; });
+    page = 1; st.page = 1; S.save();
+    ui.qs('#vl-filter').querySelectorAll('input,select').forEach(function (x) {
+      if (x.tagName === 'SELECT') x.selectedIndex = 0; else x.value = '';
+    });
+    render();
+  });
+
+  var ex = ui.qs('#vl-exp');
+  if (ex) ex.addEventListener('click', function (e) {
+    if (e.target.closest('[data-denied]')) return;
+    ui.modal({
+      title: '导出正式拜访', size: 'sm',
+      body: '<p>将导出当前范围与筛选结果 <b>' + filtered().length + '</b> 条。</p>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="vl-exp-ok">提交导出</button>',
+      onOpen: function (el) {
+        ui.qs('#vl-exp-ok', el).addEventListener('click', function () {
+          ui.close();
+          var n = filtered().length;
+          var job = S.addJob({
+            type: '导出', action: '正式拜访导出', object: '正式拜访', status: '处理中', total: n,
+            fields: ['拜访编号', '客户', '拜访类型', '计划时间', '负责人', '拜访状态', '异常复核'],
+            fileName: '正式拜访_' + S.today().replace(/-/g, '') + '.xlsx'
+          });
+          ui.asyncRun({
+            title: '正在生成导出文件', total: n, processId: job.processId,
+            onDone: function () {
+              S.updateJob(job.id, { status: '已完成', success: n, failed: 0 });
+              ui.closeAll(); ui.toast('导出已完成，可在处理记录下载。', 'success');
+            }
+          });
+        });
+      }
+    });
+  });
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

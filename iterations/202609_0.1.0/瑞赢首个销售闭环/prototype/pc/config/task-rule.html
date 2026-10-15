@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>任务规则 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<link rel="stylesheet" href="../../assets/css/config-rule-ui.css">
+<style>
+  /* 页面专属样式：B 类任务规则（草稿 → 校验 → 立即发布） */
+  .tr-diff { display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 8px; font-size: 12.5px; line-height: 1.9; }
+  .tr-diff > span { color: var(--muted); }
+  .tr-cols { display: grid; grid-template-columns: 300px minmax(0,1fr); gap: 16px; align-items: start; }
+  .tr-rail { display:grid;gap:8px;max-height:76vh;overflow:auto; }
+  .tr-rail__item { display:block;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:var(--r-btn);padding:11px 12px;line-height:1.6; }
+  .tr-rail__item:hover,.tr-rail__item.is-selected { border-color:var(--brand);background:var(--brand-soft); }
+  .tr-rail__item strong { display:block;font-size:13px; }
+  .tr-rail__item small { display:block;color:var(--muted);font-size:11px;margin-top:3px; }
+  .tr-rail__item .ry-tag { margin-top:5px; }
+  .tr-secondary { display:grid;grid-template-columns:1.1fr .9fr;gap:14px; }
+  .tr-secondary--single { grid-template-columns:1fr; }
+  .tr-cmp { border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; }
+  .tr-cmp__r { display: grid; grid-template-columns: 118px 1fr 1fr; gap: 8px; padding: 7px 11px; font-size: 12px; border-bottom: 1px solid var(--line-soft); }
+  .tr-cmp__r:last-child { border-bottom: none; }
+  .tr-cmp__r > span:first-child { color: var(--muted); }
+  .tr-cmp__h { background: #FBFCFC; font-weight: 600; }
+  @media (max-width: 1100px) { .tr-cols,.tr-secondary { grid-template-columns: minmax(0, 1fr); } .tr-rail{max-height:none;} }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="tr-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var PAGE = 'cfg.task';
+  var canEdit = RY.perm.can('config.editB');
+  var canPublish = RY.perm.can('config.publish');
+
+  RY.nav.shell({
+    nav: 'cfg.task',
+    title: '任务规则',
+    subtitle: '<b>B 类配置</b>：草稿 → 校验 → 立即发布。历史任务<b>继续按原版本解释</b>。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '配置中心' }, { label: '任务规则' }]
+  });
+
+  var g = RY.perm.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#tr-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入任务规则',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示规则名称、来源规则与版本信息。</p>'
+    });
+    return;
+  }
+
+  var curId = ui.q('id');
+
+  function rules() { return S.configBList('taskRules'); }
+  function cur() { return rules().filter(function (r) { return r.id === curId; })[0] || rules()[0]; }
+  function famOf(r) { return r.code.replace(/-V\d+.*$/, ''); }
+  function siblings(r) { return rules().filter(function (x) { return famOf(x) === famOf(r); }); }
+  function activeOf(r) { return siblings(r).filter(function (x) { return x.status === '生效'; })[0]; }
+
+  function render() {
+    var rs = rules();
+    if (!rs.length) { ui.qs('#tr-host').innerHTML = ui.stateCard('empty', { title: '没有任务规则' }); return; }
+    var r = cur();
+    curId = r.id;
+    var act = activeOf(r);
+    var hasDiff = !!act && act.id !== r.id;
+
+    ui.qs('#tr-host').innerHTML =
+      '<div class="tr-cols">' +
+        '<div>' + ui.section('规则版本', '<div class="tr-rail">' + rs.map(function (x) {
+          return '<a class="tr-rail__item' + (x.id === curId ? ' is-selected' : '') + '" href="task-rule.html?id=' + encodeURIComponent(x.id) + '"' + (x.id === curId ? ' aria-current="page"' : '') + '>' +
+            '<strong>' + ui.esc(x.name) + '</strong><span class="ry-code">' + ui.esc(x.code) + '</span> · ' + ui.esc(x.version) + '　' + ui.statusTag(x.status) +
+            '<small>' + ui.esc(x.sourceRule) + ' · ' + ui.esc(x.scope || '全部业务线') + '</small></a>';
+        }).join('') + '</div>', rs.length + ' 条　<button type="button" data-pcn-rule="taskRuleVersion"></button>') + '</div>' +
+        '<div>' +
+          '<div class="cr-hero"><div><div class="cr-hero__eyebrow">当前选中版本</div><h2>' + ui.esc(r.name) + '　' + ui.statusTag(r.status) + '</h2><p>' + ui.esc(r.code) + ' · ' + ui.esc(r.version) + ' · ' + ui.esc(r.scope || '全部业务线') + '</p></div></div>' +
+          '<div class="cr-toolbar">' +
+            (r.status === '草稿' ? (canEdit ? '<button class="ry-btn" id="tr-edit">编辑草稿</button><button class="ry-btn" id="tr-val">校验草稿</button>' : '') +
+              (canPublish ? '<button class="ry-btn ry-btn--primary" id="tr-pub">立即发布</button>' : '') :
+              '<span class="cr-toolbar__note">当前版本只读。</span>' + (canEdit ? '<button class="ry-btn ry-btn--primary" id="tr-clone">生成新草稿</button>' : '')) +
+          '</div><div id="tr-valout"></div>' +
+          ui.section('规则内容',
+            '<div class="tr-diff">' +
+              '<span>来源规则</span><b>' + ui.esc(r.sourceRule) + '</b>' +
+              '<span>生成后状态</span><b>待处理（任务候选先人工确认）</b>' +
+              '<span>流程属性</span><b>' + ui.esc(r.flowProps || '—') + '</b>' +
+              '<span>截止时间</span><b>' + ui.esc(r.dueRule || '—') + '</b>' +
+              '<span>提醒规则</span><b>' + ui.esc(r.remindRule || '—') + '</b>' +
+              '<span>发布信息</span><b>' + ui.esc(r.publishedAt || '未发布') + '　' + ui.esc(S.userName(r.publisher) || r.publisher || '') + '</b>' +
+            '</div>') +
+          '<div class="tr-secondary' + (hasDiff ? '' : ' tr-secondary--single') + '">' +
+          (hasDiff ? ui.section('生效版本 vs 本版本',
+            '<div class="tr-cmp">' +
+              '<div class="tr-cmp__r tr-cmp__h"><span>字段</span><span>生效 ' + ui.esc(act ? act.version : '—') + '</span><span>当前 ' + ui.esc(r.version) + '</span></div>' +
+              [['来源规则', 'sourceRule'],
+               ['流程属性', 'flowProps'], ['截止时间', 'dueRule'], ['提醒规则', 'remindRule']].map(function (pair) {
+                var k = pair[1];
+                var a = String(act[k] || '—');
+                var b = String(r[k] || '—');
+                return '<div class="tr-cmp__r"><span>' + ui.esc(pair[0]) + '</span>' +
+                  '<span>' + ui.esc(a) + '</span>' +
+                  '<span' + (a !== b ? ' style="color:var(--brand-ink);font-weight:600"' : '') + '>' + ui.esc(b) + '</span></div>';
+              }).join('') +
+            '</div>') : '') +
+
+          ui.section('版本历史',
+            '<ul class="ry-kv ry-kv--tight">' + (r.history || []).slice().reverse().map(function (h) {
+              return '<li><span>' + ui.esc(h.version) + '</span><b>' + ui.esc(h.action) + '<br>' +
+                '<i class="ry-hint">' + ui.esc(h.at) + '　' + ui.esc(S.userName(h.by) || h.by) + '　' + ui.esc(h.note || '') + '</i></b></li>';
+            }).join('') + '</ul>') + '</div>' +
+        '</div>' +
+      '</div>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    var val = ui.qs('#tr-val');
+    if (val) val.addEventListener('click', function () { out(S.configBValidate('taskRules', curId)); });
+    var pub = ui.qs('#tr-pub');
+    if (pub) pub.addEventListener('click', doPublish);
+    var clone = ui.qs('#tr-clone');
+    if (clone) clone.addEventListener('click', function () {
+      var result = S.taskRuleCloneDraft(curId);
+      if (!result.ok) { ui.toast(result.msg, 'warn'); return; }
+      curId = result.item.id;
+      render();
+      ui.toast(result.msg || '已生成新草稿。', 'success');
+    });
+    var ed = ui.qs('#tr-edit');
+    if (ed) ed.addEventListener('click', function () {
+      var r = cur();
+      if (r.status !== '草稿') { ui.toast('只有草稿版本可以编辑。', 'warn'); return; }
+      editor(r);
+    });
+  }
+
+  function doPublish() {
+    var r = cur();
+    if (r.status !== '草稿') { ui.toast('只有草稿版本可以发布。', 'warn'); return; }
+    if (!canPublish) { ui.toast('当前身份没有配置发布能力项。', 'warn'); return; }
+    var v = S.configBValidate('taskRules', curId);
+    if (!v.ok) { out(v); ui.toast('校验未通过，发布被阻断。', 'warn'); return; }
+    ui.confirm({
+      title: '立即发布 ' + r.version,
+      message: '<p>将把「' + ui.esc(r.name) + '」发布为生效版本，原生效版本转为历史。</p>',
+      confirmText: '立即发布',
+      onConfirm: function () {
+        var res = S.configBPublish('taskRules', curId);
+        if (!res.ok) { out({ ok: false, errors: res.errors || [], msg: res.msg }); ui.toast('发布失败：' + res.msg, 'danger'); return; }
+        ui.toast(res.msg, 'success'); render();
+      }
+    });
+  }
+
+  function editor(r) {
+    ui.drawer({
+      title: '编辑草稿 ' + r.code + ' ' + r.version,
+      subtitle: 'B 类：保存草稿不生效；校验通过后立即发布才影响新任务。',
+      size: 'lg',
+      body:
+        '<div class="cr-form-block"><h3>规则标识与来源</h3>' + ui.grid2(
+          ui.field('规则名称', ui.input('name', r.name), '', true),
+          ui.field('适用范围', ui.input('scope', r.scope || '全部业务线'))
+        ) +
+        ui.field('来源规则', ui.input('sourceRule', r.sourceRule) + '<button type="button" data-pcn-rule="taskRuleVersion"></button>', '', true) + '</div>' +
+        '<div class="cr-form-block"><h3>正式任务属性</h3>' +
+        '<p class="ry-hint">正式任务生成后直接待处理，仅由负责人完成；任务候选的人工确认在 M03 处理。</p>' +
+        ui.field('流程属性', ui.textarea('flowProps', r.flowProps, '说明成果与参与人的规则', 3)) + '</div>' +
+        '<div class="cr-form-block"><h3>截止与提醒</h3>' + ui.grid2(
+          ui.field('截止时间规则', ui.input('dueRule', r.dueRule)),
+          ui.field('提醒规则', ui.input('remindRule', r.remindRule))
+        ) + '</div>' +
+        ui.field('草稿说明', ui.textarea('note', '', '说明本次调整原因，写入版本历史', 3)),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="tr-save">保存草稿</button>',
+      onOpen: function (el) {
+        ui.qs('#tr-save', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!v.name || !v.name.trim()) { ui.toast('规则名称必填。', 'warn'); return; }
+          var res = S.configBSaveDraft('taskRules', curId, {
+            name: v.name.trim(), scope: v.scope, sourceRule: v.sourceRule,
+            needAccept: false, rejectAllowed: false, acceptRule: '',
+            flowProps: v.flowProps, dueRule: v.dueRule,
+            remindRule: v.remindRule, acceptorRule: ''
+          }, v.note || '编辑草稿');
+          if (!res.ok) { ui.toast(res.msg, 'warn'); return; }
+          ui.close(); ui.toast('草稿已保存，发布后才会生效。', 'success'); render();
+        });
+      }
+    });
+  }
+
+  function out(v) {
+    var el = ui.qs('#tr-valout');
+    if (!el) return;
+    el.innerHTML = v.ok
+      ? ui.banner('校验通过：规则名称与来源规则均已填写。可以立即发布。', 'brand')
+      : ui.banner('<b>校验未通过</b>：' + ((v.errors || []).length ? (v.errors || []).join('；') : v.msg) +
+        '<br>发布被阻断；<b>草稿保留</b>，修正后可重新校验。', 'danger');
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

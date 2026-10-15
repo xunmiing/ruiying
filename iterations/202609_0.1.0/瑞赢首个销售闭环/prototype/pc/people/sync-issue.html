@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>人员同步异常 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：人员同步异常（异常工号不创建正式人员） */
+  .ps-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+  .ps-emp { font-family: var(--mono); font-size: 11.5px; color: var(--danger); background: var(--danger-soft); padding: 1px 5px; border-radius: 4px; }
+  .ps-emp--ok { color: var(--ok); background: var(--brand-soft); }
+  @media (max-width: 1180px) { .ps-cols { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="ps-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'people.sync';
+  var canHandle = P.can('peopleSync.handle');
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '人员同步异常',
+    subtitle: '<b>异常工号不创建正式人员</b>。瑞赢只能查看外部事实与错误原因，<b>不能修改外部认证事实</b>。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '人员与权限' }, { label: '人员同步异常' }],
+    actions: '<a class="ry-btn" href="list.html">人员管理</a>'
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#ps-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入人员同步异常',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示工号、姓名与失败原因。</p>'
+    });
+    return;
+  }
+
+  var tab = ui.hash() || '待处理';
+  var STATUS = ['待处理', '处理中', '已处理'];
+
+  function all() { return S.peopleSyncList(); }
+
+  function render() {
+    if (STATUS.indexOf(tab) < 0) tab = '待处理';
+    var list = all(), rows = list.filter(function (p) { return p.status === tab; });
+    ui.qs('#ps-host').innerHTML =
+      ui.banner('人员事实源是<b>公司用户中心</b>：瑞赢同步符合条件的销售。' +
+        '工号是身份事实，出现<b>格式异常、冲突或缺失</b>时，<b>不创建正式人员</b>——' +
+        '宁可少一个人，也不产生一个假身份。这些事件落在本页等待处理。' +
+        '企微认证同样只消费公司既有 <b>ZR 工号认证结果</b>：认证失效时拒绝登录，' +
+        '瑞赢<b>不建设绑定、改绑或人工身份映射</b>，也无法在此修改外部认证事实。', 'info') +
+
+      '<div style="display:flex;gap:6px;margin:12px 0">' +
+        STATUS.map(function (s) {
+          var n = list.filter(function (p) { return p.status === s; }).length;
+          return '<button class="ry-btn ry-btn--sm' + (tab === s ? ' ry-btn--primary' : '') + '" data-ps-t="' + s + '">' +
+            s + (n ? '（' + n + '）' : '') + '</button>';
+        }).join('') + '</div>' +
+
+      '<div class="ps-cols">' +
+        '<div>' +
+          (rows.length
+            ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+              '<th style="width:160px">来源事件</th><th style="width:110px">工号</th><th style="width:110px">异常类型</th>' +
+              '<th>详情</th><th style="width:110px">状态</th><th style="width:200px">操作</th></tr></thead><tbody>' +
+              rows.map(function (p) {
+                return '<tr>' +
+                  '<td>' + ui.esc(p.event) + '<div class="ry-hint">' + ui.esc(p.at) + '</div></td>' +
+                  '<td><span class="ps-emp">' + ui.esc(p.empNo) + '</span></td>' +
+                  '<td>' + ui.tag(p.issue, 'bad') + '</td>' +
+                  '<td class="ry-hint">' + ui.esc(p.detail) +
+                    (p.name && p.name.indexOf('未创建') < 0 ? '<div>关联已有人员：<b>' + ui.esc(p.name) + '</b></div>' : '<div style="color:var(--faint)">未创建正式人员</div>') +
+                    (p.note ? '<div>' + ui.esc(p.note) + '</div>' : '') + '</td>' +
+                  '<td>' + ui.statusTag(p.status) + '</td>' +
+                  '<td class="ry-tbl-act">' +
+                    (p.status !== '已处理' && canHandle
+                      ? '<button class="ry-btn ry-btn--sm" data-ps-act="' + p.id + '|等待用户中心重新推送">等待用户中心重推</button>' +
+                        '<button class="ry-btn ry-btn--sm ry-btn--primary" data-ps-act="' + p.id + '|标记已处理">标记已处理</button>'
+                      : '<span class="ry-faint">—</span>') +
+                  '</td></tr>';
+              }).join('') + '</tbody></table></div>'
+            : ui.stateCard('empty', {
+                title: '当前没有「' + tab + '」的人员同步异常',
+                body: '<p>用户中心推送异常工号时会自动产生记录。</p>'
+              })) +
+        '</div>' +
+
+        '<div>' +
+          ui.section('异常口径',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>工号格式异常</span><b>不创建正式人员</b></li>' +
+              '<li><span>工号冲突</span><b>同一工号对应多个身份时不创建</b></li>' +
+              '<li><span>工号缺失</span><b>不创建；不做本地补号</b></li>' +
+              '<li><span>认证失效</span><b>拒绝登录；只能等待外部修正</b></li>' +
+              '<li><span>修复方式</span><b>用户中心侧修正后重新推送</b></li>' +
+              '<li><span>本地兜底</span><b>无：不提供手工建号或人工身份映射</b></li>' +
+            '</ul>') +
+          ui.section('处理动作说明',
+            ui.kv([
+              ['等待用户中心重新推送', '状态转为「处理中」，等待外部修正'],
+              ['标记已处理', '外部已修正或确认无需处理，需填写说明'],
+              ['删除记录', '不允许：同步异常记录不作为业务事实删除'],
+              ['影响范围', '异常期间该人员不可登录，不参与任何业务流转']
+            ]) +
+            ui.banner('同步异常<b>不阻断其他人的正常使用</b>：只有异常人员本人受影响。' +
+              '记录会保留来源事件、工号、原因与处理说明，用于回答「这个人为什么一直没进来」。', 'warn')) +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-PEOPLESYNC</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-PEOPLESYNC · PC · 人员与权限</b></li>' +
+        '<li><span>依据</span><b>prd/07 §2</b></li>' +
+        '<li><span>可进入角色</span><b>销售主管/经理｜管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-69</b></li>' +
+        '<li><span>硬约束</span><b>工号异常不创建正式人员；只能查看外部认证状态与错误原因</b></li>' +
+        '<li><span>明确不做</span><b>不做手工建号、不做人工身份映射、不本地修改认证事实、不删除同步异常记录</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    ui.qsa('[data-ps-t]').forEach(function (b) {
+      b.addEventListener('click', function () { tab = b.getAttribute('data-ps-t'); window.location.hash = tab; render(); });
+    });
+    ui.qsa('[data-ps-act]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]')) return;
+        var parts = b.getAttribute('data-ps-act').split('|'), id = parts[0], act = parts[1];
+        if (act === '等待用户中心重新推送') {
+          var r = S.peopleSyncAct(id, act);
+          ui.toast(r.ok ? '已标记为处理中，等待用户中心侧修正后重新推送。' : r.msg, r.ok ? 'success' : 'warn');
+          render(); return;
+        }
+        ui.confirm({
+          title: '标记已处理',
+          message: '<p>确认该工号异常<b>已在用户中心侧修正</b>，或确认无需处理。</p>' +
+            '<p class="ry-hint">标记已处理<b>不会创建人员</b>：人员仍由用户中心下一次正常推送创建。' +
+            '本页不提供手工建号，也不提供人工身份映射。</p>',
+          requireReason: true, reasonLabel: '处理说明', reasonPlaceholder: '如：用户中心已修正工号格式，等待重新推送',
+          confirmText: '确认已处理',
+          onConfirm: function (reason) {
+            var r = S.peopleSyncAct(id, '标记已处理', reason);
+            ui.toast(r.ok ? '已标记处理完成。' : r.msg, r.ok ? 'success' : 'warn');
+            render();
+          }
+        });
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

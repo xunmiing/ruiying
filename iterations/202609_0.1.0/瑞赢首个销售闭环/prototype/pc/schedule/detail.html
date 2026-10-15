@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>日程详情 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：日程详情 */
+  .sd-state { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0; }
+  .sd-state button { border:1px solid var(--line); border-radius:16px; padding:5px 12px; background:var(--surface); cursor:pointer; }
+  .sd-state button.is-on { background:var(--brand-soft); color:var(--brand-ink); border-color:var(--brand); font-weight:600; }
+  .sd-tip { border:1px solid #e6bb5a!important; border-radius:6px!important; background:#fff8e8!important; color:#8c6215!important; padding:4px 9px!important; cursor:pointer; font:inherit; font-size:12px; }
+  .sd-sync { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .sd-sync__i { border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; background: var(--surface-2); }
+  .sd-sync__i b { display: block; font-size: 12px; }
+  .sd-sync__i span { font-size: 11.5px; color: var(--muted); line-height: 1.65; }
+  .sd-sync__i.is-bad { border-color: var(--danger-line); background: var(--danger-soft); }
+  .sd-info-layout { display:grid; gap:14px; }
+  .sd-info-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; align-items:stretch; }
+  .sd-info-grid .ry-card { min-width:0; height:100%; }
+  .sd-info-grid .ry-kv { overflow-wrap:anywhere; }
+  @media(max-width:900px) { .sd-info-grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="sd-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var PAGE = 'schedule.detail';
+  var id = ui.q('id');
+  var from = ui.q('from') || 'mine';
+  var s = id ? S.sched(id) : null;
+
+  /* backHref() 供页面内按钮使用：相对本页。面包屑的 href 由 navigation.js 统一加 data-root 前缀，
+     必须是「相对原型根」的路径，故单独提供 crumbHref()。 */
+  function backHref() { return 'list.html?scope=' + encodeURIComponent(from); }
+  function crumbHref() { return 'pc/schedule/list.html?scope=' + encodeURIComponent(from); }
+  function isMine() { return s && s.owner === u.id; }
+  function privateOther() { return s && s.type === '个人安排' && !isMine() && RY.perm.pcRole(u) !== 'R3'; }
+  function relLink(r) {
+    if (!r || !r.id) return '无关联对象';
+    var href = r.type === '客户' ? '../customer/detail.html?id=' + encodeURIComponent(r.id)
+      : r.type === '商机' ? '../opportunity/detail.html?id=' + encodeURIComponent(r.id)
+      : r.type === '线索' ? '../lead/detail.html?id=' + encodeURIComponent(r.id) : '';
+    var item = r.type === '客户' ? S.customer(r.id) : r.type === '商机' ? S.opp(r.id) : r.type === '线索' ? S.lead(r.id) : null;
+    if (!item || !RY.perm.inScope(r.type === '客户' ? 'customer' : r.type === '商机' ? 'opp' : 'lead', item)) return '无权查看关联对象';
+    return (href ? '<a href="' + href + '">' : '') + ui.esc(r.type + '：' + (r.name || r.id)) + (href ? '</a>' : '');
+  }
+
+  RY.nav.shell({
+    nav: 'schedule.list',
+    title: s ? privateOther() ? '忙碌' : s.title : '日程详情',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '工作管理' },
+      { label: '日程', href: crumbHref() }, { label: s ? privateOther() ? '忙碌' : s.id : '未找到' }],
+    actions: '<span id="sd-top-acts"></span>'
+  });
+
+  if (!s) {
+    ui.qs('#sd-host').innerHTML = ui.stateCard('unavailable', {
+      title: '日程不存在或不可见',
+      body: '<p>该日程编号不存在，或它不在当前数据范围内，或已被删除。</p>'
+    });
+    return;
+  }
+  var g = RY.perm.guard(PAGE, 'schedules', s.id);
+  if (!g.ok) {
+    ui.qs('#sd-host').innerHTML = ui.stateCard(g.kind, { title: '当前身份不可查看该日程', body: '<p>' + ui.esc(g.reason) + '</p>' });
+    return;
+  }
+  if (privateOther()) {
+    ui.qs('#sd-host').innerHTML = ui.stateCard('unavailable', { title: '该时段忙碌', body: '<p>其他人的个人安排仅显示忙碌，不展示日程详情。</p>', actions: '<a class="ry-btn" href="' + backHref() + '">返回日历</a>' });
+    return;
+  }
+
+  var TIP = { status: '点击状态仅切换到当前数据范围内的日程示例，不会修改当前日程。有效日程可取消或删除，已取消可删除；已删除是终态。已转换只是派生标记，不是主状态。',
+    info: '日程是个人工作安排。转任务后仅保存关联任务编号和转换时间，日程不新增主状态；转换后的原日程默认不展示且不能继续编辑。',
+    relation: '关联对象只用于展示和跳转，不改变日程归属与状态。查看关联对象时仍须校验该对象权限。',
+    sync: '只有独立日程和正式拜访同步企微。同步失败不阻断瑞赢业务；任务和日历只读投影不写企微。',
+    history: '日程日志只追加，记录创建、编辑、转换、取消、删除和同步重试的操作人、时间及前后值。' };
+  function tip(key,label) { return '<button type="button" class="sd-tip" data-tip="' + key + '">◆ ' + ui.esc(label) + '</button>'; }
+  function stateExamples() {
+    var rows=S.all('schedules').filter(function (x) { return RY.perm.inScope('schedule',x); });
+    return '<section class="ry-card"><div class="ry-card__body sd-state"><b>日程状态机与示例</b>' + ['有效','已取消','已删除'].map(function (status) {
+      var sample=rows.find(function (x) { return x.status===status; });
+      return '<button type="button" class="' + (s.status===status ? 'is-on' : '') + '" data-example="' + (sample ? ui.esc(sample.id) : '') + '"' + (sample ? '' : ' disabled') + '>' + status + '</button>';
+    }).join('') + tip('status','状态切换说明') + '</div></section>';
+  }
+
+  function viewInfo() {
+    return '<section class="ry-card"><header class="ry-card__head"><h3>日程信息</h3>' +
+      '<div class="ry-card__extra">' + ui.statusTag(s.status) + ui.tag(s.type, 'muted') + '</div></header>' +
+      '<div class="ry-card__body">' +
+        ui.kv([
+          ['日程编号', s.id],
+          ['日程标题', s.title],
+          ['日程类型', s.type],
+          ['负责人', (S.userName(s.owner) || s.owner) + (isMine() ? '（本人）' : '')],
+          ['开始时间', s.startAt || '—'],
+          ['结束时间', s.endAt || '—'],
+          ['备注', s.note || '—'],
+          ['创建人／时间', (S.userName(s.createdBy) || s.createdBy || '—') + '　' + (s.createdAt || '—')],
+          ['已转任务', s.isConverted
+            ? '<a href="../task/detail.html?id=' + encodeURIComponent(s.convertedTaskId) + '">' + ui.esc(s.convertedTaskId) + '</a>　' +
+              ui.esc((s.convertedAt || '') + '　' + (S.userName(s.convertedBy) || ''))
+            : '未转为任务'],
+          ['取消／删除原因', s.cancelReason || s.deleteReason || '—']
+        ]) +
+        tip('info', '日程与转任务规则') +
+      '</div></section>';
+  }
+
+  function viewRel() {
+    var r = s.related || {};
+    return '<section class="ry-card"><header class="ry-card__head"><h3>关联对象</h3></header><div class="ry-card__body">' +
+        ui.kv([
+          ['关联类型', r.type || '未关联'],
+          ['关联对象', relLink(r)],
+          ['关联编号', r.id || '—']
+        ]) +
+        tip('relation', '关联对象规则') +
+      '</div></section>';
+  }
+
+  function viewSync() {
+    var w = s.wecomSync || { status: '未同步', at: '', externalId: '', failReason: '', retryCount: 0 };
+    return '<section class="ry-card"><header class="ry-card__head"><h3>企微同步状态</h3><div class="ry-card__extra">' + ui.tag('企微 ' + w.status, w.status === '成功' ? 'ok' : w.status === '失败' ? 'bad' : 'muted') + '</div></header><div class="ry-card__body">' +
+        '<div class="sd-sync">' +
+          '<div class="sd-sync__i' + (w.status === '失败' ? ' is-bad' : '') + '"><b>同步状态</b><span>' + ui.esc(w.status) + '</span></div>' +
+          '<div class="sd-sync__i"><b>最近同步时间</b><span>' + ui.esc(w.at || '—') + '</span></div>' +
+          '<div class="sd-sync__i' + (w.retryCount >= 3 ? ' is-bad' : '') + '"><b>重试次数</b><span>' + ui.esc(String(w.retryCount || 0)) + ' 次</span></div>' +
+        '</div>' +
+        (w.externalId ? '<p class="ry-hint" style="margin-top:9px">企微侧日程标识：<code>' + ui.esc(w.externalId) + '</code></p>' : '') +
+        (w.failReason ? ui.banner('失败原因：' + ui.esc(w.failReason) +
+          '。同步失败<b>不影响日程本身的有效性</b>，可在本页重试；重试仍失败时按异常处理，不阻断销售工作。', 'warn') : '') +
+        tip('sync', '企微同步规则') +
+      '</div></section>';
+  }
+
+  function viewHistory() {
+    var h = (s.history || []).slice().reverse();
+    return '<section class="ry-card"><header class="ry-card__head"><h3>日志</h3>' +
+      '<div class="ry-card__extra">' + tip('history','操作记录说明') + '</div></header>' +
+      '<div class="ry-card__body">' + (h.length
+        ? '<div class="ry-timeline">' + h.map(function (x) {
+            return '<div class="ry-tl-item"><div class="ry-tl-dot"></div><div class="ry-tl-body">' +
+              '<b>' + ui.esc(x.at || '') + '　' + ui.esc(x.actor || '') + '　' + ui.esc(x.action || '') + '</b>' +
+              (x.from || x.to ? '<div class="ry-hint">' + ui.esc(x.from || '—') + ' → ' + ui.esc(x.to || '—') + '</div>' : '') +
+              (x.reason ? '<div class="ry-hint">原因：' + ui.esc(x.reason) + '</div>' : '') +
+            '</div></div>';
+          }).join('') + '</div>'
+        : '<p class="ry-hint">暂无日志记录。</p>') +
+      '</div></section>';
+  }
+
+  function actionsHtml() {
+    var out = ['<a class="ry-btn" href="' + backHref() + '">返回列表</a>'];
+    if (!isMine() || s.isConverted) return out.join('');
+    if (s.status === '有效' && !s.isConverted && RY.perm.can('schedule.edit')) out.push(ui.actionBtn('schedule.edit', '编辑日程', ' id="sd-edit"'));
+    if (s.status === '有效' && RY.perm.can('schedule.toTask') && !s.isConverted) out.push(ui.actionBtn('schedule.toTask', '转为任务', ' id="sd-totask"', 'ry-btn--primary'));
+    if (s.status === '有效' && RY.perm.can('schedule.cancel')) out.push(ui.actionBtn('schedule.cancel', '取消日程', ' id="sd-cancel"'));
+    if (s.status !== '已删除' && RY.perm.can('schedule.delete')) out.push(ui.actionBtn('schedule.delete', '删除日程', ' id="sd-del"'));
+    if (s.status === '有效' && (s.wecomSync || {}).status === '失败' && RY.perm.can('schedule.syncRetry')) out.push(ui.actionBtn('schedule.syncRetry', '重试同步', ' id="sd-retry"'));
+    return out.join('');
+  }
+
+  function render() {
+    ui.qs('#sd-host').innerHTML =
+      stateExamples() + '<div class="sd-info-layout"><div class="sd-info-grid">' + viewInfo() + viewRel() + '</div>' +
+      '<div class="sd-info-grid">' + viewSync() + viewHistory() + '</div></div>';
+
+    ui.qs('#sd-top-acts').innerHTML = actionsHtml();
+    ui.qsa('[data-tip]',ui.qs('#sd-host')).forEach(function (b) { b.addEventListener('click',function () { ui.modal({ title:b.textContent.replace(/^◆ /,''), size:'sm', body:'<p>'+ui.esc(TIP[b.getAttribute('data-tip')])+'</p>', footer:'<button class="ry-btn ry-btn--primary" data-close>知道了</button>' }); }); });
+    ui.qsa('[data-example]',ui.qs('#sd-host')).forEach(function (b) { b.addEventListener('click',function () { var x=b.getAttribute('data-example'); if(x && x!==s.id) location.href='detail.html?id='+encodeURIComponent(x)+'&from='+encodeURIComponent(from); }); });
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    var e1 = ui.qs('#sd-edit'); if (e1) e1.addEventListener('click', function (ev) { if (ev.target.closest('[data-denied]')) return; editDrawer(); });
+    var e2 = ui.qs('#sd-cancel'); if (e2) e2.addEventListener('click', function (ev) { if (ev.target.closest('[data-denied]')) return; reasonAct('cancel'); });
+    var e3 = ui.qs('#sd-del'); if (e3) e3.addEventListener('click', function (ev) { if (ev.target.closest('[data-denied]')) return; reasonAct('delete'); });
+    var e4 = ui.qs('#sd-totask'); if (e4) e4.addEventListener('click', function (ev) { if (ev.target.closest('[data-denied]')) return; toTask(); });
+    var e5 = ui.qs('#sd-retry'); if (e5) e5.addEventListener('click', function (ev) { if (ev.target.closest('[data-denied]')) return; retry(); });
+  }
+
+  function editDrawer() {
+    ui.drawer({
+      title: '编辑日程',
+      body: ui.grid2(
+          ui.field('日程类型', ui.select('type', ['客户约访', '内部会议', '个人安排'], s.type), '', true),
+          ui.field('日程标题', ui.input('title', s.title, '', ''), '', true)
+        ) +
+        ui.grid2(
+          ui.field('开始时间', ui.input('startAt', s.startAt, 'YYYY-MM-DD HH:mm'), '', true),
+          ui.field('结束时间', ui.input('endAt', s.endAt, 'YYYY-MM-DD HH:mm'), '', false)
+        ) +
+        ui.field('备注', ui.textarea('note', s.note, '', 2), '', false) +
+        '<button type="button" data-pcn-rule="scheduleEditSync"></button>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="sd-ok">保存</button>',
+      onOpen: function (el) {
+        ui.qs('#sd-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          var r = S.updateSchedule(id, { title: v.title, type: v.type, startAt: v.startAt, endAt: v.endAt || v.startAt, note: v.note });
+          if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+          s = S.sched(id); ui.close(); ui.toast('日程已保存，已重新提交企微同步。', 'success'); render();
+        });
+      }
+    });
+  }
+
+  function reasonAct(kind) {
+    var isCancel = kind === 'cancel';
+    ui.modal({
+      title: isCancel ? '取消日程' : '删除日程', size: 'sm',
+      body: ui.field(isCancel ? '取消原因' : '删除原因', ui.textarea('reason', '', '会写入日志与审计', 3), '', false) +
+        '<button type="button" data-pcn-rule="' + (isCancel ? 'scheduleCancel' : 'scheduleDelete') + '"></button>',
+      footer: '<button class="ry-btn" data-close>返回</button>' +
+        '<button class="ry-btn ry-btn--primary" id="sd-r-ok">确认' + (isCancel ? '取消' : '删除') + '</button>',
+      onOpen: function (el) {
+        ui.qs('#sd-r-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          var r = isCancel ? S.cancelSchedule(id, (v.reason || '').trim()) : S.deleteSchedule(id, (v.reason || '').trim());
+          if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+          s = S.sched(id);
+          ui.close(); ui.toast(isCancel ? '日程已取消。' : '日程已删除。', 'success'); render();
+        });
+      }
+    });
+  }
+
+  function toTask() {
+    ui.drawer({
+      title: '日程转为任务',
+      subtitle: '只写派生字段，不新增日程主状态。',
+      body: ui.field('任务名称', ui.input('name', s.title, '', ''), '', true) +
+        ui.field('业务类型', ui.select('bizType', ['客户跟进', '商机推进', '线索跟进', '客户维护', '内部事务'], '客户跟进'), '', true) +
+        ui.field('截止时间', ui.input('dueAt', s.endAt || s.startAt, '默认取日程结束时间'), '', false) +
+        ui.kv([
+          ['任务责任人', S.userName(s.owner) + '（沿用日程负责人）'],
+          ['关联对象', relLink(s.related)],
+          ['生成状态', '待处理；负责人提交成果后直接完成']
+        ]) +
+        '<button type="button" data-pcn-rule="scheduleToTask"></button>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="sd-t-ok">转换为任务</button>',
+      onOpen: function (el) {
+        ui.qs('#sd-t-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          var r = S.scheduleToTask(id, { name: v.name, bizType: v.bizType, dueAt: v.dueAt });
+          if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+          s = S.sched(id);
+          ui.close();
+          ui.modal({
+            title: '已生成任务', size: 'sm',
+            body: '<p>任务 <b>' + ui.esc(r.task.id) + '</b> 已创建，日程保持原有状态不变。</p>' +
+              '<p class="ry-hint">日程仍为「' + ui.esc(s.status) + '」，仅在详情页记录派生字段。</p>',
+            footer: '<button class="ry-btn" data-close>留在本页</button>' +
+              '<a class="ry-btn ry-btn--primary" href="../task/detail.html?id=' + encodeURIComponent(r.task.id) + '">打开任务</a>'
+          });
+          render();
+        });
+      }
+    });
+  }
+
+  function retry() {
+    var w = s.wecomSync || {};
+    if ((w.retryCount || 0) >= 3) {
+      ui.modal({
+        title: '同步重试次数已达上限', size: 'sm',
+        body: '<p>本日程已重试 <b>' + w.retryCount + '</b> 次仍未成功，最近失败原因：' + ui.esc(w.failReason || '—') + '</p>' +
+          ui.banner('同步失败<b>不影响日程本身的有效性</b>，销售工作照常进行。' +
+            '连续失败会生成「企微日程同步失败」处理事项，由系统管理员在异常处理中跟进。', 'warn'),
+        footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+      });
+      return;
+    }
+    var result = S.retryScheduleSync(id);
+    if (!result.ok) { ui.toast(result.msg, 'warn'); return; }
+    s = S.sched(id); ui.toast('已重新提交企微同步。', 'success'); render();
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

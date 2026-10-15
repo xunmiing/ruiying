@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>拜访详情 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：正式拜访详情 */
+  .vd-sum { display: grid; grid-template-columns: 96px 1fr; gap: 4px 12px; font-size: 13px; line-height: 1.85; }
+  .vd-sum dt { color: var(--muted); }
+  .vd-sum dd { margin: 0; }
+  .vd-loc { font-size: 12px; color: var(--muted); line-height: 1.7; }
+  .vd-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 24px; }
+  .vd-fact { min-width: 0; }
+  .vd-fact--wide { grid-column: span 2; }
+  .vd-fact__label { color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+  .vd-fact__value { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+  .vd-overview { display: grid; gap: 16px; }
+  .vd-overview__title { font-size: 16px; font-weight: 700; line-height: 1.4; }
+  .vd-overview .ry-card { margin-bottom: 0; }
+  .vd-record { padding: 12px 0; border-bottom: 1px solid var(--line); line-height: 1.7; }
+  .vd-record:last-child { border-bottom: 0; }
+  @media (max-width: 1100px) { .vd-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="vd-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var PAGE = 'visit.detail';
+  var id = ui.q('id');
+  var from = ui.q('from') || 'mine';
+  var v = id ? S.visit(id) : null;
+  var g = v ? RY.perm.guard(PAGE, 'visits', id) : null;
+
+  /* backHref() 供页面内按钮使用：相对本页。面包屑的 href 由 navigation.js 统一加 data-root 前缀，
+     必须是「相对原型根」的路径，故单独提供 crumbHref()。 */
+  function backHref() { return 'list.html?scope=' + encodeURIComponent(from); }
+  function crumbHref() { return 'pc/visit/list.html?scope=' + encodeURIComponent(from); }
+  function cus(v2) { return v2.customerId ? S.customer(v2.customerId) : null; }
+  function cusName(v2) { var c = cus(v2); return c ? c.name : v2.customerId; }
+  function canSensitive() { return v.owner === u.id || (u.role === 'R2' && S.inTeamOf(v.owner, u.id)) || RY.perm.pcRole(u) === 'R3'; }
+
+  RY.nav.shell({
+    nav: 'activity.list',
+    title: v ? '拜访 ' + cusName(v) : '拜访详情',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '销售管理' },
+      { label: '销售活动', href: 'pc/activity/list.html' }, { label: '正式拜访', href: crumbHref() }, { label: v ? (cusName(v) + '　' + v.id) : '未找到' }],
+    actions: g && g.ok && canSensitive()
+      ? ui.actionBtn('visit.supplement', '追加补充说明', ' id="vd-supp"') +
+        ui.actionBtn('visit.correct', '新建纠错记录', ' id="vd-corr"') : ''
+  });
+
+  if (!v) {
+    ui.qs('#vd-host').innerHTML = ui.stateCard('unavailable', {
+      title: '正式拜访不存在或不可见',
+      body: '<p>该拜访编号不存在，或它所属客户不在当前数据范围内，或记录已被合并。</p>'
+    });
+    return;
+  }
+  if (!g.ok) {
+    ui.qs('#vd-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可查看该拜访', body: '<p>' + ui.esc(g.reason) + '</p>'
+    });
+    return;
+  }
+
+  function locText(l) {
+    if (!canSensitive()) return '当前身份仅可查看签到／签退时间';
+    if (!l) return '未采集';
+    return ui.esc(l.addr || '（未解析地址）') + '　精度 ' + (l.acc || '—') + ' 米';
+  }
+
+  /* ---------------------------------------------------------- 视图 */
+
+  function fact(label, value, wide) {
+    return '<div class="vd-fact' + (wide ? ' vd-fact--wide' : '') + '"><div class="vd-fact__label">' +
+      label + '</div><div class="vd-fact__value">' + value + '</div></div>';
+  }
+
+  function viewOverview() {
+    var c = cus(v);
+    return '<section class="ry-card" id="vd-overview"><header class="ry-card__head"><h3>基础信息 <button type="button" data-pcn-rule="visitDetailSnapshot">计划快照</button></h3>' +
+        '<div class="ry-card__extra">' + ui.statusTag(v.status) + (v.exception ? ui.tag('异常：' + v.exception, 'warn') : '') + '</div></header>' +
+      '<div class="ry-card__body">' +
+        '<div class="vd-facts">' +
+          fact('拜访编号', ui.esc(v.id)) +
+          fact('拜访类型', ui.esc(v.type || '—')) +
+          fact('客户', c ? '<a href="../customer/detail.html?id=' + encodeURIComponent(c.id) + '">' + ui.esc(c.name) + '</a>' : ui.esc(v.customerId || '—')) +
+          fact('联系人', (v.contactIds || []).map(function (x) { var o = S.contact(x); return o && RY.perm.inScope('contact', o) ? ui.esc(o.name) : '无权查看'; }).join('、') || '—') +
+          fact('关联商机', v.opportunityId ? '<a href="../opportunity/detail.html?id=' + encodeURIComponent(v.opportunityId) + '">' + ui.esc(v.opportunityId) + '</a>' : '—') +
+          fact('关联任务', v.taskId ? '<a href="../task/detail.html?id=' + encodeURIComponent(v.taskId) + '">' + ui.esc(v.taskId) + '</a>' : '—') +
+          fact('负责人', ui.esc(S.userName(v.owner) || v.owner)) +
+          fact('经营业务线／区域', ui.esc(v.businessLine || '—') + '／' + ui.esc(v.region || '—')) +
+          fact('计划时间', ui.esc(v.planAt || '—')) +
+          fact('计划快照时间', ui.esc(v.planSnapshotAt || '（未签到，无快照）')) +
+          fact('创建时间', ui.esc(v.createdAt || '—')) +
+          fact('来源', ui.esc(v.source || '人工创建')) +
+          fact('计划地址快照', '区域：' + ui.esc(v.addressSnapshot && v.addressSnapshot.region || '—') + '　详细：' + ui.esc(v.addressSnapshot && v.addressSnapshot.detail || '—'), true) +
+          fact('绑定规则', v.ruleSnapshot ? ui.esc(v.ruleSnapshot.code + ' · ' + v.ruleSnapshot.version) : '未命中生效规则') +
+          fact('下一步动作', ui.esc(v.nextStep || '—'), true) +
+        '</div>' +
+      '</div></section>';
+  }
+
+  function viewExec() {
+    return '<section class="ry-card" id="vd-exec"><header class="ry-card__head"><h3>执行与证据 <button type="button" data-pcn-rule="visitDetailPoints">采集范围</button></h3>' +
+      '<div class="ry-card__extra"><button type="button" data-pcn-rule="visitDetailComplete">完成门槛</button></div></header>' +
+      '<div class="ry-card__body">' +
+        '<div class="vd-sum">' +
+          '<dt>签到</dt><dd>' + (v.checkInAt ? ui.esc(v.checkInAt) : '<span class="ry-faint">未签到</span>') +
+            '<div class="vd-loc">' + locText(v.checkInLoc) + '</div>' +
+            (canSensitive() && v.checkInDistance != null ? '<div class="vd-loc">距计划地址 ' + ui.esc(v.checkInDistance) + ' 米</div>' : '') + '</dd>' +
+          '<dt>签退</dt><dd>' + (v.checkOutAt ? ui.esc(v.checkOutAt) : '<span class="ry-faint">未签退</span>') +
+            '<div class="vd-loc">' + locText(v.checkOutLoc) + '</div></dd>' +
+        '</div>' +
+        (v.summary ? '<div class="ry-divider"></div>' +
+          '<h4 class="ry-subhead">拜访总结</h4>' +
+          '<div class="vd-sum">' +
+            ['object|拜访对象', 'chain|决策链', 'demand|客户需求', 'concern|客户顾虑', 'budget|预算口径',
+             'timeline|时间线', 'decision|决策流程', 'competitor|竞争情况', 'agreement|本次共识',
+             'support|所需支持', 'nextStep|下一步动作'].map(function (s) {
+              var k = s.split('|')[0];
+              return '<dt>' + s.split('|')[1] + '</dt><dd>' + ui.esc(v.summary[k] || '—') + '</dd>';
+            }).join('') +
+          '</div>'
+          : '<p class="ry-hint">本次拜访尚未提交总结。</p>') +
+        '<div class="ry-divider"></div>' +
+        '<h4 class="ry-subhead">证据附件</h4>' +
+        (!canSensitive() ? '<p class="ry-hint">原件信息按敏感证据权限隐藏。</p>' : (v.evidence || []).length
+          ? '<ul class="ry-files">' + v.evidence.map(function (e) {
+              return '<li>📎 ' + ui.esc(e.name || e) + '　<span class="ry-hint">' + ui.esc(e.size || '') + '　' + ui.esc(e.at || '') +
+                (e.url ? '　<a href="' + ui.esc(e.url) + '" target="_blank" rel="noopener">查看原件</a>' : '　原件预览待接入') + '</span></li>';
+            }).join('') + '</ul>'
+          : '<p class="ry-hint">无附件。</p>') +
+      '</div></section>';
+  }
+
+  function viewExc() {
+    var canReview = RY.perm.can('visit.review') && ['待复核', '待补充'].indexOf(v.exception) >= 0;
+    return '<section class="ry-card" id="vd-exc"><header class="ry-card__head"><h3>异常与复核 <button type="button" data-pcn-rule="visitDetailReview">复核边界</button></h3>' +
+      '<div class="ry-card__extra">' + (v.exception ? ui.tag(v.exception, 'warn') : ui.tag('无异常', 'ok')) + '</div></header>' +
+      '<div class="ry-card__body">' +
+        (v.exception ? ui.kv([
+          ['异常类型', v.checkInIssue || '—'],
+          ['异常说明', v.exceptionDetail || '—'],
+          ['销售填写原因', v.exceptionReason || '—'],
+          ['原因填写人／时间', (S.userName(v.exceptionNoteBy) || '—') + '　' + (v.exceptionNoteAt || '')],
+          ['规则版本', (v.ruleSnapshot && v.ruleSnapshot.code) || '未命中生效规则'],
+          ['复核结果', v.review && v.review.result ? ui.tag(v.review.result, v.review.result === '已复核' ? 'ok' : 'warn') : '待复核'],
+          ['复核人／时间', (S.userName(v.review && v.review.by) || '—') + '　' + ((v.review && v.review.at) || '')],
+          ['复核原因', (v.review && v.review.reason) || '—']
+        ])
+        : '<p class="ry-hint">本次拜访无异常。签到定位精度在规则阈值内，无需人工复核。</p>') +
+        (canReview
+          ? '<div class="ry-acts-row" style="margin-top:10px">' +
+            ui.actionBtn('visit.review', '异常复核', ' id="vd-rev"') + '</div>'
+          : '') +
+      '</div></section>';
+  }
+
+  function viewHistory() {
+    var h = (v.history || []).slice().reverse();
+    return '<section class="ry-card" id="vd-his"><header class="ry-card__head"><h3>历史 <button type="button" data-pcn-rule="visitDetailHistory">留痕规则</button></h3></header>' +
+      '<div class="ry-card__body">' + (h.length
+        ? '<div class="ry-timeline">' + h.map(function (x) {
+            return '<div class="ry-tl-item"><div class="ry-tl-dot"></div><div class="ry-tl-body">' +
+              '<b>' + ui.esc(x.at || '') + '　' + ui.esc(x.actor || '') + '　' + ui.esc(x.action || '') + '</b>' +
+              (x.from || x.to ? '<div class="ry-hint">' + ui.esc(x.from || '—') + ' → ' + ui.esc(x.to || '—') + '</div>' : '') +
+              (x.reason ? '<div class="ry-hint">原因：' + ui.esc(x.reason) + '</div>' : '') +
+            '</div></div>';
+          }).join('') + '</div>'
+        : '<p class="ry-hint">无历史记录。</p>') +
+      '</div></section>';
+  }
+
+  function viewAdditions() {
+    var supplements = (v.supplements || []).slice().reverse();
+    var corrections = (v.corrections || []).slice().reverse();
+    return '<section class="ry-card" id="vd-add"><header class="ry-card__head"><h3>补充与纠错 <button type="button" data-pcn-rule="visitDetailCorrection">只追加</button></h3></header><div class="ry-card__body">' +
+      '<h4 class="ry-subhead">补充说明与附件</h4>' + (supplements.length ? supplements.map(function (x) {
+        return '<div class="vd-record">' + ui.esc(x.note || '') + (x.attachment ? '<br>📎 ' + (canSensitive() && x.attachment.dataUrl ?
+          '<a href="' + ui.esc(x.attachment.dataUrl) + '" download="' + ui.esc(x.attachment.name) + '">' + ui.esc(x.attachment.name) + '</a>' : '附件受限') :
+          (x.attachmentName ? '<br>📎 ' + ui.esc(x.attachmentName) + '（仅旧演示记录）' : '')) +
+          '<br><span class="ry-hint">' + ui.esc(S.userName(x.by)) + ' · ' + ui.esc(x.at) + '</span></div>';
+      }).join('') : '<p class="ry-hint">暂无补充记录。</p>') +
+      '<h4 class="ry-subhead">纠错记录</h4>' + (corrections.length ? corrections.map(function (x) {
+        return '<div class="vd-record"><b>' + ui.esc(x.field) + '</b>：' + ui.esc(x.proposed) + '<br>原因：' + ui.esc(x.reason) +
+          '<br><span class="ry-hint">' + ui.esc(S.userName(x.by)) + ' · ' + ui.esc(x.at) + '</span></div>';
+      }).join('') : '<p class="ry-hint">暂无纠错记录。</p>') + '</div></section>';
+  }
+
+  function viewAudit() {
+    var entries = S.arr('audits').filter(function (x) { return x.objectId === v.id || x.id === v.id; }).slice().reverse();
+    return '<div id="vd-audit">' + ui.section('来源与审计', entries.length ? entries.map(function (x) {
+      return '<p>' + ui.esc(x.at || '') + '　' + ui.esc(x.actor || '') + '　' + ui.esc(x.action || '') + '</p>';
+    }).join('') : '<p class="ry-hint">当前演示数据无独立审计记录；业务动作可在历史中追溯。</p>') + '</div>';
+  }
+
+  function render() {
+    ui.qs('#vd-host').innerHTML =
+      '<div class="vd-overview"><div class="vd-overview__title">概况</div>' +
+        viewOverview() + viewExec() + viewExc() + viewAdditions() +
+        viewAudit() + viewHistory() + '</div>';
+
+    var rb = ui.qs('#vd-rev');
+    if (rb) rb.addEventListener('click', function (e) {
+      if (e.target.closest('[data-denied]')) return;
+      reviewDrawer();
+    });
+    ui.bindDenied('#ry-page');
+  }
+
+  function additionDrawer(correction) {
+    ui.drawer({ title: correction ? '新建纠错记录' : '追加补充说明',
+      subtitle: '记录追加到拜访，不覆盖原始事实。',
+      body: correction ?
+        ui.field('纠错字段', ui.select('field', ['拜访总结', '下一步动作', '客户／关联对象', '其他说明'], '拜访总结'), '', true) +
+        ui.field('建议内容', ui.textarea('proposed', '', '', 3), '', true) +
+        ui.field('纠错原因', ui.textarea('reason', '', '', 3), '', true) :
+        ui.field('补充说明', ui.textarea('note', '', '', 4), '', false) +
+        '<div class="ry-field"><label class="ry-field__label">补充附件</label><input class="ry-input" type="file" id="vd-add-file"><p class="ry-hint">原型附件限 1 MB；保存后可在本次浏览器会话内下载。</p></div>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="vd-add-save">保存记录</button>',
+      onOpen: function (el) { ui.qs('#vd-add-save', el).onclick = function () {
+        var values = ui.formValues(el);
+        function finish(attachment) {
+          var result = correction ? S.visitCorrection(id, values.field, values.proposed, values.reason) :
+            S.visitSupplement(id, values.note, attachment);
+          if (!result.ok) { ui.toast(result.msg, 'warn'); return; }
+          v = S.visit(id); ui.close(); render(); ui.toast('已追加记录', 'success');
+        }
+        var file = !correction && ui.qs('#vd-add-file', el).files[0];
+        if (!file) { finish(null); return; }
+        if (file.size > 1024 * 1024) { ui.toast('原型附件不能超过 1 MB', 'warn'); return; }
+        var reader = new FileReader();
+        reader.onload = function () { finish({ name: file.name, size: file.size, dataUrl: reader.result }); };
+        reader.onerror = function () { ui.toast('读取附件失败，请重试', 'warn'); };
+        reader.readAsDataURL(file);
+      }; }
+    });
+  }
+
+  function reviewDrawer() {
+    ui.drawer({
+      title: '异常复核', subtitle: '只改变异常状态，不改写拜访事实。',
+      body: ui.kv([['拜访编号', v.id], ['客户', cusName(v)], ['拜访状态', v.status],
+          ['异常类型', v.checkInIssue || '—'], ['异常说明', v.exceptionDetail || '—'],
+          ['销售填写原因', v.exceptionReason || '—']]) +
+        ui.field('复核结论', ui.select('result', [
+          { value: '已复核', label: '已复核（异常关闭，不影响拜访事实）' },
+          { value: '待补充', label: '待补充（要求销售补充，必须填写原因）' }], '已复核'), '', true) +
+        ui.field('复核原因', ui.textarea('reason', '', '结论为「待补充」时必填', 3), '', false),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="vd-rev-ok">提交复核</button>',
+      onOpen: function (el) {
+        ui.qs('#vd-rev-ok', el).addEventListener('click', function () {
+          var val = ui.formValues(el);
+          var r = S.visitReview(id, val.result, (val.reason || '').trim());
+          if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+          v = S.visit(id);
+          ui.close(); ui.toast('复核结果已记录。', 'success'); render();
+        });
+      }
+    });
+  }
+
+  var supp = ui.qs('#vd-supp');
+  if (supp) supp.addEventListener('click', function (e) { if (!e.target.closest('[data-denied]')) additionDrawer(false); });
+  var corr = ui.qs('#vd-corr');
+  if (corr) corr.addEventListener('click', function (e) { if (!e.target.closest('[data-denied]')) additionDrawer(true); });
+  render();
+  var anchor = { overview: 'vd-overview', exec: 'vd-exec', exc: 'vd-exc', add: 'vd-add', audit: 'vd-audit', his: 'vd-his' }[ui.hash()];
+  if (anchor) ui.qs('#' + anchor).scrollIntoView();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

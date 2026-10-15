@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>个人速记 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  .ry-bar--brand .ry-bar__back { background:transparent;color:#fff; }
+  .qn-wrap { padding:14px 14px 90px; }
+  .qn-tabs { display:flex;gap:8px;margin-bottom:14px; }
+  .qn-tabs button { flex:1;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--muted);font:600 14px var(--sans); }
+  .qn-tabs button.is-on { border-color:var(--brand);background:var(--brand-soft);color:var(--brand-ink); }
+  .qn-card { padding:16px;margin-bottom:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--sh-sm); }
+  .qn-card h2 { margin:0 0 8px;font-size:16px; }
+  .qn-note { margin:8px 0 0;color:var(--muted);font-size:12px;line-height:1.6; }
+  .qn-record { display:block;width:112px;height:112px;margin:18px auto;border:0;border-radius:50%;background:var(--brand);color:white;font:700 17px var(--sans);box-shadow:var(--sh); }
+  .qn-record.is-on { background:#c94b4b; }
+  .qn-time { text-align:center;color:var(--muted);font-size:13px; }
+  .qn-actions { display:flex;gap:8px;margin-top:14px; }
+  .qn-actions button { flex:1; }
+  .qn-text { box-sizing:border-box;width:100%;min-height:140px;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:14px/1.6 var(--sans);resize:vertical; }
+  .qn-row { padding:13px 0;border-top:1px solid var(--line); }
+  .qn-row:first-child { border-top:0; }
+  .qn-row__head { display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:11px; }
+  .qn-row__text { margin:8px 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.6; }
+  .qn-row__actions { display:flex;gap:7px;flex-wrap:wrap; }
+  .qn-row__actions button { padding:5px 9px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--brand-ink);font:12px var(--sans); }
+  .qn-row audio { display:block;width:100%;margin:9px 0; }
+  .qn-empty { color:var(--muted);font-size:13px; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+<div class="ry-body"><main class="qn-wrap" id="qn-host"></main></div>
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, user = RY.store.currentUser();
+  RY.nav.h5shell({ title:'个人速记', sub:'仅本人可见', back:'index.html', nav:'home', tabbar:true });
+  if (!RY.perm.page('h5.quicknote')) {
+    ui.qs('#qn-host').innerHTML = ui.stateCard('no-permission', { title:'无法使用个人速记' });
+    return;
+  }
+  var KEY = 'ry.quicknote.demo.' + user.id;
+  var notes = [];
+  try { notes = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { notes = []; }
+  if (!Array.isArray(notes)) notes = [];
+  var tab = 'voice', recording = false, recorder = null, stream = null, chunks = [], readyBlob = null, started = 0, timer = null;
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(notes)); return true; } catch (e) { ui.toast('速记保存失败，请检查浏览器存储空间', 'warn'); return false; } }
+  function find(id) { return notes.filter(function (x) { return x.id === id; })[0]; }
+  function clock() { return new Date().toLocaleString('zh-CN', { hour12:false }); }
+  function openAudioStore() {
+    return new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error('无本地录音存储')); return; }
+      var req = indexedDB.open('ry-quicknote-demo', 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore('audio'); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+  function audioOp(id, blob) {
+    return openAudioStore().then(function (db) { return new Promise(function (resolve, reject) {
+      var tx = db.transaction('audio', blob ? 'readwrite' : 'readonly');
+      var req = blob ? tx.objectStore('audio').put(blob, id) : tx.objectStore('audio').get(id);
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+      tx.oncomplete = function () { db.close(); };
+    }); });
+  }
+  function scheduleTranscription(id) {
+    var note = find(id);
+    if (!note || note.mode !== 'voice' || note.text || note.failed) return;
+    setTimeout(function () {
+      var current = find(id);
+      if (!current || current.text || current.failed) return;
+      if (new URLSearchParams(location.search).get('demoFail') === '1' && !current.retried) current.failed = true;
+      else current.text = '【原型模拟转写】这是一段语音速记的文字。正式版本由转写服务返回实际内容。';
+      save(); render();
+    }, Math.max(500, 1800 - (Date.now() - note.createdMs)));
+  }
+  function render() {
+    var host = ui.qs('#qn-host');
+    var html = '<div class="qn-tabs"><button data-tab="voice" class="' + (tab === 'voice' ? 'is-on' : '') + '">语音速记</button>' +
+      '<button data-tab="text" class="' + (tab === 'text' ? 'is-on' : '') + '">文本录入</button>' +
+      '<button data-tab="history" class="' + (tab === 'history' ? 'is-on' : '') + '">历史速记</button></div>';
+    if (tab === 'voice') html += '<section class="qn-card"><h2>录一条速记</h2>' +
+      '<p class="qn-note">提交后立即可录下一条。原录音保存，文字在后台生成；本页转写为演示模拟。</p>' +
+      '<button class="qn-record' + (recording ? ' is-on' : '') + '" id="qn-record">' + (recording ? '结束录音' : '开始录音') + '</button>' +
+      '<div class="qn-time" id="qn-time">' + (recording ? '录音中' : readyBlob ? '录音已结束，可以提交' : '点击开始录音') + '</div>' +
+      '<div class="qn-actions"><button class="ry-btn" id="qn-discard"' + (!readyBlob ? ' disabled' : '') + '>重录</button>' +
+      '<button class="ry-btn ry-btn--primary" id="qn-submit"' + (!readyBlob ? ' disabled' : '') + '>提交录音</button></div></section>';
+    if (tab === 'text') html += '<section class="qn-card"><h2>写一条速记</h2><textarea class="qn-text" id="qn-new-text" placeholder="想到什么就记下来，不用先关联客户或任务"></textarea>' +
+      '<div class="qn-actions"><button class="ry-btn ry-btn--primary" id="qn-save-text">保存速记</button></div></section>';
+    if (tab === 'history') html += '<section class="qn-card"><h2>我的历史速记</h2>' +
+      (notes.length ? notes.slice().sort(function (a,b) { return b.createdMs-a.createdMs; }).map(function (n) {
+        return '<article class="qn-row"><div class="qn-row__head"><span>' + ui.esc(n.createdAt) + '</span><span>' + (n.mode === 'voice' ? '语音' : '文本') + '</span></div>' +
+          '<div class="qn-row__text">' + ui.esc(n.text || (n.failed ? '转写失败，可重试或手动填写文字' : '转写中…')) + '</div>' +
+          (n.mode === 'voice' ? '<div class="qn-row__actions"><button data-play="' + n.id + '">回听录音</button>' +
+            (n.failed ? '<button data-retry="' + n.id + '">重试转写</button>' : '') + '</div><div id="audio-' + n.id + '"></div>' : '') +
+          '<div class="qn-row__actions"><button data-edit="' + n.id + '">编辑文字</button></div></article>';
+      }).join('') : '<p class="qn-empty">还没有速记。</p>') + '</section>';
+    html += '<p class="qn-note">速记仅本人可见，不自动生成销售活动、任务或日报事实。</p>';
+    host.innerHTML = html;
+    bind();
+  }
+  function stopStream() { if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+  function bind() {
+    ui.qsa('[data-tab]').forEach(function (b) { b.onclick = function () { if (recording) { ui.toast('请先结束录音', 'warn'); return; } tab = b.dataset.tab; render(); }; });
+    var record = ui.qs('#qn-record');
+    if (record) record.onclick = async function () {
+      if (recording) { recorder.stop(); recording = false; clearInterval(timer); stopStream(); render(); return; }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) { ui.toast('当前浏览器不支持录音，请切换文本录入', 'warn'); return; }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio:true }); chunks = []; readyBlob = null;
+        recorder = new MediaRecorder(stream);
+        recorder.ondataavailable = function (e) { if (e.data.size) chunks.push(e.data); };
+        recorder.onstop = function () { readyBlob = new Blob(chunks, { type:recorder.mimeType || 'audio/webm' }); render(); };
+        recorder.start(); recording = true; started = Date.now(); render();
+        timer = setInterval(function () { var el = ui.qs('#qn-time'); if (el) el.textContent = '录音中 · ' + Math.floor((Date.now()-started)/1000) + ' 秒'; }, 500);
+      } catch (e) { stopStream(); ui.toast('无法使用麦克风，请检查授权或切换文本录入', 'warn'); }
+    };
+    var discard = ui.qs('#qn-discard'); if (discard) discard.onclick = function () { readyBlob = null; render(); };
+    var submit = ui.qs('#qn-submit'); if (submit) submit.onclick = async function () {
+      if (!readyBlob || readyBlob.size === 0) { ui.toast('录音为空，请重新录制', 'warn'); return; }
+      submit.disabled = true;
+      var id = 'QN-' + Date.now() + '-' + Math.floor(Math.random()*1000);
+      try {
+        await audioOp(id, readyBlob);
+        notes.push({ id:id, mode:'voice', text:'', createdAt:clock(), createdMs:Date.now(), failed:false });
+        if (!save()) { notes.pop(); submit.disabled = false; return; }
+        readyBlob = null; render(); ui.toast('录音已保存，正在后台转写', 'ok'); scheduleTranscription(id);
+      } catch (e) { submit.disabled = false; ui.toast('录音保存失败，请重试提交', 'warn'); }
+    };
+    var saveText = ui.qs('#qn-save-text'); if (saveText) saveText.onclick = function () {
+      var value = ui.qs('#qn-new-text').value.trim(); if (!value) { ui.toast('请先输入内容', 'warn'); return; }
+      notes.push({ id:'QN-' + Date.now(), mode:'text', text:value, createdAt:clock(), createdMs:Date.now() });
+      if (!save()) { notes.pop(); return; } ui.qs('#qn-new-text').value = ''; ui.toast('速记已保存', 'ok');
+    };
+    ui.qsa('[data-play]').forEach(function (b) { b.onclick = async function () {
+      var target = ui.qs('#audio-' + b.dataset.play);
+      try { var blob = await audioOp(b.dataset.play); if (!blob) throw new Error('missing');
+        target.innerHTML = ''; var audio = document.createElement('audio'); audio.controls = true; audio.src = URL.createObjectURL(blob); target.appendChild(audio);
+      } catch (e) { ui.toast('原录音读取失败', 'warn'); }
+    }; });
+    ui.qsa('[data-edit]').forEach(function (b) { b.onclick = function () {
+      var note = find(b.dataset.edit); if (!note) return;
+      var value = window.prompt('编辑速记文字', note.text || ''); if (value === null) return;
+      if (!value.trim()) { ui.toast('文字不能为空', 'warn'); return; }
+      note.text = value.trim(); note.failed = false; if (save()) render();
+    }; });
+    ui.qsa('[data-retry]').forEach(function (b) { b.onclick = function () { var note = find(b.dataset.retry); if (!note) return;
+      note.failed = false; note.retried = true; save(); render(); scheduleTranscription(note.id);
+    }; });
+  }
+  notes.filter(function (n) { return n.mode === 'voice' && !n.text && !n.failed; }).forEach(function (n) { scheduleTranscription(n.id); });
+  render();
+}());
+</script>
+</body>
+</html>

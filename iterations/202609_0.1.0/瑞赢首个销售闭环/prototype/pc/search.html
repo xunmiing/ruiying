@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>全局搜索 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../assets/css/common.css">
+<link rel="stylesheet" href="../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：全局搜索 */
+  .gs-form { display: flex; gap: 8px; align-items: center; }
+  .gs-form input { width: 460px; }
+  .gs-group { margin-bottom: 16px; }
+  .gs-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-btn); background: var(--surface); margin-bottom: 8px; }
+  .gs-row__main { min-width: 0; }
+  .gs-row__main b { font-size: 13.5px; }
+  .gs-row__meta { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.7; }
+  .gs-row__act { white-space: nowrap; }
+  .gs-scope { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .gs-scope__i { border: 1px solid var(--line); border-radius: var(--r-btn); padding: 10px 12px; background: var(--surface); }
+  .gs-scope__i.is-off { background: var(--bg); border-style: dashed; }
+  .gs-scope__i b { display: block; font-size: 13px; margin-bottom: 3px; }
+  .gs-scope__i span { font-size: 11.5px; color: var(--muted); line-height: 1.7; }
+</style>
+</head>
+<body data-root="../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="gs-filter"></div>
+      <div id="gs-result"></div>
+    
+      <!-- 本页契约：评审对照用，列出页面契约编号与边界，不承载业务事实 -->
+      <section class="ry-card ry-card--flat">
+        <header class="ry-card__head">
+          <h3>本页契约</h3>
+          <div class="ry-card__extra"><span class="ry-hint">PG-GLOBAL-SEARCH</span></div>
+        </header>
+        <div class="ry-card__body">
+          <ul class="ry-kv ry-kv--tight">
+            <li><span>页面契约</span><b>PG-GLOBAL-SEARCH · PC · 首页与全局能力</b></li>
+            <li><span>依据</span><b>prd/00 §4；prd/08 §3</b></li>
+            <li><span>可进入角色</span><b>管理员（运营）</b></li>
+            <li><span>覆盖验收</span><b>AC-03</b></li>
+            <li><span>本页视图</span><b>八类对象搜索（客户／联系人／线索／商机／任务／正式拜访／日报／知识）、结果分类、进入即重新鉴权</b></li>
+          </ul>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script src="../assets/js/demo-data.js"></script>
+<script src="../assets/js/prototype-store.js"></script>
+<script src="../assets/js/permissions.js"></script>
+<script src="../assets/js/pc-permissions-0-1.js"></script>
+<script src="../assets/js/common-actions.js"></script>
+<script src="../assets/js/navigation.js"></script>
+<script src="../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+
+  /* 顶部全局搜索表单使用 q；部分业务页深链使用 kw。两者都要认。 */
+  var kw = (ui.q('q') || ui.q('kw') || '').trim();
+  var scope = RY.perm.dataScope(u).label;
+
+  RY.nav.shell({
+    nav: '',
+    title: '全局搜索',
+    titleNote: kw ? '关键词：' + kw : '未输入关键词',
+    subtitle: '在<b>当前账号可见范围</b>内搜索客户、联系人、线索与商机等对象。每个结果进入前都会按统一入口重新鉴权。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '全局搜索' }],
+    actions: '<a class="ry-btn" href="../pc.html">返回工作台首页</a>'
+  });
+
+  /* 可搜索的对象类型：按 prd/08 §3 的正式清单，0.1 共 8 类，全部可进入详情。
+     搜索只在当前用户有权数据范围内执行，不另建搜索权限模型。 */
+  var TYPES = [
+    { key: 'customer', name: '客户', page: 'customer.detail', prefix: 'CUS' },
+    { key: 'contact', name: '联系人', page: 'contact.detail', prefix: 'CON' },
+    { key: 'lead', name: '线索', page: 'lead.detail', prefix: 'LED' },
+    { key: 'opp', name: '商机', page: 'opp.detail', prefix: 'OPP' },
+    { key: 'task', name: '任务', page: 'task.detail', prefix: 'TSK' },
+    { key: 'visit', name: '正式拜访', page: 'visit.detail', prefix: 'VH' },
+    { key: 'report', name: '日报', page: 'report.detail', prefix: 'RPT' },
+    { key: 'knowledge', name: '知识', page: 'knowledge.detail', prefix: 'KB' }
+  ];
+
+  function norm(s) { return String(s || '').toLowerCase(); }
+  function hit(v, q) { return v && norm(v).indexOf(q) >= 0; }
+
+  function rowsOf(type) {
+    if (type === 'customer') {
+      return S.all('customers').map(function (c) {
+        return { id: c.id, obj: c, scopeKind: 'customer', title: c.name,
+          meta: [c.id, '客户类型：' + c.type, '记录状态：' + c.status, '统一社会信用代码：' + (c.creditCode || '—'), '价值：' + (c.value || '—')],
+          tags: [c.status, c.value],
+          keys: [c.name, c.alias, c.id, c.creditCode] };
+      });
+    }
+    if (type === 'contact') {
+      return S.all('contacts').map(function (c) {
+        var rels = S.all('contactRelations').filter(function (r) { return r.contactId === c.id && r.status === '有效' && RY.perm.contactCustomerInScope(r.customerId); });
+        var phones = (c.phones && c.phones.length ? c.phones : [c.phonePlain || c.phone]).filter(Boolean);
+        return { id: c.id, obj: c, scopeKind: 'contact', title: c.name,
+          meta: [c.id, '手机号：' + (phones[0] || '—'), '任职：' + (c.title || '—') + '／' + (c.org || '—'),
+            '有效客户关系：' + (rels.length ? rels.map(function (r) { return S.customer(r.customerId) ? S.customer(r.customerId).name : '—'; }).join('、') : '无')],
+          tags: [rels.length ? '有关联客户' : '无有效关系'],
+          keys: [c.name, c.id, phones.join(' '), c.org, c.title] };
+      });
+    }
+    if (type === 'lead') {
+      return S.all('leads').map(function (l) {
+        var pool = l.currentPool ? S.all('leadPools').filter(function (p) { return p.code === l.currentPool; })[0] : null;
+        return { id: l.id, obj: l, scopeKind: 'lead', title: (l.raw || '').slice(0, 26),
+          meta: [l.id, '来源：' + l.source, '线索状态：' + l.status,
+            '归属：' + (l.owner ? '负责人 ' + S.userName(l.owner) : (pool ? '池内（' + pool.name + '）' : '—')),
+            l.phone ? '电话：' + l.phone + '' : ''],
+          tags: [l.status],
+          keys: [l.raw, l.id, l.phone, l.source] };
+      });
+    }
+    if (type === 'task') {
+      var u0 = S.currentUser();
+      return S.tasks(RY.perm.pcRole(u0) !== 'R1' ? 'team' : 'mine').map(function (t) {
+        return { id: t.id, obj: t, scopeKind: 'task', title: t.name,
+          meta: [t.id, '来源：' + t.source, '业务类型：' + t.bizType, '状态：' + t.status, '截止：' + (t.dueAt || '—'),
+            '关联：' + ((t.related && t.related.name) || '—')],
+          tags: [t.status, t.bizType],
+          keys: [t.name, t.id, (t.related || {}).name, t.source, t.bizType] };
+      });
+    }
+    if (type === 'visit') {
+      var u1 = S.currentUser();
+      return S.visitList(RY.perm.pcRole(u1) !== 'R1' ? 'team' : 'mine').map(function (v) {
+        var c = S.customer(v.customerId);
+        return { id: v.id, obj: v, scopeKind: 'visit',
+          title: (c ? c.name : '—') + ' ' + v.type,
+          meta: [v.id, '计划时间：' + (v.planAt || '—'), '状态：' + v.status, '复核：' + (v.reviewStatus || '—'),
+            '负责人：' + S.userName(v.owner)],
+          tags: [v.status, v.reviewStatus || ''],
+          keys: [v.id, c ? c.name : '', v.type, (v.summary || {}).demand] };
+      });
+    }
+    if (type === 'report') {
+      var u2 = S.currentUser();
+      return S.reportList(RY.perm.pcRole(u2) !== 'R1' ? 'team' : 'mine').map(function (r) {
+        return { id: r.id, obj: r, scopeKind: 'report',
+          title: S.userName(r.userId) + ' · ' + r.date + ' 日报',
+          meta: [r.id, '日期：' + r.date, '状态：' + r.status],
+          tags: [r.status],
+          keys: [r.id, r.date, r.submittedBody, r.draftBody, r.aiDraft] };
+      });
+    }
+    if (type === 'knowledge') {
+      /* 知识不进数据范围模型：按 08 §12 由「已发布 + 处于发布范围」决定可见性。 */
+      return S.arr('knowledge').filter(function (k) { return S.knowledgeInPublishScope(k); }).map(function (k) {
+        return { id: k.id, obj: k, scopeKind: 'knowledge', title: k.title,
+          meta: [k.id, '编号：' + k.code, '版本：' + k.version, '发布范围：' + k.scope,
+            k.summary],
+          tags: [k.status, k.scope],
+          keys: [k.title, k.code, k.summary, k.id] };
+      });
+    }
+    return S.all('opportunities').map(function (o) {
+      var t = S.currentTemplate(o), st = S.currentStage(o), c = S.customer(o.customerId);
+      return { id: o.id, obj: o, scopeKind: 'opp', title: o.name,
+        meta: [o.id, '客户：' + (c ? c.name : '—'), '当前阶段：' + (st ? st.name : '—'), '模板：' + (t ? t.name + ' ' + t.version : '—'), '主负责人：' + S.userName(o.owner)],
+        tags: [o.processStatus, o.closeResult || ''],
+        keys: [o.name, o.id, c ? c.name : ''] };
+    });
+  }
+
+  function hrefOf(type, id) {
+    if (type === 'customer') return 'customer/detail.html?id=' + id + '&from=search';
+    if (type === 'contact') return 'contact/detail.html?id=' + id + '&from=search';
+    if (type === 'lead') return 'lead/detail.html?id=' + id + '&from=search';
+    if (type === 'task') return 'task/detail.html?id=' + id + '&from=search';
+    if (type === 'visit') return 'visit/detail.html?id=' + id + '&from=search';
+    if (type === 'report') return 'report/detail.html?id=' + id + '&from=search';
+    if (type === 'knowledge') return 'knowledge/detail.html?id=' + id + '&from=search';
+    return 'opportunity/detail.html?id=' + id + '&from=search';
+  }
+
+  /* ---------------------------------------------------------------- 筛选区 */
+
+  function renderFilter() {
+    ui.qs('#gs-filter').innerHTML = ui.section('搜索条件',
+      '<form class="gs-form" action="search.html" method="get">' +
+        '<input class="ry-input" type="search" name="q" value="' + ui.esc(kw) + '" placeholder="客户名称／信用代码／联系人姓名／手机号／线索内容／商机名称／任务名称／拜访／日报／知识标题／业务编号">' +
+        '<button class="ry-btn ry-btn--primary" type="submit">搜索</button>' +
+        '<a class="ry-btn" href="search.html">清空</a>' +
+      '</form>' +
+      ui.banner('搜索结果按当前角色数据范围过滤；有权查看记录时展示完整业务字段。' +
+        '当前数据范围：' + ui.esc(scope) + '。', 'info') +
+      '<div class="gs-scope" style="margin-top:12px">' +
+        TYPES.map(function (t) {
+          var ok = RY.perm.page(t.page);
+          return '<div class="gs-scope__i' + (ok ? '' : ' is-off') + '"><b>' + t.name + '</b><span>' +
+            (ok ? '可搜索并可进入详情（' + t.prefix + ' 业务编号）' : '当前角色无该类对象的页面权限，结果不会展示') + '</span></div>';
+        }).join('') +
+      '</div>',
+      '<span class="ry-hint">共 8 类对象：客户、联系人、线索、商机、任务、正式拜访、日报、知识</span>');
+  }
+
+  /* ---------------------------------------------------------------- 结果区 */
+
+  function renderResult() {
+    var host = ui.qs('#gs-result');
+    if (!kw) {
+      host.innerHTML = ui.section('搜索说明',
+        '<p class="ry-hint">请输入关键词后搜索。全局搜索面向当前账号可见范围，不会返回无权限对象的名称、摘要与数量。</p>' +
+        ui.empty('尚未输入搜索关键词。可尝试：客户名称、统一社会信用代码、联系人姓名或手机号、线索原文片段、商机名称或业务编号（如 CUS-202609-0001）。',
+          '<a class="ry-btn" href="customer/list.html">去客户列表</a><a class="ry-btn" href="lead/list.html">去线索列表</a>'));
+      return;
+    }
+    var q = norm(kw), total = 0, blocks = [];
+    TYPES.forEach(function (t) {
+      var all = rowsOf(t.key);
+      var inScopeRows = [];
+      all.forEach(function (r) {
+        if (RY.perm.inScope(r.scopeKind, r.obj)) inScopeRows.push(r);
+      });
+      var rows = inScopeRows.filter(function (r) {
+        return r.keys.some(function (k) { return hit(k, q); });
+      });
+      var pageOk = RY.perm.page(t.page);
+      total += rows.length;
+      if (!rows.length) return;
+      blocks.push(
+        '<div class="gs-group">' + ui.section(t.name + '（' + rows.length + '）',
+          pageOk
+            ? (rows.length ? rows.map(function (r) {
+                return '<div class="gs-row"><div class="gs-row__main">' +
+                  '<b>' + ui.esc(r.title) + '</b> ' +
+                  r.tags.filter(Boolean).map(function (x) { return ui.statusTag(x); }).join(' ') +
+                  '<div class="gs-row__meta">' + r.meta.filter(Boolean).map(ui.esc).join('　') + '</div></div>' +
+                  '<div class="gs-row__act"><a class="ry-btn ry-btn--sm ry-btn--primary" href="' + hrefOf(t.key, r.id) + '">进入详情</a>' +
+                  '<a class="ry-btn ry-btn--sm" href="search.html?q=' + encodeURIComponent(r.id) + '">按编号搜索</a></div></div>';
+              }).join('') : '<p class="ry-hint">当前账号没有匹配的' + t.name + '。</p>')
+            : '<p class="ry-hint">当前模拟角色没有「' + t.name + '详情」的页面权限，因此不展示任何结果名称与摘要；' +
+              '即使存在匹配对象也不返回。正式使用时须由管理员调整相应权限。</p>',
+          '<span class="ry-hint">数据范围：' + ui.esc(scope) + '</span>') + '</div>');
+    });
+
+    host.innerHTML = blocks.length ? blocks.join('') +
+      ui.banner('搜索结果按对象类型分组展示；知识只返回<b>已发布且当前用户处于发布范围内</b>的文档；停用文档不进入普通搜索。', 'info')
+      : ui.section('搜索结果', ui.empty('没有找到与「' + kw + '」匹配的对象。',
+        '<a class="ry-btn" href="customer/list.html">去客户列表筛选</a><a class="ry-btn" href="opportunity/list.html">去商机列表筛选</a>'),
+        '<span class="ry-hint">未命中</span>');
+  }
+
+  renderFilter();
+  renderResult();
+})();
+</script>
+<script src="../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

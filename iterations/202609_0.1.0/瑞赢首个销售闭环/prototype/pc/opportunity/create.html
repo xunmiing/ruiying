@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>新建商机 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  .ry-page > .ry-card--flat { display:none; }
+  /* 页面专属样式：新建商机 */
+  .oc-cols { display: block; max-width: 920px; }
+  .oc-tpl { border: 1px solid var(--brand-line); background: var(--brand-soft); border-radius: var(--r-card); padding: 14px; }
+  .oc-tpl__h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .oc-stage { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .oc-stage__i { border: 1px solid var(--line); background: var(--surface); border-radius: var(--r-btn); padding: 7px 9px; font-size: 11.5px; }
+  .oc-stage__i.is-first { border-color: var(--brand-line); background: #fff; }
+  .oc-stage__i b { display: block; font-size: 12px; }
+  .oc-stage__i i { font-style: normal; color: var(--faint); }
+  .oc-block { border: 1px solid var(--danger-line); background: var(--danger-soft); border-radius: var(--r-btn); padding: 12px; }
+  .oc-block h4 { margin: 0 0 6px; font-size: 13px; color: var(--danger); }
+  @media (max-width: 1180px) { .oc-cols { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="oc-guard"></div>
+      <div id="oc-body" class="oc-cols" style="display:none">
+        <div id="oc-form"></div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/opportunity-review-mode.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<!-- 原型说明层：把「业务规则 / 注解 / 待修 / 不做」就地标注在页面上；不含业务逻辑，可整行摘除 -->
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser(), D = S.all('dicts');
+  document.addEventListener('click', function (e) { var b = e.target.closest('[data-perm-note]'); if (b && window.RYNOTES) RYNOTES.openPermission(b.getAttribute('data-perm-note')); });
+  function can(a, o) { return RY.perm.can(a, o); }
+  function deny(a) { return RY.perm.whyNot(a); }
+
+  var fromLead = ui.q('lead') || '';
+  var customerQ = ui.q('customer') || '';
+  var PROVINCES = ['北京市','天津市','上海市','重庆市','河北省','山西省','辽宁省','吉林省','黑龙江省','江苏省','浙江省','安徽省','福建省','江西省','山东省','河南省','湖北省','湖南省','广东省','海南省','四川省','贵州省','云南省','陕西省','甘肃省','青海省','台湾省','内蒙古自治区','广西壮族自治区','西藏自治区','宁夏回族自治区','新疆维吾尔自治区','香港特别行政区','澳门特别行政区'];
+
+  RY.nav.shell({
+    nav: 'opp.list',
+    title: '新建商机',
+    subtitle: '选择正式客户，填写商机名称、主业务线和销售场景。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '销售管理' }, { label: '商机', href: 'pc/opportunity/list.html' }, { label: '新建商机' }],
+    actions: '<a class="ry-btn" href="list.html">返回商机列表</a>'
+  });
+
+  if (!RY.perm.page('opp.create') || !can('opp.create')) {
+    ui.renderState('#oc-guard', 'no-permission', {
+      title: '没有新建商机权限',
+      body: '<p>' + ui.esc(deny('opp.create')) + '</p>' +
+        '<p class="ry-hint">商机创建需要「商机创建」动作权限；原型保留入口并给出原因，不用前端隐藏替代权限校验。</p>',
+      actions: '<a class="ry-btn" href="list.html">返回商机列表</a>'
+    });
+    return;
+  }
+  ui.qs('#oc-body').style.display = '';
+
+
+  var form = { customerId: customerQ, name: '', line: '', scene: '', close: '', scope: '', lead: fromLead, salesRegionProvince: '', salesRegionCity: '' };
+  if (fromLead) {
+    var l0 = S.lead(fromLead);
+    if (l0) {
+      form.name = l0.raw.slice(0, 20);
+      form.customerId = l0.customerId || '';
+      form.line = (l0.candidateLines || [])[0] || '';
+      form.salesRegionProvince = l0.salesRegionProvince || '';
+      form.salesRegionCity = l0.salesRegionCity || '';
+    }
+  }
+
+  function customerOpts() {
+    return S.all('customers').filter(function (c) {
+      return c.status === '正常' && RY.perm.inScope('customers', c);
+    }).map(function (c) {
+      return { value: c.id, label: c.name + '（' + c.type + (S.qualityPending(c.id) ? '｜待治理' : '') + '）' };
+    });
+  }
+
+  function sceneOpts(line) {
+    return (line ? S.enabledScenarioOptions(line) : []).map(function (s) { return { value: s.code, label: s.name }; });
+  }
+
+  function matchNow() {
+    if (!form.line || !form.scene) return null;
+    return S.matchTemplate(form.line, form.scene, {});
+  }
+
+  /* ---------------------------------------------------------------- 表单 */
+
+  function formHtml() {
+    return ui.section('商机基本信息',
+      (fromLead ? ui.banner('本次商机由线索 <a href="../lead/detail.html?id=' + ui.esc(fromLead) + '&from=lead-convert">' + ui.esc(fromLead) + '</a> 转入。若需客户与商机一起创建，请回到线索的「整条转换」；本页只处理已存在的正式客户。', 'info') : '') +
+      ui.field('客户（必须是正式客户）', ui.select('customerId', [{ value: '', label: '请选择正式客户' }].concat(customerOpts()), form.customerId),
+        '仅列出正常状态正式客户；客户带“待治理”数据质量标签时仍可创建，不影响商机流程。占位客户、临时客户不在 0.1 范围。', true) +
+      ui.field('商机名称', ui.input('name', form.name, '如：远驰科技 2026 年度车电框架采购'), '名称应能一眼看出客户与标的。', true) +
+      ui.field('主负责人', '<input value="' + ui.esc(S.currentUser().name) + '（当前创建人）" disabled>', '创建后自动成为商机主负责人并加入商机团队。0.1 不支持代他人创建。') +
+      ui.grid2(
+        ui.field('主业务线（唯一）', ui.select('line', [{ value: '', label: '请选择' }].concat(S.all('businessLines').filter(function (b) { return b.status === '启用'; }).map(function (b) { return { value: b.code, label: b.name }; })), form.line), '只列出启用业务线；一条商机有且只有一个主业务线。', true),
+        ui.field('销售场景', ui.select('scene', [{ value: '', label: '请选择' }].concat(sceneOpts(form.line)), form.scene), '先选主业务线，再选该业务线下的销售场景。', true)
+      ) +
+      ui.grid2(
+        ui.field('预计成交时间', ui.input('close', form.close, 'YYYY-MM-DD', 'date'), '创建时可留空；离开「机会确认」阶段前必须补齐（系统固定门禁，不可由模板或角色关闭）。'),
+        ui.field('本次范围说明', ui.input('scope', form.scope, '如：车电零部件年度框架供货'))
+      ) +
+      ui.field('销售归属地区', ui.grid2(
+        ui.select('salesRegionProvince', [{ value: '', label: '请选择省份（可留空）' }].concat(PROVINCES.map(function (p) { return { value: p, label: p }; })), form.salesRegionProvince),
+        ui.input('salesRegionCity', form.salesRegionCity, '城市（可留空）')
+      ), '销售自行填写；由线索创建时预填线索地区，可确认或修改。省份与城市需同时填写或同时留空。') +
+      '',
+      fromLead ? '来自线索 ' + ui.esc(fromLead) : '直接创建');
+
+  }
+
+  function sceneName(code) {
+    var s = S.all('scenarios').filter(function (x) { return x.code === code; })[0];
+    return s ? s.name : (code || '—');
+  }
+
+  /* ---------------------------------------------------------------- 检查 */
+
+  function summaryHtml() {
+    var rows = [];
+    var c = form.customerId ? S.customer(form.customerId) : null;
+    rows.push(['客户', c ? ui.esc(c.name) + '（' + ui.esc(c.type) + '）' : '未选择正式客户', !!c]);
+    rows.push(['主负责人', ui.esc(S.currentUser().name) + '（当前创建人）', true]);
+    rows.push(['商机名称', form.name ? ui.esc(form.name) : '未填写', !!form.name]);
+    rows.push(['主业务线', form.line ? ui.esc(S.businessLineName(form.line)) : '未选择', !!form.line]);
+    rows.push(['销售场景', form.scene ? ui.esc(sceneName(form.scene)) : '未选择', !!form.scene]);
+    rows.push(['预计成交时间', form.close ? ui.esc(form.close) : '未填写（可后补，离开机会确认前必须补齐）', true]);
+    var m = matchNow();
+    var mOk = m && m.state === 'ok';
+    rows.push(['创建规则检查', m ? (mOk ? '已通过' : ui.tag(m.state === 'missing' ? '当前组合不可创建' : m.state === 'multi' ? '配置需核实' : '暂时无法校验', 'bad')) : '待选择业务线与场景', !!mOk]);
+    var allOk = rows.every(function (r) { return r[2]; });
+    return ui.kv(rows.map(function (r) { return [r[0], (r[2] ? ui.tag('通过', 'ok') : ui.tag('阻断', 'bad')) + ' ' + r[1]]; })) +
+      ui.banner(allOk ? '<b>全部检查通过。</b>提交后商机直接进入模板的第一个详细阶段。'
+        : '<b>存在阻断项，提交不会生效。</b>商机创建没有降级路径：不套用默认模板、不跳过模板校验、不先生成草稿后补匹配。请修正后重试。', allOk ? 'brand' : 'danger') +
+      '<div class="ry-actions-row">' +
+        '<button class="ry-btn ry-btn--primary" id="oc-submit">提交创建商机</button>' +
+        '<button class="ryn-perm-link" type="button" data-perm-note="OPP-C-P1">① 创建权限</button>' +
+        '<button class="ry-btn" id="oc-check">仅做检查</button>' +
+        '<a class="ry-btn" href="list.html">取消</a>' +
+      '</div>';
+  }
+
+  function refreshSummary() { ui.qs('#oc-sum').innerHTML = summaryHtml(); bindSummary(); }
+
+  function bindSummary() {
+    var sb = ui.qs('#oc-submit');
+    if (sb) sb.addEventListener('click', submit);
+    var ck = ui.qs('#oc-check');
+    if (ck) ck.addEventListener('click', function () { read(); refreshSummary(); ui.toast('已完成检查，未提交。', 'info'); });
+  }
+
+  function read() {
+    var el;
+    el = ui.qs('[name=customerId]'); if (el) form.customerId = el.value;
+    el = ui.qs('[name=name]'); if (el) form.name = el.value.trim();
+    el = ui.qs('[name=line]'); if (el) form.line = el.value;
+    el = ui.qs('[name=scene]'); if (el) form.scene = el.value;
+    el = ui.qs('[name=close]'); if (el) form.close = el.value;
+    el = ui.qs('[name=scope]'); if (el) form.scope = el.value.trim();
+    el = ui.qs('[name=salesRegionProvince]'); if (el) form.salesRegionProvince = el.value;
+    el = ui.qs('[name=salesRegionCity]'); if (el) form.salesRegionCity = el.value.trim();
+  }
+
+  function renderAll() {
+    ui.qs('#oc-form').innerHTML = formHtml() + '<div id="oc-sum"></div>';
+    var cust = ui.qs('[name=customerId]');
+    cust.addEventListener('change', function () {
+      read(); var selected=S.customer(form.customerId);
+      refreshSummary();
+    });
+    ui.qs('[name=name]').addEventListener('input', function () { read(); refreshSummary(); });
+    ui.qs('[name=close]').addEventListener('change', function () { read(); refreshSummary(); });
+    ui.qs('[name=scope]').addEventListener('input', function () { read(); });
+    ui.qs('[name=salesRegionProvince]').addEventListener('change', read);
+    ui.qs('[name=salesRegionCity]').addEventListener('input', read);
+    ui.qs('[name=line]').addEventListener('change', function () {
+      read();
+      var sc = ui.qs('[name=scene]');
+      sc.innerHTML = ui.select('scene', [{ value: '', label: '请选择' }].concat(sceneOpts(form.line)), '');
+        // 主业务线变化后，销售场景选项随之变化，原选择若不属于该业务线则清空
+      var keep = sceneOpts(form.line).some(function (x) { return x.value === form.scene; });
+      form.scene = keep ? form.scene : '';
+      sc.value = form.scene;
+      refreshSummary();
+    });
+    ui.qs('[name=scene]').addEventListener('change', function () { read(); refreshSummary(); });
+    refreshSummary();
+  }
+
+  /* ---------------------------------------------------------------- 提交 */
+
+  function submit() {
+    read();
+    refreshSummary();
+    var problems = [];
+    var c = form.customerId ? S.customer(form.customerId) : null;
+    if (!c) problems.push('客户：必须选择一个正式客户。');
+    else if (c.status !== '正常') problems.push('客户：只有正常状态的正式客户可以创建商机（当前状态：' + c.status + '）。');
+    if (!form.name) problems.push('商机名称必填。');
+    if (!form.line) problems.push('主业务线必填，且一条商机只能有一个主业务线。');
+    if (!form.scene) problems.push('销售场景必填。');
+    if (!!form.salesRegionProvince !== !!String(form.salesRegionCity || '').trim()) problems.push('销售归属地区的省份和城市请同时填写，或同时留空。');
+    /* 预计成交时间创建时可空：只在离开「机会确认」阶段前校验（prd/03 §3.1 明确它不是创建条件；§8.1 是阶段门槛） */
+    var m = matchNow();
+    if (form.line && form.scene) {
+      if (!m || m.state !== 'ok') problems.push(S.matchReason(m || { state: 'missing', candidates: [] }, { businessLine: form.line, scene: form.scene }));
+    }
+    if (problems.length) {
+      ui.modal({
+        title: '商机创建被阻断', size: 'sm',
+        subtitle: '没有降级路径：不套用默认模板、不跳过校验、不生成草稿。',
+        body: '<ul class="ry-kv">' + problems.map(function (p) { return '<li><span>阻断项</span><b>' + ui.esc(p) + '</b></li>'; }).join('') + '</ul>' +
+          '<p class="ry-hint">页面上的全部输入已保留，修复后可直接重新提交；本次没有创建任何对象。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>继续修正</button>'
+      });
+      return;
+    }
+    ui.confirm({
+      title: '创建商机',
+      message: '<p>将在客户「' + ui.esc(c.name) + '」下创建商机 <b>' + ui.esc(form.name) + '</b>。</p>' +
+        '<p>主业务线 ' + ui.esc(S.businessLineName(form.line)) + ' ＋ ' + ui.esc(sceneName(form.scene)) +
+        ' 唯一匹配模板 <b>' + ui.esc(m.template.name) + ' ' + ui.esc(m.template.version) + '</b>，版本将被冻结。</p>' +
+        '<p class="ry-hint">创建后自动进入首个详细阶段「' + ui.esc(m.template.stages[0].name) + '」，不跳阶段、不自动推进。</p>',
+      confirmText: '确认创建',
+      onConfirm: function () {
+        ui.submitWithRecovery({
+          onSubmit: function () {
+            var r = S.createOpportunity({
+              name: form.name, customerId: form.customerId, businessLine: form.line, scene: form.scene,
+              predictedClose: form.close, scope: form.scope, source: fromLead ? '来源线索 ' + fromLead : '直接创建',
+              sourceLead: fromLead, salesRegionProvince: form.salesRegionProvince, salesRegionCity: form.salesRegionCity
+            });
+            if (!r.ok) {
+              ui.modal({
+                title: '创建未生效', size: 'sm',
+                body: '<p>' + ui.esc(r.reason) + '</p>' +
+                  '<p class="ry-hint">没有创建任何对象；页面输入保留，可修复后重试。若为校验服务不可用，稍后重试即可。</p>',
+                footer: '<button class="ry-btn ry-btn--primary" data-close>继续修正</button>'
+              });
+              return;
+            }
+            window.location.href = 'detail.html?id=' + r.opportunity.id + '&from=create';
+          }
+        });
+      }
+    });
+  }
+
+  renderAll();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

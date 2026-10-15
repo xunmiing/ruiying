@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>线索转换结果 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：转换结果 */
+  .cr-hero { border: 1px solid var(--brand-line); background: var(--brand-soft); border-radius: var(--r-card); padding: 18px 20px; margin-bottom: 14px; }
+  .cr-hero__t { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .cr-hero__t h2 { margin: 0; font-size: 18px; color: var(--brand-ink); }
+  .cr-hero__m { margin-top: 8px; font-size: 12.5px; color: var(--ink); line-height: 1.9; }
+  .cr-item { border: 1px solid var(--line); border-radius: var(--r-btn); padding: 12px 14px; margin-bottom: 10px; background: var(--surface); }
+  .cr-item__h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .cr-item__b { margin-top: 6px; font-size: 12.5px; color: var(--muted); line-height: 1.85; }
+  .cr-flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
+  .cr-flow i { color: var(--faint); font-style: normal; }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="cr-guard"></div>
+      <div id="cr-body" style="display:none">
+        <div id="cr-hero"></div>
+        <div id="cr-list"></div>
+        <div id="cr-opps"></div>
+        <div id="cr-next"></div>
+        <div id="cr-idem"></div>
+      </div>
+    
+      <!-- 本页契约：评审对照用，列出页面契约编号与边界，不承载业务事实 -->
+      <section class="ry-card ry-card--flat">
+        <header class="ry-card__head">
+          <h3>本页契约</h3>
+          <div class="ry-card__extra"><span class="ry-hint">PG-LEAD-CONVERT-RESULT</span></div>
+        </header>
+        <div class="ry-card__body">
+          <ul class="ry-kv ry-kv--tight">
+            <li><span>页面契约</span><b>PG-LEAD-CONVERT-RESULT · PC · 销售管理</b></li>
+            <li><span>依据</span><b>prd/00 §5.2；prd/02 §10</b></li>
+            <li><span>可进入角色</span><b>销售｜销售主管/经理｜管理员（运营）</b></li>
+            <li><span>覆盖验收</span><b>AC-14</b></li>
+            <li><span>本页视图</span><b>展示创建与关联的客户、联系人、商机及其他正式对象、由用户选择进入</b></li>
+          </ul>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store;
+  var id = ui.q('id') || 'LED-202609-0141';
+  var from = ui.q('from') || 'list';
+  var l = S.lead(id);
+
+  RY.nav.shell({
+    nav: 'lead.list',
+    title: '线索转换结果',
+    subtitle: '整条转换的结果只读展示：本次事务里创建了什么、跳到哪里继续推进、以及重复提交为什么不会重复创建。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '销售管理' }, { label: '线索', href: 'pc/lead/list.html' }, { label: l ? l.id : '线索', href: 'pc/lead/detail.html?id=' + id + '&from=' + from }, { label: '转换结果' }],
+    actions: '<a class="ry-btn" href="list.html">返回线索列表</a>'
+  });
+
+  if (!l) {
+    ui.renderState('#cr-guard', 'unavailable', {
+      body: '<p>线索 <code>' + ui.esc(id) + '</code> 不存在，或已不在你的数据范围内。</p>',
+      actions: '<a class="ry-btn" href="list.html">返回线索列表</a>'
+    });
+    return;
+  }
+  if (!RY.perm.page('lead.detail')) {
+    ui.renderState('#cr-guard', 'no-permission', {
+      title: '没有查看该线索的权限',
+      body: '<p>' + ui.esc(RY.perm.whyNot('lead.detail') || '当前角色不在该页面的页面权限内。') + '</p>' +
+        '<p class="ry-hint">失去访问权限后，本页不再展示线索摘要、以及由它转换产生的客户、联系人与商机。</p>',
+      actions: '<a class="ry-btn" href="list.html">返回线索列表</a>'
+    });
+    return;
+  }
+  if (l.status !== '已转化') {
+    ui.renderState('#cr-guard', 'unavailable', {
+      title: '该线索尚未完成转换',
+      body: '<p>线索 <code>' + l.id + '</code> 当前状态为「' + ui.esc(l.status) + '」，没有可展示的转换结果。</p>' +
+        '<p class="ry-hint">转换是一个整体事务：只有全部对象创建成功，线索才会置为「已转化」并产生本页结果。</p>',
+      actions: '<a class="ry-btn ry-btn--primary" href="detail.html?id=' + l.id + '&from=' + from + '">返回线索详情</a>'
+    });
+    return;
+  }
+
+  ui.qs('#cr-body').style.display = '';
+
+  var targets = (l.convertTargets || []).slice();
+  var items = targets.map(resolve).filter(Boolean);
+
+  function resolve(tid) {
+    if (/^CUS-/.test(tid)) { var c = S.customer(tid); return c ? { type: '客户', id: c.id, name: c.name, obj: c } : null; }
+    if (/^CON-/.test(tid)) { var t = S.contact(tid); return t ? { type: '联系人', id: t.id, name: t.name, obj: t } : null; }
+    if (/^CBL-/.test(tid)) {
+      var r = S.all('businessRelations').filter(function (x) { return x.id === tid; })[0];
+      return r ? { type: '经营关系', id: r.id, name: S.regionName(r.region) + '｜' + S.businessLineName(r.businessLine), obj: r } : null;
+    }
+    if (/^OPP-/.test(tid)) { var o = S.opp(tid); return o ? { type: '商机', id: o.id, name: o.name, obj: o } : null; }
+    return null;
+  }
+
+  /* ------------------------------------------------------------- 结果头部 */
+
+  ui.qs('#cr-hero').innerHTML =
+    '<div class="cr-hero">' +
+      '<div class="cr-hero__t"><h2>整条转换已完成</h2>' + ui.tag('已转化（终态）', 'ok') + ui.tag('整条事务', 'brand') + '</div>' +
+      '<div class="cr-hero__m">' +
+        '线索 <code>' + l.id + '</code>　转化时间：' + ui.esc(l.convertAt || '—') + '　转化人：' + ui.esc(S.userName(l.convertBy) || '—') + '<br>' +
+        '本次共创建 <b>' + items.length + '</b> 个对象：' + (items.length ? items.map(function (x) { return ui.esc(x.type); }).join('、') : '—') + '<br>' +
+        '「已转化」是线索的终态：<b>不允许再次转换</b>，后续跟进转入客户、联系人与商机。' +
+      '</div>' +
+      '<div class="ry-actions-row">' +
+        '<a class="ry-btn ry-btn--primary" href="detail.html?id=' + l.id + '&from=' + from + '">查看线索详情</a>' +
+        '<a class="ry-btn" href="list.html">返回线索列表</a>' +
+      '</div>' +
+    '</div>';
+
+  /* ------------------------------------------------------------- 结果清单 */
+
+  function itemHtml(it) {
+    var extra = '', link = '';
+    if (it.type === '客户') {
+      extra = ui.kv([
+        ['客户主体类型', ui.esc(it.obj.type)], ['客户状态', ui.statusTag(it.obj.status)],
+        ['统一社会信用代码', it.obj.creditCode ? ui.esc(it.obj.creditCode) : ui.tag('缺失（已生成待治理异常，不阻断经营）', 'warn')],
+        ['数据质量', S.qualityPending(it.obj.id) ? ui.tag('待治理', 'warn') : ui.tag('正常', 'ok')]
+      ]);
+      link = '../customer/detail.html?id=' + it.id + '&from=lead-convert';
+    } else if (it.type === '联系人') {
+      var rels = S.all('contactRelations').filter(function (x) { return x.contactId === it.id; });
+      extra = ui.kv([
+        ['手机号', ui.masked(it.obj.phonePlain, it.obj.id)],
+        ['客户关系', rels.length ? rels.map(function (r) { return ui.esc(r.roles.join('、')) + (r.primary ? '（主联系人）' : ''); }).join('；') : '—']
+      ]);
+      link = '../contact/detail.html?id=' + it.id + '&from=lead-convert';
+    } else if (it.type === '经营关系') {
+      extra = ui.kv([
+        ['经营单位', ui.esc(it.obj.customerName) + '｜' + ui.esc(S.regionName(it.obj.region)) + '｜' + ui.esc(S.businessLineName(it.obj.businessLine))],
+        ['经营状态', ui.statusTag(it.obj.status)],
+        ['经营负责人', ui.esc(S.userName(it.obj.owner) || '无（未认领）')]
+      ]);
+      link = '../customer/detail.html?id=' + it.obj.customerId + '&from=lead-convert#operating';
+    } else if (it.type === '商机') {
+      var t = S.currentTemplate(it.obj), st = S.currentStage(it.obj);
+      var linkedCustomer = S.customer(it.obj.customerId);
+      extra = ui.kv([
+        ['关联客户', linkedCustomer ? '<a href="../customer/detail.html?id=' + linkedCustomer.id + '&from=lead-convert">' + ui.esc(linkedCustomer.name) + '</a>' : '—'],
+        ['流程模板', t ? ui.esc(t.name) + ' ' + ui.esc(t.version) + '（创建时冻结）' : '—'],
+        ['当前阶段', st ? ui.esc(st.name) + ' / 统一阶段：' + ui.esc(st.unified) : '—'],
+        ['预计成交时间', ui.esc(it.obj.predictedClose || '未填写（系统固定门禁项）')]
+      ]);
+      link = '../opportunity/detail.html?id=' + it.id + '&from=lead-convert';
+    }
+    return '<div class="cr-item"><div class="cr-item__h">' + ui.tag(it.type, 'brand') +
+      '<a href="' + link + '"><b>' + ui.esc(it.name) + '</b></a> <code>' + it.id + '</code>' + ui.statusTag(it.obj.status || it.obj.processStatus || '') + '</div>' +
+      '<div class="cr-item__b">' + extra + '</div>' +
+      '<div class="ry-actions-row">' + (link && it.type !== '经营关系' ? '<a class="ry-btn ry-btn--sm" href="' + link + '">打开详情</a>' : '') +
+      '<a class="ry-btn ry-btn--sm" href="../search.html?kw=' + encodeURIComponent(it.id) + '">全局搜索该对象</a></div></div>';
+  }
+
+  ui.qs('#cr-list').innerHTML = ui.section('本次事务创建的对象',
+    items.length ? items.map(itemHtml).join('') : '<p class="ry-hint">未记录到可展示的转换对象。</p>',
+    '<span class="ry-hint">清单来自线索的转化目标记录，逐项可追溯</span>') +
+    ui.banner('本次转换<b>没有产生占位客户、占位联系人或占位商机</b>：所有对象都是真实建档；' +
+      '如果某个商机的流程模板无法唯一匹配，整条转换都不会生效，本页也不会出现。', 'info');
+
+  /* ------------------------------------------------------- 商机与后续推进 */
+
+  var opps = items.filter(function (x) { return x.type === '商机'; }).map(function (x) { return x.obj; });
+  ui.qs('#cr-opps').innerHTML = ui.section('转换产生的商机',
+    opps.length ? opps.map(function (o, i) {
+      var t = S.currentTemplate(o), st = S.currentStage(o);
+      return '<div class="cr-item"><div class="cr-item__h"><b>商机 ' + (i + 1) + '：' + ui.esc(o.name) + '</b> <code>' + o.id + '</code>' +
+        ui.statusTag(o.processStatus) + (o.closeResult ? ui.statusTag(o.closeResult) : '') + '</div>' +
+        '<div class="cr-item__b">' +
+          '<div class="cr-flow">' + (t ? t.stages.map(function (s, si) {
+            return '<span>' + (s.code === o.currentStageCode ? '<b>' + ui.esc(s.name) + '</b>' : ui.esc(s.name)) + '</span>' +
+              (si < t.stages.length - 1 ? '<i>→</i>' : '');
+          }).join('') : '—') + '</div>' +
+          '主业务线：' + ui.esc(S.businessLineName((o.lines[0] || {}).businessLine)) + '　销售场景：' + ui.esc(sceneName((o.lines[0] || {}).scene)) +
+          '　预计成交时间：' + ui.esc(o.predictedClose || '未填写') +
+        '</div>' +
+        '<div class="ry-actions-row">' +
+          '<a class="ry-btn ry-btn--sm ry-btn--primary" href="../opportunity/detail.html?id=' + o.id + '&from=lead-convert">进入商机并推进阶段</a>' +
+          (st && st.unified === '机会确认' ? '<span class="ry-hint">当前统一阶段为「机会确认」，离开前必须填写预计成交时间（系统固定门禁）</span>' : '') +
+        '</div></div>';
+    }).join('') : '<p class="ry-hint">本次转换没有创建商机。</p>',
+    '<span class="ry-hint">商机创建即进入模板的首个详细阶段，不跳阶段、不自动推进</span>');
+
+  function sceneName(code) {
+    var s = S.all('scenarios').filter(function (x) { return x.code === code; })[0];
+    return s ? s.name : (code || '—');
+  }
+
+  var cust = items.filter(function (x) { return x.type === '客户'; })[0];
+  ui.qs('#cr-next').innerHTML = ui.section('下一步建议',
+    '<div class="cr-item__b">' +
+      '1. 客户侧：补全资料、维护联系人与地址；若缺统一社会信用代码，会作为「待治理」异常事项存在，<b>不阻断经营</b>。' +
+        (cust ? ' <a href="../customer/detail.html?id=' + cust.id + '&from=lead-convert">前往客户详情</a>' : '') + '<br>' +
+      '2. 商机侧：在商机内维护团队成员、阶段任务与自定义字段，按阶段门禁顺序推进。' +
+        (opps.length ? ' <a href="../opportunity/detail.html?id=' + opps[0].id + '&from=lead-convert">前往商机详情</a>' : '') + '<br>' +
+      '3. 线索侧：本线索已是终态，不再作为跟进对象；历史与转化记录保留在「历史与异常」页签中。' +
+    '</div>');
+
+  /* --------------------------------------------------- 幂等与并发说明 */
+
+  ui.qs('#cr-idem').innerHTML = ui.section('重复提交与并发说明',
+    ui.kv([
+      ['重复转换', '线索已进入「已转化」终态，再次提交转换会被拒绝，<b>不会重复创建</b>客户、联系人与商机。'],
+      ['幂等保护', '转换请求带幂等键；相同请求重复送达时返回首次结果，不产生第二套对象。'],
+      ['并发转换', '两个端同时提交同一条线索的转换时，只有第一个生效，另一个收到「已被转换」提示后应刷新查看本页。'],
+      ['部分成功', '整条转换<b>不做部分成功</b>：任一对象创建失败则不写库、不改线索状态，页面保留输入可重试。'],
+      ['转化溯源', '转换人、转化时间、转化目标均记入线索历史与审计，不可业务删除。']
+    ]));
+
+  /* PC 有权查看对象时直接展示完整联系方式。 */
+  ui.bindMasked();
+  ui.bindDenied();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>异常事项 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：异常事项（领取为原子占用；不直接修改正式业务事实） */
+  .ex-kpi { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .ex-kpi__c { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); padding: 11px 13px; }
+  .ex-kpi__n { font-size: 22px; font-weight: 600; color: var(--ink); line-height: 1.2; }
+  .ex-kpi__l { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .ex-kpi__c.is-warn .ex-kpi__n { color: var(--warn); }
+  .ex-kpi__c.is-danger .ex-kpi__n { color: var(--danger); }
+  .ex-type { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  @media (max-width: 1180px) { .ex-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="ex-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'exception.list';
+  var canClaim = P.can('exception.claim');
+  var canReject = P.can('exception.reject');
+  var canComplete = P.can('exception.complete');
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '异常事项',
+    subtitle: '<b>统一异常事项</b>是治理动作的唯一入口。异常处理<b>不直接修改正式业务事实</b>，' +
+      '必须跳转源对象使用正式动作。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '异常事项' }],
+    actions: '<a class="ry-btn" href="detail.html">异常详情</a>'
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#ex-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入异常事项',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示对象标识、异常详情与处理记录。</p>'
+    });
+    return;
+  }
+
+  var tab = ui.hash() || '待处理';
+  var STATUS = ['待处理', '处理中', '已完成', '不采纳'];
+  var typeF = '';
+
+  function all() { return S.exceptionList(); }
+  function types() {
+    var seen = [];
+    all().forEach(function (e) { if (seen.indexOf(e.type) < 0) seen.push(e.type); });
+    return seen;
+  }
+  /* 同一对象同一类型同一时间只有一条未完成事项：这里显式暴露重复检测结果。 */
+  function dupCount() {
+    var m = {}, n = 0;
+    all().forEach(function (e) {
+      if (e.status === '已完成' || e.status === '不采纳') return;
+      var k = e.objectType + '|' + e.objectId + '|' + e.type;
+      m[k] = (m[k] || 0) + 1;
+      if (m[k] === 2) n++;
+    });
+    return n;
+  }
+  function objHref(e) {
+    if (e.objectType === '客户') return '../customer/detail.html?id=' + encodeURIComponent(e.objectId);
+    if (e.objectType === '商机') return '../opportunity/detail.html?id=' + encodeURIComponent(e.objectId);
+    if (e.objectType === '线索') return '../lead/detail.html?id=' + encodeURIComponent(e.objectId);
+    if (e.objectType === '正式拜访') return '../visit/detail.html?id=' + encodeURIComponent(e.objectId);
+    if (e.objectType === '独立日程') return '../schedule/detail.html?id=' + encodeURIComponent(e.objectId);
+    if (e.objectType === '任务') return '../task/detail.html?id=' + encodeURIComponent(e.objectId);
+    return '';
+  }
+
+  function render() {
+    if (STATUS.indexOf(tab) < 0) tab = '待处理';
+    var list = all(), rows = list.filter(function (e) {
+      if (e.status !== tab) return false;
+      if (typeF && e.type !== typeF) return false;
+      return true;
+    });
+    var cnt = function (s) { return list.filter(function (e) { return e.status === s; }).length; };
+
+    ui.qs('#ex-host').innerHTML =
+      ui.banner('异常事项用于汇总系统运行与其他模块异常；客户资料修改不进入本页，按客户编辑权限直接生效并写入历史。' +
+        '消息投递失败、同步异常、拜访异常复核等，都先形成事项，再由有权人员处理。' +
+        '<b>本页不修改任何正式业务事实</b>：处理时必须跳转到源对象，使用该对象页面上的<b>正式动作</b>执行变更，' +
+        '完成后回到事项填写处理说明并关闭。' +
+        '这保证「谁在什么权限下改了什么」在源对象与审计中都留痕。' +
+        '异常处理<b>不突破源业务对象的页面权限与数据范围</b>：' +
+        '看不到某个客户，就看不到它产生的异常。', 'info') +
+
+      '<div class="ex-kpi" style="margin-top:12px">' +
+        '<div class="ex-kpi__c' + (cnt('待处理') ? ' is-warn' : '') + '"><div class="ex-kpi__n">' + cnt('待处理') + '</div><div class="ex-kpi__l">待处理</div></div>' +
+        '<div class="ex-kpi__c"><div class="ex-kpi__n">' + cnt('处理中') + '</div><div class="ex-kpi__l">处理中（已领取）</div></div>' +
+        '<div class="ex-kpi__c"><div class="ex-kpi__n">' + cnt('已完成') + '</div><div class="ex-kpi__l">已完成</div></div>' +
+        '<div class="ex-kpi__c' + (cnt('不采纳') ? '' : '') + '"><div class="ex-kpi__n">' + cnt('不采纳') + '</div><div class="ex-kpi__l">不采纳</div></div>' +
+      '</div>' +
+
+      '<div class="ry-card" style="margin-bottom:12px"><div class="ry-card__body">' +
+        '<div class="ry-filter__row">' +
+          ui.field('异常类型', ui.select('ex-type', [{ value: '', label: '全部类型' }].concat(types()), typeF), '', false) +
+        '</div>' +
+        '<div class="ry-filter__act"><button class="ry-btn" id="ex-reset">重置</button>' +
+          '<button class="ry-btn ry-btn--primary" id="ex-apply">查询</button></div>' +
+      '</div></div>' +
+
+      '<div style="display:flex;gap:6px;margin-bottom:10px">' +
+        STATUS.map(function (s) {
+          return '<button class="ry-btn ry-btn--sm' + (tab === s ? ' ry-btn--primary' : '') + '" data-ex-t="' + s + '">' +
+            s + '（' + cnt(s) + '）</button>';
+        }).join('') + '</div>' +
+
+      (rows.length
+        ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+          '<th style="width:118px">事项编号</th><th style="width:150px">对象</th><th style="width:130px">异常类型</th>' +
+          '<th>说明</th><th style="width:120px">处理人</th><th style="width:110px">状态</th><th style="width:230px">操作</th>' +
+          '</tr></thead><tbody>' + rows.map(function (e) {
+            var href = objHref(e);
+            return '<tr>' +
+              '<td><span class="ry-code">' + ui.esc(e.id) + '</span><div class="ry-hint">' + ui.esc(e.createdAt || e.at || '') + '</div></td>' +
+              '<td><span class="ry-cellname">' + ui.esc(e.objectType) + '</span>' +
+                '<div class="ry-hint ry-code">' + ui.esc(e.objectId) + '</div></td>' +
+              '<td>' + ui.tag(e.type, 'warn') + '<div class="ex-type">' + ui.esc(e.target || '') + '</div></td>' +
+              '<td class="ry-hint">' + ui.esc(e.detail || e.note || '') + '</td>' +
+              '<td>' + (e.handler ? ui.esc(S.userName(e.handler)) : '<span class="ry-faint">未领取</span>') + '</td>' +
+              '<td>' + ui.statusTag(e.status) + '</td>' +
+              '<td class="ry-tbl-act">' +
+                (e.status === '待处理' && canClaim
+                  ? '<button class="ry-btn ry-btn--sm ry-btn--primary" data-ex-claim="' + e.id + '">领取</button>'
+                  : '') +
+                (e.status === '处理中' && canComplete && e.handler === S.currentUser().id
+                  ? '<button class="ry-btn ry-btn--sm" data-ex-complete="' + e.id + '">完成</button>' +
+                    '<button class="ry-btn ry-btn--sm" data-ex-return="' + e.id + '">退回</button>'
+                  : '') +
+                (canReject && e.status !== '已完成' && e.status !== '不采纳'
+                  ? '<button class="ry-btn ry-btn--sm" data-ex-reject="' + e.id + '">不采纳</button>'
+                  : '') +
+                (href ? '<a class="ry-btn ry-btn--sm" href="' + href + '">打开源对象</a>' : '<span class="ry-faint">无源页面</span>') +
+                '<a class="ry-btn ry-btn--sm" href="detail.html?id=' + encodeURIComponent(e.id) + '">详情</a>' +
+              '</td></tr>';
+          }).join('') + '</tbody></table></div>'
+        : ui.stateCard('empty', { title: '当前没有「' + tab + '」的异常事项' })) +
+
+      ui.banner('同一对象、同一异常类型，在同一时间<b>只会有一条未完成事项</b>。' +
+        '当前重复未完成事项：<b>' + dupCount() + ' 组</b>' +
+        (dupCount() ? '（需要合并处理，不能重复关闭）' : '（无重复，符合唯一性约束）') + '。' +
+        '「领取」是<b>原子占用</b>：同一事项同一时间只有一个人能领取成功，' +
+        '其他人会看到「已被 XXX 领取」，不会出现两个人同时处理同一件事。', dupCount() ? 'warn' : 'brand') +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-EXC</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-EXC · PC · 异常事项</b></li>' +
+        '<li><span>依据</span><b>prd/07 §6；prd/08 §9</b></li>' +
+        '<li><span>可进入角色</span><b>销售主管/经理｜管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-71</b></li>' +
+        '<li><span>状态集合</span><b>待处理｜处理中｜已完成｜不采纳</b></li>' +
+        '<li><span>并发约束</span><b>领取为原子占用；同一对象同一类型同一时间只有一条未完成事项</b></li>' +
+        '<li><span>明确不做</span><b>不在本页直接修改正式业务事实、不绕过源对象权限、不批量关闭异常</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    ui.qs('#ex-apply').addEventListener('click', function () {
+      var v = ui.formValues(ui.qs('#ex-host')); typeF = v['ex-type'] || ''; render();
+    });
+    ui.qs('#ex-reset').addEventListener('click', function () { typeF = ''; render(); });
+    ui.qsa('[data-ex-t]').forEach(function (b) {
+      b.addEventListener('click', function () { tab = b.getAttribute('data-ex-t'); window.location.hash = tab; render(); });
+    });
+    ui.qsa('[data-ex-claim]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]')) return;
+        var r = S.exceptionClaim(b.getAttribute('data-ex-claim'));
+        ui.toast(r.ok ? '领取成功，事项已锁定给你处理。' : r.msg, r.ok ? 'success' : 'warn');
+        render();
+      });
+    });
+    ui.qsa('[data-ex-return]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        ui.confirm({
+          title: '退回异常事项',
+          message: '<p>退回后事项回到「待处理」，其他人可以重新领取。</p>' +
+            '<p class="ry-hint">退回必须填写原因，用于说明为什么处理不了（例如需要管理员（运营）的客户数据权限）。</p>',
+          requireReason: true, reasonLabel: '退回原因', confirmText: '确认退回',
+          onConfirm: function (reason) {
+            var r = S.exceptionReturn(b.getAttribute('data-ex-return'), reason);
+            ui.toast(r.ok ? '已退回。' : r.msg, r.ok ? 'success' : 'warn');
+            render();
+          }
+        });
+      });
+    });
+    ui.qsa('[data-ex-complete]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        ui.confirm({
+          title: '完成异常事项',
+          message: '<p>请确认处理已经完成：<b>源对象上的正式动作已执行</b>，或问题已由外部系统修正。</p>' +
+            '<p class="ry-hint">完成必须填写处理说明。本页不会代你修改任何业务事实——' +
+            '如果源对象还没改，请先跳转源对象执行正式动作再回来完成。</p>',
+          requireReason: true, reasonLabel: '处理说明', confirmText: '确认完成',
+          onConfirm: function (reason) {
+            var r = S.exceptionComplete(b.getAttribute('data-ex-complete'), reason);
+            ui.toast(r.ok ? '已完成。' : r.msg, r.ok ? 'success' : 'warn');
+            render();
+          }
+        });
+      });
+    });
+    ui.qsa('[data-ex-reject]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        ui.confirm({
+          title: '不采纳异常事项',
+          message: '<p>不采纳表示<b>该异常不再需要处理</b>，事项关闭为「不采纳」。</p>' +
+            '<p class="ry-hint">例如自然人客户按最小范围采集、不要求信用代码。' +
+            '不采纳必须填写原因；原因会写入审计，用于回答「为什么这条异常被放过了」。</p>',
+          requireReason: true, reasonLabel: '不采纳原因', confirmText: '确认不采纳', danger: true,
+          onConfirm: function (reason) {
+            var r = S.exceptionReject(b.getAttribute('data-ex-reject'), reason);
+            ui.toast(r.ok ? '已标记不采纳。' : r.msg, r.ok ? 'success' : 'warn');
+            render();
+          }
+        });
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

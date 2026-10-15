@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>人员管理 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：人员管理（用户中心同步 + ZR 工号认证映射） */
+  .pp-org { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 14px; align-items: start; }
+  .pp-org__side { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); padding: 8px; }
+  .pp-org__t { font-size: 12px; color: var(--muted); padding: 4px 8px 6px; }
+  .pp-org__i { display: block; padding: 6px 9px; border-radius: 8px; font-size: 12.5px; color: var(--ink); cursor: pointer; }
+  .pp-org__i:hover { background: var(--line-soft); }
+  .pp-org__i.is-on { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+  .pp-org__n { float: right; color: var(--faint); font-weight: 400; }
+  .pp-id { font-family: var(--mono); font-size: 11.5px; }
+  .pp-id--bad { color: var(--danger); }
+  @media (max-width: 1180px) { .pp-org { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="pp-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'people.list';
+  var canDisable = P.can('people.disable');
+  var canHandleSync = P.can('peopleSync.handle');
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '人员组织与权限',
+    subtitle: '正式人员<b>只能由公司用户中心同步创建</b>；瑞赢不提供手工新建人员、不提供本地改工号。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '人员组织与权限' }],
+    actions: '<a class="ry-btn" href="sync-issue.html">人员同步异常</a>' +
+      '<a class="ry-btn" href="../permission/pending.html">权限待处理</a>' +
+      '<a class="ry-btn" href="../handover/list.html">待移交</a>' +
+      '<a class="ry-btn ry-btn--primary" href="../permission/config.html">角色与权限</a>'
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#pp-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入人员管理',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示人员姓名、工号、角色与数据范围。</p>'
+    });
+    return;
+  }
+
+  var kw = '', region = '', roleF = '';
+
+  function users() { return S.peopleList(); }
+  function regions() { return S.arr('regions'); }
+  function lineName(c) { return S.businessLineName(c); }
+  function regionName(c) { return S.regionName(c); }
+
+  function filtered() {
+    var k = kw.trim().toLowerCase();
+    return users().filter(function (x) {
+      if (region && (x.region || []).indexOf(region) < 0) return false;
+      if (roleF && P.pcRole(x) !== roleF) return false;
+      if (k && (x.name + x.empNo + x.dept).toLowerCase().indexOf(k) < 0) return false;
+      return true;
+    });
+  }
+  function roleName(r) {
+    var d = (P.ROLES || {})[r];
+    return d && d.name ? d.name : r;
+  }
+  function countIn(rs) {
+    return users().filter(function (x) { return (x.region || []).indexOf(rs.code) >= 0; }).length;
+  }
+
+  function render() {
+    var rows = filtered(), all = users(), rg = regions();
+    ui.qs('#pp-host').innerHTML =
+      ui.banner('人员来自<b>公司用户中心</b>：瑞赢同步符合条件的销售及其组织归属，' +
+        '<b>不提供手工新建人员</b>，也不允许在瑞赢本地修改工号与姓名。' +
+        '工号是身份事实：<b>工号缺失、冲突或格式异常时不创建正式人员</b>，转为「人员同步异常」等待用户中心侧修正。' +
+        '企微认证只消费公司既有 <b>ZR 工号认证结果</b>，瑞赢<b>不建设绑定、改绑或人工身份映射</b>。', 'info') +
+
+      '<div class="pp-org" style="margin-top:12px">' +
+        '<div>' +
+          '<div class="pp-org__side"><div class="pp-org__t">区域</div>' +
+            '<span class="pp-org__i' + (region ? '' : ' is-on') + '" data-pp-rg="">全部区域<span class="pp-org__n">' + all.length + '</span></span>' +
+            rg.map(function (r) {
+              return '<span class="pp-org__i' + (region === r.code ? ' is-on' : '') + '" data-pp-rg="' + r.code + '">' +
+                ui.esc(r.name) + '<span class="pp-org__n">' + countIn(r) + '</span></span>';
+            }).join('') +
+          '</div>' +
+          '<div class="ry-card ry-card--flat" style="margin-top:12px"><div class="ry-card__body">' +
+            ui.kv([
+              ['同步来源', '公司用户中心'],
+              ['同步范围', '符合销售准入资格的人员'],
+              ['身份映射', 'ZR 工号（认证只读）'],
+              ['本地新建', '不允许'],
+              ['本地改工号', '不允许'],
+              ['同步异常', S.peopleSyncList().filter(function (p) { return p.status !== '已处理'; }).length + ' 条待处理']
+            ]) +
+          '</div></div>' +
+        '</div>' +
+        '<div>' +
+          '<div class="ry-card" style="margin-bottom:12px"><div class="ry-card__body">' +
+            '<div class="ry-filter__row">' +
+              ui.field('关键词', ui.input('pp-kw', kw, '姓名／工号／组织归属'), '', false) +
+              ui.field('角色', ui.select('pp-role', [
+                { value: '', label: '全部角色' }, { value: 'R1', label: '销售' }, { value: 'R2', label: '销售主管/经理' },
+                { value: 'R3', label: '管理员（运营）' }
+              ], roleF), '', false) +
+            '</div>' +
+            '<div class="ry-filter__act"><button class="ry-btn" id="pp-reset">重置</button>' +
+              '<button class="ry-btn ry-btn--primary" id="pp-apply">查询</button></div>' +
+          '</div></div>' +
+
+          ui.section('人员清单（' + rows.length + ' 人）',
+            '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+              '<th>姓名</th><th>工号</th><th>角色</th><th>区域</th><th>业务线</th><th>组织归属</th><th>资格状态</th><th style="width:170px">操作</th>' +
+            '</tr></thead><tbody>' + (rows.length ? rows.map(function (x) {
+              var syncBad = S.peopleSyncList().filter(function (p) { return p.status !== '已处理'; });
+              var hasIssue = syncBad.some(function (p) { return p.empNo === x.empNo; });
+              var noLine = !(x.businessLine || []).length;
+              return '<tr>' +
+                '<td><span class="ry-cellname">' + ui.esc(x.name) + '</span></td>' +
+                '<td><span class="pp-id' + (hasIssue ? ' pp-id--bad' : '') + '">' + ui.esc(x.empNo) + '</span>' +
+                  (hasIssue ? '<div class="ry-hint" style="color:var(--danger)">存在同步异常</div>' : '') + '</td>' +
+                '<td>' + ui.tag(P.pcRole(x), P.pcRole(x) === 'R3' ? 'brand' : 'info') + '<div class="ry-hint">' + ui.esc(roleName(P.pcRole(x))) + '</div></td>' +
+                '<td>' + ui.esc((x.region || []).map(regionName).join('、') || '—') + '</td>' +
+                '<td>' + (noLine ? '<span class="ry-faint">无</span>' : ui.esc((x.businessLine || []).map(lineName).join('、'))) +
+                  (noLine ? '<div class="ry-hint" style="color:var(--warn)">缺业务线数据范围</div>' : '') + '</td>' +
+                '<td>' + ui.esc(x.dept) + '</td>' +
+                '<td>' + (noLine ? ui.tag('资格不完整', 'warn') : ui.tag('正常', 'ok')) + '</td>' +
+                '<td class="ry-tbl-act">' +
+                  '<button class="ry-btn ry-btn--sm" data-pp-detail="' + x.id + '">详情</button>' +
+                  (canDisable ? '<button class="ry-btn ry-btn--sm ry-btn--danger" data-pp-off="' + x.id + '">停用</button>' : '') +
+                '</td></tr>';
+            }).join('') : '<tr><td colspan="8">' + ui.empty('没有匹配的人员，请调整关键词、区域或角色筛选。') + '</td></tr>') +
+            '</tbody></table></div>' +
+            '<p class="ry-hint" style="margin-top:8px">停用与移交是两件事：停用<b>立即生效</b>（登录与数据访问同时终止），' +
+              '业务移交在其后单独处理，<b>不能因为等待移交而重新启用账号</b>。</p>' +
+            '点击行内「详情」查看数据范围与业务归属；停用请到「待移交」发起移交作业。') +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-ORG</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-ORG · PC · 人员与权限</b></li>' +
+        '<li><span>依据</span><b>prd/07 §2</b></li>' +
+        '<li><span>可进入角色</span><b>销售主管/经理｜管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-65</b></li>' +
+        '<li><span>数据来源</span><b>公司用户中心同步符合条件的销售</b></li>' +
+        '<li><span>身份事实源</span><b>ZR 工号认证映射（只读消费，不建设绑定／改绑）</b></li>' +
+        '<li><span>明确不做</span><b>不手工新建人员、不本地改工号、不做组织架构维护、不做人员归属调整</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    ui.qs('#pp-apply').addEventListener('click', function () {
+      var v = ui.formValues(ui.qs('#pp-host'));
+      kw = v['pp-kw'] || ''; roleF = v['pp-role'] || ''; render();
+    });
+    ui.qs('#pp-reset').addEventListener('click', function () { kw = ''; region = ''; roleF = ''; render(); });
+    ui.qsa('[data-pp-rg]').forEach(function (b) {
+      b.addEventListener('click', function () { region = b.getAttribute('data-pp-rg'); render(); });
+    });
+    ui.qsa('[data-pp-detail]').forEach(function (b) {
+      b.addEventListener('click', function () { detail(b.getAttribute('data-pp-detail')); });
+    });
+    ui.qsa('[data-pp-off]').forEach(function (b) {
+      b.addEventListener('click', function () { disable(b.getAttribute('data-pp-off')); });
+    });
+  }
+
+  function detail(id) {
+    var x = S.user(id);
+    var same = S.arr('permissionPending').filter(function (p) { return p.userId === id; });
+    var ho = S.handoverList().filter(function (h) { return h.userId === id; });
+    var mine = [];
+    if (x.role === 'R1' || x.role === 'R2') {
+      S.arr('businessRelations').forEach(function (r) { if (r.owner === id) mine.push({ type: '客户经营责任', obj: r }); });
+      S.arr('leads').forEach(function (l) { if (l.owner === id && l.status !== '已转化' && l.status !== '已失效') mine.push({ type: '线索', obj: l }); });
+      S.arr('opportunities').forEach(function (o) { if (o.owner === id && !o.closeResult) mine.push({ type: '商机', obj: o }); });
+      S.arr('tasks').forEach(function (t) { if (t.owner === id && ['已完成', '已取消', '已失效', '已拒绝'].indexOf(t.status) < 0) mine.push({ type: '任务', obj: t }); });
+    }
+    ui.drawer({
+      title: x.name + '　' + x.empNo,
+      subtitle: '人员事实来自用户中心；本页只读展示，不提供本地修改。',
+      size: 'lg',
+      body:
+        ui.kv([
+          ['姓名', x.name], ['工号', x.empNo], ['角色', roleName(P.pcRole(x))],
+          ['组织归属', x.dept],
+          ['区域数据范围', (x.region || []).map(regionName).join('、') || '—'],
+          ['业务线数据范围', (x.businessLine || []).map(lineName).join('、') || '无'],
+          ['页面权限', '由「权限配置」授予，多角色取并集'],
+          ['企微认证', '消费公司既有 ZR 工号认证结果；未绑定或认证失效时拒绝登录']
+        ]) +
+        '<div class="ry-divider"></div>' +
+        '<h4 style="margin:0 0 6px;font-size:13px">当前业务归属（' + mine.length + ' 项）</h4>' +
+        (mine.length
+          ? '<ul class="ry-kv ry-kv--tight">' + mine.slice(0, 8).map(function (m) {
+              return '<li><span>' + m.type + '</span><b>' + ui.esc(m.obj.name || m.obj.id) + '　' + ui.esc(m.obj.id) + '</b></li>';
+            }).join('') + '</ul>'
+          : '<p class="ry-hint">当前没有未结束的业务归属。</p>') +
+        (same.length ? ui.banner('该人员存在 <b>' + same.length + ' 条权限待处理事项</b>（' + same[0].trigger + '）。' +
+          '失权<b>不自动移交业务</b>：需要单独发起移交作业。', 'warn') : '') +
+        (ho.length ? ui.banner('该人员存在 <b>' + ho.length + ' 个移交作业</b>，当前状态：' + ui.esc(ho[0].status) + '。', 'info') : ''),
+      footer: '<button class="ry-btn" data-close>关闭</button>' +
+        (canDisable ? '<button class="ry-btn" data-pp-drawer-off="' + x.id + '">停用并创建待移交</button>' : '')
+    });
+    var ob = ui.qs('[data-pp-drawer-off]');
+    if (ob) ob.addEventListener('click', function () { disable(id); });
+  }
+
+  function disable(id) {
+    var x = S.user(id);
+    ui.confirm({
+      title: '停用人员　' + x.name,
+      message: '<p>停用会<b>立即生效</b>：该人员的登录与数据访问同时终止。</p>' +
+        '<p class="ry-hint">历史事实（谁在什么时候做了什么）<b>保留原人员与工号</b>，不回填、不迁移。' +
+        '业务对象不会自动移交，也不会自动进入公海：需要另行发起「待移交」作业。' +
+        '如果不同时处理移交，这些对象会暂时无人负责。</p>',
+      requireReason: true, reasonLabel: '停用原因', reasonPlaceholder: '如：人员离岗／资格失效', confirmText: '确认停用', danger: true,
+      onConfirm: function (reason) {
+        if (!S.handoverList().some(function (h) { return h.userId === id; })) {
+          ui.toast('已停用：' + x.name + '。请到「待移交」创建移交作业处理其业务归属。', 'warn');
+        } else {
+          ui.toast('已停用：' + x.name + '（原因：' + reason + '）。', 'success');
+        }
+        S.audit('人员', id, '停用', '启用', '停用｜原因：' + reason);
+      }
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

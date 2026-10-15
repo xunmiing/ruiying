@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>对象 AI · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：对象 AI（对象匹配 / 只读摘要与问答 / 权限内知识检索）。 */
+  .ao2-hit { border: 1px solid var(--line); border-radius: 12px; padding: 10px 11px; margin-bottom: 8px; background: var(--surface); }
+  .ao2-hit__t { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; }
+  .ao2-q { border: 1px solid var(--line-soft); border-radius: 10px; padding: 9px 10px; margin-bottom: 8px; background: var(--surface); }
+  .ao2-q__ask { font-size: 12.5px; font-weight: 600; }
+  .ao2-q__a { font-size: 12.5px; line-height: 1.9; margin-top: 6px; word-break: break-all; }
+  .ao2-src { font-size: 11.5px; color: var(--muted); line-height: 1.8; margin-top: 6px; word-break: break-all; }
+  .ao2-ro { display: inline-flex; align-items: center; gap: 4px; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+  <div id="ao2-host"></div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.agent.object';
+
+  RY.nav.h5shell({
+    title: '对象 AI',
+    sub: '只读摘要与问答 · 不改写正式字段',
+    back: 'h5/agent/index.html',
+    nav: 'more',
+    tabbar: true
+  });
+
+  /* ---------------------------------------------------------- 鉴权 */
+  if (!P.page(PAGE)) {
+    ui.qs('#ao2-host').innerHTML = ui.stateCard('no-permission', {
+      title: '没有对象 AI 的访问权限',
+      body: '<p>' + ui.esc(P.whyNot('agent.objectAI') || '当前身份没有「对象 AI」页面权限。') + '</p>' +
+            '<p class="ry-hint">对象摘要与问答只读，但读取同样受数据范围与字段规则约束：能看到页面不等于能看到全部对象。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/agent/index.html') + '">返回瑞赢 AI</a>'
+    });
+    return;
+  }
+
+  var u = S.currentUser();
+  var TYPE_LIST = { '客户': 'customers', '线索': 'leads', '商机': 'opportunities' };
+  var state = { obj: null, hits: null, term: '', qa: '', kbq: '' };
+
+  /* ---------------------------------------------------------- 权限内检索 */
+
+  /* 只在当前用户有权数据范围内匹配；无权对象不返回名称、数量、排序或摘要。 */
+  function search(term) {
+    var q = (term || '').trim().toLowerCase();
+    if (!q) return [];
+    var out = [];
+    S.arr('customers').forEach(function (c) {
+      if (!P.inScope('customer', c)) return;
+      var hay = [c.name, c.alias, c.creditCode, c.id].join(' ').toLowerCase();
+      if (hay.indexOf(q) >= 0) out.push({ type: '客户', id: c.id, name: c.name, exact: c.id.toLowerCase() === q || (c.alias || '').toLowerCase() === q || (c.name || '').toLowerCase() === q });
+    });
+    S.arr('leads').forEach(function (l) {
+      if (!P.inScope('lead', l)) return;
+      var hay = [l.id, l.raw, l.source].join(' ').toLowerCase();
+      if (hay.indexOf(q) >= 0) out.push({ type: '线索', id: l.id, name: (l.raw || '').slice(0, 22) + '…', exact: l.id.toLowerCase() === q });
+    });
+    S.arr('opportunities').forEach(function (o) {
+      if (!P.inScope('opp', o)) return;
+      var hay = [o.name, o.id].join(' ').toLowerCase();
+      if (hay.indexOf(q) >= 0) out.push({ type: '商机', id: o.id, name: o.name, exact: o.id.toLowerCase() === q });
+    });
+    return out;
+  }
+
+  function objOf(type, id) {
+    var list = TYPE_LIST[type];
+    return list ? S.find(list, id) : null;
+  }
+
+  /* 对象摘要只读来源：正式对象字段、有权销售活动、本人未完成任务、有权已发布知识。 */
+  function activitiesOf(type, id) {
+    var key = type === '客户' ? 'customerId' : type === '线索' ? 'leadId' : 'oppId';
+    return S.arr('activities').filter(function (a) { return a[key] === id; })
+      .sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
+  }
+  function tasksOf(id) {
+    var open = ['待处理'];
+    return S.tasks('mine').filter(function (t) {
+      return t.related && t.related.id === id && open.indexOf(t.status) >= 0;
+    });
+  }
+  function kbScope(q) {
+    return S.knowledgeList(q || '').filter(function (k) { return S.knowledgeInPublishScope(k, u); });
+  }
+
+  function gaps(type, o) {
+    var g = [];
+    if (type === '客户') {
+      if (o.creditMissing) g.push('统一社会信用代码缺失');
+      if (o.valueReview !== '已复核') g.push('客户价值待复核');
+      if (o.industryState && o.industryState !== '正常成功') g.push('工商信息查询未成功，行业字段可能过期');
+      if (!o.contactsCount) g.push('无有效联系人');
+    } else if (type === '线索') {
+      if (!o.customerId) g.push('尚未关联客户（未转换）');
+      if (!o.phone) g.push('无联系电话');
+      if (!o.nextAction) g.push('无下一步动作');
+      if (!o.lastFollowUpAt) g.push('无跟进记录');
+      if (!o.owner) g.push('线索尚无唯一责任人（在池内）');
+    } else {
+      if (!o.predictedClose) g.push('无预计成交时间');
+      if (!o.nextAction) g.push('无下一步动作');
+      if (!o.custom || !o.custom['CF-BUDGET']) g.push('预算区间未填写');
+      if (!(o.team || []).length) g.push('无团队成员');
+      if (!(o.lines || []).length) g.push('无参与业务线');
+    }
+    return g;
+  }
+
+  /* AI 总结：只基于上面的确定性字段生成，逐条可回溯；不引入未授权来源。 */
+  function aiSummary(type, o) {
+    var ats = activitiesOf(type, o.id);
+    var ts = tasksOf(o.id);
+    var parts = [];
+    if (type === '客户') {
+      parts.push('客户「' + o.name + '」当前状态 ' + o.status + '，价值 ' + o.value + '（' + o.valueReview + '），' +
+        '关联联系人 ' + (o.contactsCount || 0) + ' 人、商机 ' + (o.oppsCount || 0) + ' 个。');
+      if (o.remark) parts.push('客户备注：' + o.remark);
+    } else if (type === '线索') {
+      var pool = o.currentPool ? S.poolOf(o.currentPool) : null;
+      parts.push('线索「' + o.id + '」状态 ' + o.status + '，来源 ' + o.source +
+        '，候选业务线 ' + ((o.candidateLines || []).map(function (b) { return S.businessLineName(b); }).join('、') || '未标注') +
+        '，当前归属 ' + (pool ? pool.name : '未入池') + '。');
+      parts.push('原始描述：' + o.raw);
+    } else {
+      var st = S.currentStage(o);
+      parts.push('商机「' + o.name + '」过程状态 ' + o.processStatus +
+        '，当前阶段 ' + (st ? st.name : '—') + '，预计成交 ' + (o.predictedClose || '未设置') + '。');
+      parts.push('下一步动作：' + (o.nextAction || '无') + (o.nextActionAt ? '（' + o.nextActionAt + '）' : '') +
+        '，团队 ' + (o.team || []).length + ' 人。');
+    }
+    parts.push('最近关键活动 ' + ats.length + ' 条' + (ats.length ? '（最近：' + ats[0].at + ' ' + ats[0].summary + '）' : '') +
+      '；未完成任务 ' + ts.length + ' 条。');
+    return parts.join('');
+  }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function hitHtml(x) {
+    var on = state.obj && state.obj.id === x.id;
+    return '<div class="ao2-hit"><div class="ao2-hit__t"><span>' + ui.tag(x.type, x.exact ? 'ok' : 'muted') + ' ' + ui.esc(x.name) + '</span>' +
+      '<button class="ry-btn ry-btn--sm' + (on ? ' is-on' : '') + '" data-obj="' + ui.esc(x.id) + '" data-type="' + ui.esc(x.type) + '">' +
+      (on ? '已选中' : '查看摘要') + '</button></div>' +
+      '<p class="ry-hint">' + ui.esc(x.id) + (x.exact ? ' · 唯一标识／名称精确匹配' : ' · 模糊匹配，只推荐不自动绑定') + '</p></div>';
+  }
+
+  function objBlock() {
+    var o = state.obj;
+    var type = o.type, rec = o.rec;
+    var ats = activitiesOf(type, rec.id);
+    var ts = tasksOf(rec.id);
+    var gp = gaps(type, rec);
+
+    var html = '<div class="ry-hcard"><div class="ry-hcard__head"><h3>对象摘要</h3>' +
+      '<div class="ry-hcard__extra">' + ui.tag('只读', 'info') + '</div></div><div class="ry-hcard__body">' +
+      ui.banner('摘要只读：对象 AI 不修改任何正式字段、不改变对象状态、不自动创建任务。' +
+        '需要写入时回到正式模块，或走「沟通整理 → 候选确认」的人工确认路径。', 'info') +
+      ui.kv([
+        ['对象', ui.tag(type, 'info') + ' ' + ui.esc(type === '线索' ? rec.id : rec.name) + '　' + ui.esc(rec.id)],
+        ['当前状态', ui.esc(type === '商机' ? rec.processStatus + '（' + ((S.currentStage(rec) || {}).name || '—') + '）' : rec.status)],
+        ['最近关键活动', ats.length ? ats.slice(0, 3).map(function (a) {
+          return ui.esc(a.at) + '　' + ui.esc(a.type) + '：' + ui.esc(a.summary) + '（' + ui.esc(S.userName(a.actor)) + '）';
+        }).join('<br>') : '—'],
+        ['未完成任务', ts.length ? ts.map(function (t) {
+          return ui.esc(t.name) + '（截止 ' + ui.esc(t.dueAt || '未设置') + '，责任人 ' + ui.esc(S.userName(t.owner)) + '）';
+        }).join('<br>') : '—'],
+        ['关键数据缺失', gp.length ? gp.map(function (x) { return ui.esc(x); }).join('；') : '未命中数据质量规则'],
+        ['AI 总结', ui.esc(aiSummary(type, rec))],
+        ['数据截至时间', ui.esc(S.now()) + '　来源：正式对象字段 + 本人有权销售活动与任务 + 有权已发布知识'],
+        ['来源与版本', '对象字段（' + ui.esc(rec.updatedAt || rec.createdAt || '—') + '）／候选与运行记录按 Run ID 可追溯']
+      ]) + '</div></div>';
+
+    /* 对象内问答 */
+    var qa = state.qa;
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>对象内问答</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">围绕当前对象</span></div></div><div class="ry-hcard__body">' +
+      '<div class="ry-acts-row">' +
+      ['当前状态与下一步', '最近关键活动', '未完成任务', '关键数据缺失', '相关制度与口径'].map(function (q) {
+        return '<button class="ry-btn ry-btn--sm' + (qa === q ? ' is-on' : '') + '" data-qa="' + ui.esc(q) + '">' + ui.esc(q) + '</button>';
+      }).join('') + '</div>' +
+      (qa ? qaHtml(qa) : '<p class="ry-hint">选择一个预设问题，或输入自由问题。问答围绕当前对象及其合法关联对象，' +
+        '只使用当前用户有权来源；轻量跨对象问答仅限权限内业务查询，不扩展为通用 BI。</p>') +
+      '<div class="ry-field" style="margin-top:8px"><label class="ry-field__label">自由提问</label>' +
+        '<input class="ry-input" id="ao2-ask" placeholder="例如：这个对象现在缺什么数据？"></div>' +
+      '<div class="ry-acts-row"><button class="ry-btn" id="ao2-ask-go">提问</button></div>' +
+      '<p class="ry-hint">没有可引用的有权来源时不生成回答：知识与业务事实分开标识，回答必须展示来源与版本；' +
+        '文档停用后不进入新回答，历史回答不自动改写。</p>' +
+      '</div></div>';
+
+    /* 权限内知识检索 */
+    var kbs = kbScope(state.kbq || '');
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>权限内知识检索</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">仅已发布且在发布范围</span></div></div><div class="ry-hcard__body">' +
+      '<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--surface)">' +
+        '<input id="ao2-kbq" type="search" placeholder="检索制度、口径与作业指引" value="' + ui.esc(state.kbq) + '" style="flex:1;border:0;outline:0;font-size:14px;background:transparent">' +
+        '<button class="ry-btn ry-btn--sm" id="ao2-kbgo">检索</button></div>' +
+      (kbs.length ? kbs.slice(0, 6).map(function (k) {
+        return '<div class="ao2-hit"><div class="ao2-hit__t"><span>' + ui.esc(k.title) + '</span>' + ui.tag('业务事实之外的独立来源', 'muted') + '</div>' +
+          '<p class="ry-hint">' + ui.esc(k.code) + '　' + ui.esc(k.version) + '　' +
+          (k.publishedAt ? '发布 ' + ui.esc(k.publishedAt) : '发布状态 ' + ui.esc(k.status)) + '　范围 ' + ui.esc(k.scope) + '</p>' +
+          '<div class="ry-acts-row"><a class="ry-btn ry-btn--sm" href="' + RY.nav.href('h5/knowledge/detail.html?id=' + encodeURIComponent(k.id)) + '">在线查看</a></div></div>';
+      }).join('') : '<p class="ry-hint">当前身份在发布范围内的已发布知识中没有匹配文档。草稿与已停用文档不参与检索，也不作为 Agent 新回答来源；不展示无权文档的数量。</p>') +
+      '</div></div>';
+    return html;
+  }
+
+  function qaHtml(q) {
+    var o = state.obj, type = o.type, rec = o.rec;
+    var ats = activitiesOf(type, rec.id), ts = tasksOf(rec.id), gp = gaps(type, rec);
+    var a = '', src = '';
+    if (q === '当前状态与下一步') {
+      if (type === '商机') {
+        a = '过程状态 ' + rec.processStatus + '，当前阶段 ' + ((S.currentStage(rec) || {}).name || '—') +
+          '，下一步动作：' + (rec.nextAction || '无') + (rec.nextActionAt ? '（计划 ' + rec.nextActionAt + '）' : '') +
+          '，预计成交 ' + (rec.predictedClose || '未设置') + '。';
+        src = '商机字段 processStatus／currentStageCode／nextAction／nextActionAt／predictedClose';
+      } else if (type === '客户') {
+        a = '客户状态 ' + rec.status + '，价值 ' + rec.value + '（' + rec.valueReview + '），关联商机 ' + (rec.oppsCount || 0) +
+          ' 个；下一步以关联商机的下一步动作为准。';
+        src = '客户字段 status／value／oppsCount + 关联商机字段';
+      } else {
+        a = '线索状态 ' + rec.status + '，下一步动作：' + (rec.nextAction || '未设置') + '，下次跟进 ' + (rec.nextFollowUp || '未安排') + '。';
+        src = '线索字段 status／nextAction／nextFollowUp';
+      }
+    } else if (q === '最近关键活动') {
+      a = ats.length ? ats.slice(0, 5).map(function (x) { return x.at + '　' + x.type + '：' + x.summary; }).join('；') : '该对象当前没有可引用的销售活动记录。';
+      src = '销售活动（sales activities）按对象关联字段检索，仅本人权限范围';
+    } else if (q === '未完成任务') {
+      a = ts.length ? ts.map(function (t) { return t.name + '（截止 ' + (t.dueAt || '未设置') + '，责任人 ' + S.userName(t.owner) + '，状态 ' + t.status + '）'; }).join('；') : '没有未完成任务。';
+      src = '任务（本人数据范围内的开放状态任务）';
+    } else if (q === '关键数据缺失') {
+      a = gp.length ? gp.join('；') : '未命中数据质量规则。';
+      src = '对象字段完整性与既有数据质量规则（非 AI 判断）';
+    } else {
+      var ks = kbScope(state.obj.kbq || '');
+      a = ks.length ? '命中 ' + ks.length + ' 篇有权已发布知识，可引用：' + ks.slice(0, 3).map(function (k) { return k.title + '（' + k.version + '）'; }).join('、') + '。'
+        : '没有可引用的有权已发布知识文档。';
+      src = '知识文档（仅已发布且在发布范围内；停用文档不进入新回答）';
+    }
+    return '<div class="ao2-q"><div class="ao2-q__ask">问：' + ui.esc(q) + '</div>' +
+      '<div class="ao2-q__a">' + ui.esc(a) + '</div>' +
+      '<div class="ao2-src">来源：' + ui.esc(src) + '　｜　数据截至 ' + ui.esc(S.now()) +
+      '　｜　业务事实与知识来源分开标识；无来源不回答，回答不写回正式字段。</div></div>';
+  }
+
+  function render() {
+    var html = '';
+
+    html += '<div class="ry-brief">' +
+      '<div class="ry-brief__row"><span class="ry-brief__k">对象 AI（摘要／问答／知识检索）</span>' +
+        '<span>' + ui.tag('只读', 'info') + '</span></div>' +
+      '<p class="ry-hint">0.1 对象摘要优先支持线索、客户、商机：展示当前状态、最近关键活动、已确认需求／关注点／异议／风险、未完成任务、数据缺失、AI 总结、数据截至时间和来源。' +
+      '所有内容只读，不改写正式字段。</p></div>';
+
+    /* 对象匹配 */
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>对象匹配</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">精确优先 · 歧义人工选择</span></div></div><div class="ry-hcard__body">' +
+      '<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--surface)">' +
+        '<input id="ao2-q" type="search" placeholder="客户名称／别名／信用代码，线索或商机编号" value="' + ui.esc(state.term) + '" style="flex:1;border:0;outline:0;font-size:14px;background:transparent">' +
+        '<button class="ry-btn ry-btn--sm" id="ao2-go">匹配</button></div>' +
+      (state.hits === null ? '<p class="ry-hint">从对象详情进入时自动带入当前对象；否则由用户选择对象，或由系统匹配后交用户确认。</p>' : hitsHtml()) +
+      '</div></div>';
+
+    if (state.obj) html += objBlock();
+    else html += '<p class="ry-hint">选择对象后可查看只读摘要、对象内问答与权限内知识检索。对象 AI 不是自由对话式问答，也不做第二套 CRM。</p>';
+
+    /* 本页契约 */
+    html += '<div class="ry-hcard ry-hcard--flat" style="margin-top:14px">' +
+      '<div class="ry-hcard__head"><h3>本页契约</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">PG-AI-OBJECT</span></div></div>' +
+      '<div class="ry-hcard__body">' + ui.kv([
+        ['页面契约', 'PG-AI-OBJECT · 对象 AI'],
+        ['所属模块', 'Agent（05 Agent 候选与人工确认）'],
+        ['端', '企业微信 H5'],
+        ['可进入角色', 'ALL5：R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员（摘要与问答仍需数据范围与对象状态校验）'],
+        ['PRD 来源', 'prd/05 §7.2／§11.2（对象摘要、对象内问答与知识检索）与 §6（业务上下文与对象匹配）'],
+        ['覆盖 AC', 'AI-07 AI-09 AI-10'],
+        ['本页视图', '对象 AI｜权限内知识检索｜只读摘要与问答｜不改写正式字段'],
+        ['关键边界', '唯一精确匹配默认选中并明确展示；多结果人工选择；无匹配不强绑、不自动创建；无权对象不侧漏名称与数量；只读不改写正式字段']
+      ]) + '</div></div>';
+
+    ui.qs('#ao2-host').innerHTML = html;
+    bind();
+  }
+
+  function hitsHtml() {
+    var h = state.hits;
+    if (!h.length) {
+      return '<p class="ry-hint">没有匹配到有权对象。无匹配不得自动创建客户、联系人、线索或商机，也不强绑：可转普通表单草稿并由用户自己提交。</p>' +
+        '<div class="ry-acts-row" style="margin-top:8px">' +
+        '<a class="ry-btn" href="' + RY.nav.href('h5/customer/create.html') + '">新建客户草稿</a>' +
+        '<a class="ry-btn" href="' + RY.nav.href('h5/lead/create.html') + '">新建线索草稿</a>' +
+        '<a class="ry-btn" href="' + RY.nav.href('h5/opportunity/create.html') + '">新建商机草稿</a></div>' +
+        '<p class="ry-hint">若匹配到的是无权对象，页面同样按「无匹配结果」处理：不展示其名称、数量、排序与正文，不通过结果数量侧漏其存在。</p>';
+    }
+    var exact = h.filter(function (x) { return x.exact; });
+    var head = exact.length === 1 && h.length === 1
+      ? '<p class="ry-hint">唯一精确匹配：已默认选中并明确展示；可人工改选。</p>'
+      : '<p class="ry-hint">命中 ' + h.length + ' 个有权对象，必须人工选择；系统只推荐，不自动绑定，前台不显示置信度百分比。</p>';
+    return head + h.map(hitHtml).join('');
+  }
+
+  /* ---------------------------------------------------------- 交互 */
+
+  function doMatch(term, auto) {
+    state.term = term;
+    var hits = search(term);
+    state.hits = hits;
+    if (auto) {
+      var exact = hits.filter(function (x) { return x.exact; });
+      if (exact.length === 1 && hits.length === 1) {
+        state.obj = { type: exact[0].type, id: exact[0].id, rec: objOf(exact[0].type, exact[0].id) };
+        state.qa = '';
+      }
+    }
+    render();
+  }
+
+  function bind() {
+    var go = ui.qs('#ao2-go');
+    if (go) go.addEventListener('click', function () { doMatch(ui.qs('#ao2-q').value, true); });
+    var q = ui.qs('#ao2-q');
+    if (q) q.addEventListener('keydown', function (e) { if (e.key === 'Enter') doMatch(q.value, true); });
+
+    ui.qsa('[data-obj]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-obj'), type = b.getAttribute('data-type');
+        var rec = objOf(type, id);
+        /* 打开前重新鉴权：即使来自本页检索结果，也逐次校验数据范围。 */
+        var g = P.guard(PAGE, TYPE_LIST[type], id);
+        if (!g.ok) {
+          ui.modal({ title: '无法打开该对象', size: 'sm',
+            body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权对象不展示正文；关闭后不保留任何摘要。</p>',
+            footer: '<button class="ry-btn ry-btn--primary" data-close>知道了</button>' });
+          return;
+        }
+        state.obj = { type: type, id: id, rec: rec };
+        state.qa = '';
+        render();
+        if (b.getAttribute('data-obj') === (state.obj && state.obj.id)) {
+          var el = ui.qs('.ao2-q');
+          if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' });
+        }
+      });
+    });
+
+    ui.qsa('[data-qa]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var q2 = b.getAttribute('data-qa');
+        state.qa = state.qa === q2 ? '' : q2;
+        if (q2 === '相关制度与口径') state.obj.kbq = state.obj.kbq || '';
+        render();
+      });
+    });
+    var ask = ui.qs('#ao2-ask-go');
+    if (ask) ask.addEventListener('click', function () {
+      var v = (ui.qs('#ao2-ask').value || '').trim();
+      if (!v) { ui.toast('请输入问题。', 'warn'); return; }
+      var keys = { '缺': '关键数据缺失', '数据': '关键数据缺失', '状态': '当前状态与下一步', '下一步': '当前状态与下一步',
+        '活动': '最近关键活动', '任务': '未完成任务', '制度': '相关制度与口径', '口径': '相关制度与口径', '知识': '相关制度与口径' };
+      var hit = Object.keys(keys).filter(function (k) { return v.indexOf(k) >= 0; })[0];
+      if (!hit) {
+        state.qa = '';
+        ui.modal({ title: '没有可引用的有权来源', size: 'sm',
+          body: '<p>问题「' + ui.esc(v) + '」在当前对象及其合法关联对象、以及当前身份有权并已发布的知识中都没有命中可引用来源，' +
+            '因此不生成回答。</p><p class="ry-hint">对象 AI 不做自由对话式问答、不做通用 BI、不编造来源；可换用预设问题，或到知识检索中查看有权文档。</p>',
+          footer: '<button class="ry-btn ry-btn--primary" data-close>知道了</button>' });
+        return;
+      }
+      state.qa = keys[hit];
+      render();
+    });
+
+    var kbgo = ui.qs('#ao2-kbgo');
+    if (kbgo) kbgo.addEventListener('click', function () { state.kbq = ui.qs('#ao2-kbq').value; render(); });
+    var kbq = ui.qs('#ao2-kbq');
+    if (kbq) kbq.addEventListener('keydown', function (e) { if (e.key === 'Enter') { state.kbq = kbq.value; render(); } });
+  }
+
+  /* 深链支持：从对象详情进入时带入 ?type=客户&id=CUS-... */
+  var deepId = ui.q('id'), deepType = ui.q('type');
+  if (deepId && TYPE_LIST[deepType]) {
+    var g0 = P.guard(PAGE, TYPE_LIST[deepType], deepId);
+    if (g0.ok) {
+      state.obj = { type: deepType, id: deepId, rec: objOf(deepType, deepId) };
+      state.term = deepId;
+      state.hits = [{ type: deepType, id: deepId, name: (state.obj.rec && state.obj.rec.name) || deepId, exact: true }];
+    }
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

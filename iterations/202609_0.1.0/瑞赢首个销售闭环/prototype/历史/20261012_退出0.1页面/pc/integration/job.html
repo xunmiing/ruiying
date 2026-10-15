@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>同步任务 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：同步任务（幂等键、重试；不建设通用对账） */
+  .sj-idem { font-family: var(--mono); font-size: 11.5px; }
+  .sj-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+  @media (max-width: 1180px) { .sj-cols { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="sj-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'integration.job';
+  var canRetry = P.can('integration.retry');
+  var STATUS = ['待处理', '成功', '失败'];
+  var tab = ui.hash() || '';
+  var systemF = ui.q('system') || '';
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '同步任务',
+    subtitle: '每个任务有<b>幂等键</b>与<b>重试上限</b>。同步失败<b>不回滚来源业务</b>，0.1 <b>不建设通用对账</b>。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '集成与同步' }, { label: '同步任务' }],
+    actions: '<a class="ry-btn" href="system.html">外部系统</a><a class="ry-btn" href="exception.html">同步异常</a>'
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#sj-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入同步任务',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示对象编号、外部标识与失败原因。</p>'
+    });
+    return;
+  }
+
+  function all() { return S.syncList(); }
+  function systems() {
+    var seen = [];
+    all().forEach(function (s) { if (seen.indexOf(s.system) < 0) seen.push(s.system); });
+    return seen;
+  }
+  function filtered() {
+    return all().filter(function (s) {
+      if (tab && s.status !== tab) return false;
+      if (systemF && s.system !== systemF) return false;
+      return true;
+    });
+  }
+
+  function render() {
+    var list = all(), rows = filtered();
+    var cnt = function (s) { return list.filter(function (x) { return x.status === s; }).length; };
+
+    ui.qs('#sj-host').innerHTML =
+      ui.banner('同步任务记录<b>一次确定的对外动作</b>：把哪个瑞赢对象、以什么方向、同步到了哪个外部系统。' +
+        '每个任务带<b>幂等键</b>：同一业务动作重复触发时，外部系统按幂等键去重，' +
+        '不会产生两条外部记录——这是「重试安全」的基础。' +
+        '失败任务可以重试，<b>重试超过上限后不再自动重试</b>，转为「同步异常」由人工处理。' +
+        '<b>同步失败不回滚来源业务</b>：瑞赢里已经成立的日程、拜访、商机不会因为对外同步失败而被撤销，' +
+        '因为业务事实在瑞赢成立，对外同步只是附加动作。' +
+        '0.1 <b>不建设通用对账</b>：不做双向数据比对、不生成差异核销台账、' +
+        '不支持按任意维度核对外部数据。', 'info') +
+
+      '<div class="ry-card" style="margin:12px 0"><div class="ry-card__body">' +
+        '<div class="ry-filter__row">' +
+          ui.field('外部系统', ui.select('sj-sys', [{ value: '', label: '全部系统' }].concat(systems()), systemF), '', false) +
+        '</div>' +
+        '<div class="ry-filter__act"><button class="ry-btn" id="sj-reset">重置</button>' +
+          '<button class="ry-btn ry-btn--primary" id="sj-apply">查询</button></div>' +
+      '</div></div>' +
+
+      '<div style="display:flex;gap:6px;margin-bottom:10px">' +
+        [['', '全部（' + list.length + '）']].concat(STATUS.map(function (s) {
+          return [s, s + '（' + cnt(s) + '）'];
+        })).map(function (t) {
+          return '<button class="ry-btn ry-btn--sm' + ((tab || '') === t[0] ? ' ry-btn--primary' : '') + '" data-sj-t="' + t[0] + '">' + t[1] + '</button>';
+        }).join('') + '</div>' +
+
+      '<div class="sj-cols">' +
+        '<div>' +
+          (rows.length
+            ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+              '<th style="width:150px">任务编号</th><th style="width:130px">外部系统</th><th>对象</th>' +
+              '<th style="width:110px">方向</th><th style="width:210px">幂等键</th>' +
+              '<th style="width:150px">最近执行</th><th style="width:110px">状态</th><th style="width:170px">操作</th>' +
+              '</tr></thead><tbody>' + rows.map(function (s) {
+                return '<tr>' +
+                  '<td><span class="ry-code">' + ui.esc(s.id) + '</span></td>' +
+                  '<td>' + ui.esc(s.system) + '</td>' +
+                  '<td><span class="ry-cellname">' + ui.esc(s.object) + '</span>' +
+                    '<div class="ry-hint"><span class="ry-code">' + ui.esc(s.objectId) + '</span>' +
+                    (s.externalId ? ' → <span class="ry-code">' + ui.esc(s.externalId) + '</span>' : ' → <span class="ry-faint">未建立外部标识</span>') + '</div></td>' +
+                  '<td>' + ui.tag(s.direction, s.direction.indexOf('→ 企微') >= 0 ? 'brand' : 'info') + '</td>' +
+                  '<td><span class="sj-idem">' + ui.esc(s.idemKey) + '</span>' +
+                    '<div class="ry-hint">重复触发由外部系统按此键去重</div></td>' +
+                  '<td class="ry-hint">' + ui.esc(s.executedAt || '未执行') +
+                    (s.lastSuccessAt ? '<div>上次成功：' + ui.esc(s.lastSuccessAt) + '</div>' : '') +
+                    (s.retryCount ? '<div>已重试 ' + s.retryCount + ' / ' + s.maxRetry + '</div>' : '') + '</td>' +
+                  '<td>' + ui.statusTag(s.status) +
+                    (s.failReason ? '<div class="ry-hint" style="color:var(--danger)">' + ui.esc(s.failReason) + '</div>' : '') + '</td>' +
+                  '<td class="ry-tbl-act">' +
+                    (s.status !== '成功' && canRetry ? '<button class="ry-btn ry-btn--sm ry-btn--primary" data-sj-retry="' + s.id + '">重试</button>' : '') +
+                    (s.exceptionId ? '<a class="ry-btn ry-btn--sm" href="../exception/detail.html?id=' + encodeURIComponent(s.exceptionId) + '">异常事项</a>'
+                      : (s.status === '失败' ? '<span class="ry-hint">未派生异常</span>' : '')) +
+                  '</td></tr>';
+              }).join('') + '</tbody></table></div>'
+            : ui.stateCard('empty', { title: '当前没有匹配的同步任务' })) +
+        '</div>' +
+
+        '<div>' +
+          ui.section('重试与幂等',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>重试</span><b>失败任务可人工重试</b></li>' +
+              '<li><span>重试上限</span><b>超过上限不再自动重试，转人工</b></li>' +
+              '<li><span>幂等键</span><b>同一业务动作重复触发不产生重复外部记录</b></li>' +
+              '<li><span>成功任务</span><b>不重复执行</b></li>' +
+              '<li><span>回滚来源</span><b>不回滚：业务事实在瑞赢成立</b></li>' +
+              '<li><span>降级策略</span><b>外部不支持完整双向时降级为单向同步并标注</b></li>' +
+            '</ul>') +
+
+          ui.section('不建设通用对账',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>双向比对</span><b>不提供</b></li>' +
+              '<li><span>差异台账</span><b>不提供</b></li>' +
+              '<li><span>任意维度核对</span><b>不提供</b></li>' +
+              '<li><span>对账报表</span><b>不提供</b></li>' +
+            '</ul>' +
+            ui.banner('对账的前提是「两边都承认同一套主键」。0.1 只保证<b>每一次同步动作可追溯</b>：' +
+              '有幂等键、有外部标识、有失败原因。这已经足以回答「这条数据同步出去了吗」。', 'warn')) +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-SYNCJOB</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-SYNCJOB · PC · 集成与同步</b></li>' +
+        '<li><span>依据</span><b>prd/08 §14</b></li>' +
+        '<li><span>可进入角色</span><b>管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-75</b></li>' +
+        '<li><span>必须展示</span><b>同步任务｜幂等键｜重试次数与上限｜失败原因</b></li>' +
+        '<li><span>明确不做</span><b>不建设通用对账、不做双向数据比对、不因同步失败回滚来源业务</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    ui.qs('#sj-apply').addEventListener('click', function () {
+      var v = ui.formValues(ui.qs('#sj-host')); systemF = v['sj-sys'] || ''; render();
+    });
+    ui.qs('#sj-reset').addEventListener('click', function () { systemF = ''; render(); });
+    ui.qsa('[data-sj-t]').forEach(function (b) {
+      b.addEventListener('click', function () { tab = b.getAttribute('data-sj-t'); window.location.hash = tab; render(); });
+    });
+    ui.qsa('[data-sj-retry]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]')) return;
+        var r = S.retrySync(b.getAttribute('data-sj-retry'));
+        ui.toast(r.ok ? r.msg : r.msg, r.ok ? 'success' : 'warn');
+        render();
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

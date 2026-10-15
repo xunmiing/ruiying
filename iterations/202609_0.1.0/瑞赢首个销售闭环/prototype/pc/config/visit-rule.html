@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=1280">
+<title>拜访规则 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css"><link rel="stylesheet" href="../../assets/css/pc-common.css"><link rel="stylesheet" href="../../assets/css/config-rule-ui.css">
+</head>
+<body data-root="../../">
+<div class="ry-app"><aside class="ry-side" id="ry-side"></aside><div class="ry-main"><header class="ry-top" id="ry-top"></header><div class="ry-head" id="ry-head"></div><main class="ry-page" id="ry-page"><div id="vr-host"></div></main></div></div>
+<script src="../../assets/js/demo-data.js"></script><script src="../../assets/js/prototype-store.js"></script><script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script><script src="../../assets/js/common-actions.js"></script><script src="../../assets/js/navigation.js"></script><script src="../../assets/js/page-manifest.js"></script><script src="../../assets/js/visit-rule-form.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, canEdit = RY.perm.can('visitRule.edit');
+  RY.nav.shell({ nav: 'cfg.visit', title: '拜访规则',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '配置中心' }, { label: '拜访规则' }] });
+  var g = RY.perm.guard('cfg.visit', null, null);
+  if (!g.ok) { ui.qs('#vr-host').innerHTML = ui.stateCard(g.kind, { title: '当前身份不可进入拜访规则', body: '<p>' + ui.esc(g.reason) + '</p>' }); return; }
+  var families = {};
+  S.configBList('visitRules').filter(function (r) { return RY.visitRuleForm.viewerCanRead(r, S.currentUser()); }).forEach(function (r) {
+    var key = r.familyCode || r.code.replace(/-V\d+.*$/, '');
+    (families[key] || (families[key] = [])).push(r);
+  });
+  var rows = Object.keys(families).sort().map(function (family) {
+    var versions = families[family];
+    var active = versions.filter(function (r) { return r.status === '生效'; })[0];
+    var draft = versions.filter(function (r) { return r.status === '草稿'; })[0];
+    var shown = active || draft || versions[versions.length - 1];
+    var target = draft || active || shown;
+    return '<article class="cr-list-card"><h3>' + ui.esc(shown.name) + '</h3><div class="cr-list-card__meta">' + ui.esc(family) + ' · ' + versions.length + ' 个版本</div>' +
+      '<div class="cr-list-card__scope"><b>适用范围</b><br>' + ui.esc(RY.visitRuleForm.scopeText(shown)) + '</div>' +
+      '<div class="cr-list-card__meta">生效：' + (active ? ui.esc(active.version) : '无') + '　·　草稿：' + (draft ? ui.esc(draft.version) : '无') + '</div>' +
+      '<div class="cr-list-card__foot">' + ui.statusTag(shown.status) + '<a class="ry-btn ry-btn--sm" href="visit-rule-detail.html?id=' + encodeURIComponent(target.id) + '">' + (draft && canEdit ? '处理草稿' : '查看规则') + '</a></div></article>';
+  }).join('');
+  var activeCount = Object.keys(families).filter(function (key) { return families[key].some(function (r) { return r.status === '生效'; }); }).length;
+  var draftCount = Object.keys(families).filter(function (key) { return families[key].some(function (r) { return r.status === '草稿'; }); }).length;
+  ui.qs('#vr-host').innerHTML =
+    '<div class="cr-hero"><div><div class="cr-hero__eyebrow">B 类配置 · 版本发布</div><h2>拜访规则</h2><p>按范围匹配生效版本；已有拜访继续使用创建时的规则快照。</p></div>' +
+    '<div class="cr-hero__stats"><div><span>规则族</span><b>' + Object.keys(families).length + '</b></div><div><span>生效中</span><b>' + activeCount + '</b></div><div><span>有草稿</span><b>' + draftCount + '</b></div></div></div>' +
+    '<div class="cr-toolbar"><span class="cr-toolbar__note">选择规则查看详细参数、版本历史与可执行操作。<button type="button" data-pcn-rule="cfgVisitMatch"></button></span>' +
+    (canEdit ? '<a class="ry-btn ry-btn--primary" href="visit-rule-new.html">新增拜访规则</a>' : '') + '</div>' +
+    '<div class="cr-list">' + (rows || '<div class="ry-card"><div class="ry-card__body">暂无拜访规则。</div></div>') + '</div>';
+})();
+</script><script src="../../assets/js/pc-page-notes.js"></script>
+</body></html>

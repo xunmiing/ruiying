@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>客户 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：客户列表（搜索 + 卡片 + 底部筛选抽屉 + 触达优先）。 */
+  .cl-search { position: sticky; top: 0; z-index: 6; background: var(--bg); padding: 10px 0 8px; }
+  .cl-search__box { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; }
+  .cl-search__box input { flex: 1; border: 0; outline: 0; font-size: 14px; background: transparent; color: var(--ink); }
+  .cl-search__box input::placeholder { color: var(--faint); }
+  .cl-search__hint { font-size: 11px; color: var(--faint); margin: 6px 2px 0; line-height: 1.6; }
+  .cl-touch { display: flex; gap: 6px; flex-wrap: wrap; }
+  .cl-touch .ry-btn { padding: 5px 9px; font-size: 12px; }
+  .cl-more { text-align: center; padding: 14px 0 4px; }
+  .cl-more.is-hidden { display: none; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<!-- H5 外壳：顶部条与底部五入口由 navigation.js 渲染，本页不重复实现 -->
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+
+  <!-- 搜索：只在当前用户有权数据范围内执行；手机号、邮箱属预定义核心字段，可搜但可见性仍按对象权限 -->
+  <div class="cl-search">
+    <div class="ry-fbar" style="position:static;padding:0 0 8px;">
+      <div class="cl-search__box">
+        <input id="cl-q" type="search" placeholder="搜客户名称、别名、统一社会信用代码" autocomplete="off">
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <button class="ry-chip" id="cl-filter">筛选</button>
+        <button class="ry-chip" id="cl-scope">全部有权客户</button>
+      </div>
+    </div>
+    <p class="cl-search__hint" id="cl-search-hint">—</p>
+  </div>
+
+  <!-- 列表本体 -->
+  <div id="cl-host"></div>
+
+  <div class="cl-more is-hidden" id="cl-more">
+    <button class="ry-btn" id="cl-more-btn">加载更多</button>
+  </div>
+
+  <!-- 本页契约：评审对照用，列出页面契约编号与边界，不承载业务事实 -->
+  <div class="ry-hcard ry-hcard--flat" style="margin-top:14px">
+    <div class="ry-hcard__head"><h3>本页契约</h3><div class="ry-hcard__extra"><span class="h5-sec-note">PG-CUS-LIST</span></div></div>
+    <div class="ry-hcard__body">
+      <ul class="ry-kv ry-kv--tight">
+        <li><span>页面契约</span><b>PG-CUS-LIST · H5 · 客户和联系人</b></li>
+        <li><span>依据</span><b>prd/01 §3；00 §5.1</b></li>
+        <li><span>覆盖验收</span><b>AC-40</b></li>
+        <li><span>本页视图</span><b>搜索、卡片列表、底部筛选抽屉、触达优先</b></li>
+        <li><span>数据范围</span><b>按当前身份与对象权限过滤；无权客户不返回结果、数量与摘要</b></li>
+        <li><span>客户关系网</span><b>在客户详情查看客户间的轻量业务或组织关联</b></li>
+      </ul>
+      <p class="ry-hint" id="cl-scope-note">—</p>
+    </div>
+  </div>
+
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.customer.list';
+  var SIZE = 20;
+  var state = { q: '', value: '', status: '', scope: 'mine', page: 1 };
+
+  RY.nav.h5shell({
+    title: '客户',
+    sub: '客户与联系人主数据 · 触达优先',
+    back: false,
+    nav: 'customer',
+    tabbar: true
+  });
+
+  /* ---------------------------------------------------------- 鉴权 */
+  /* 进入页面即重新鉴权；无权限时不展示任何标题、摘要与数量。 */
+  if (!P.page(PAGE)) {
+    ui.qs('#cl-host').innerHTML = ui.stateCard('no-permission', {
+      title: '没有客户页面的访问权限',
+      body: '<p>' + ui.esc(P.whyNot('customer.list') || '当前身份没有「客户」页面权限。') + '</p>' +
+            '<p class="ry-hint">页面权限、动作权限、数据范围与字段规则相互独立；获得其中一个不等于获得其余。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('index.html') + '">返回工作台</a>'
+    });
+    ui.qs('.cl-search').style.display = 'none';
+    ui.qs('#cl-more').classList.add('is-hidden');
+    ui.qs('#cl-scope-note').textContent = '当前身份无该页面权限，因此不展示任何客户数量与摘要。';
+    return;
+  }
+
+  /* ---------------------------------------------------------- 数据 */
+
+  /* 只取当前用户在数据范围内的客户，绝不先取全量再前端隐藏。 */
+  function scoped() {
+    return S.arr('customers').filter(function (c) { return P.customerScopeType(c.id) === state.scope; });
+  }
+
+  /* 每个客户在列表上只展示「有权范围内的触达信息」。
+     联系人不自带 customerId：客户—联系人关系由 contactRelations 承载，
+     一个联系人可在多个客户下担任不同角色，因此必须经关系表连接。 */
+  function firstContact(c) {
+    var rel = S.all('contactRelations').filter(function (r) {
+      return r.customerId === c.id && r.status === '有效' && r.primary;
+    })[0] || S.all('contactRelations').filter(function (r) {
+      return r.customerId === c.id && r.status === '有效';
+    })[0];
+    if (!rel) return null;
+    var ct = S.contact(rel.contactId);
+    if (!ct || !P.inScope('contact', ct)) return null;
+    return { ct: ct, rel: rel };
+  }
+
+  function lastActivityOf(c) {
+    var list = S.arr('activities').filter(function (a) { return a.customerId === c.id; });
+    list.sort(function (a, b) { return (b.time || '').localeCompare(a.time || ''); });
+    return list[0] || null;
+  }
+
+  function filtered() {
+    var q = state.q.trim().toLowerCase();
+    return scoped().filter(function (c) {
+      if (state.value && c.value !== state.value) return false;
+      if (state.status && c.status !== state.status) return false;
+      if (!q) return true;
+      /* 只匹配预定义核心字段，不做全字段全文检索。 */
+      var hay = [c.name, c.alias, c.creditCode, c.id].join(' ').toLowerCase();
+      return hay.indexOf(q) >= 0;
+    });
+  }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function row(c) {
+    var fc = firstContact(c);
+    var last = lastActivityOf(c);
+    var tags = ui.valueTag(c.value) + ' ' + ui.statusTag(c.status) +
+      (c.identity === '已核验' ? ' ' + ui.tag('已核验', 'ok') : ' ' + ui.tag('待核验', 'warn'));
+
+    var touch = '<div class="cl-touch">' +
+      '<a class="ry-btn" href="' + RY.nav.href('h5/customer/detail.html?id=' + encodeURIComponent(c.id)) + '">详情</a>' +
+      '<a class="ry-btn" href="' + RY.nav.href('h5/activity/create.html?customerId=' + encodeURIComponent(c.id)) + '">记录活动</a>';
+
+    /* 触达电话：列表默认只展示脱敏号码。明文查看与导出是两项互相独立的授权，
+       获得其一不等于获得另一个，因此拨号入口按字段级授权单独判定。 */
+    if (fc) {
+      if (P.canViewPlainPhone()) {
+        touch += '<a class="ry-btn" href="tel:' + ui.esc(fc.ct.phonePlain) + '">拨号</a>';
+      } else {
+        touch += '<span class="ry-btn is-off" data-denied="1" title="' +
+          ui.esc(P.whyNot('contact.plain') || '未获字段级明文授权') + '">拨号<i class="ry-btn__lock">无权限</i></span>';
+      }
+    }
+    touch += '</div>';
+
+    return '<li><div class="ry-hrow">' +
+      '<div class="ry-hrow__top">' +
+        '<span class="ry-hrow__t">' + ui.esc(c.name) + '</span>' +
+        '<span class="ry-hrow__tags">' + tags + '</span>' +
+      '</div>' +
+      '<div class="ry-hrow__meta">' +
+        '<span>有效经营负责人 <b>' + ui.esc(S.activeRelationsOf(c.id).map(function (r) { return S.userName(r.owner); }).filter(function (x, i, a) { return a.indexOf(x) === i; }).join('、') || '—') + '</b></span>' +
+        '<span>主要联系人 <b>' + (fc ? ui.esc(fc.ct.name + ' · ' + (fc.rel.title || fc.ct.title)) : '—') + '</b></span>' +
+      '</div>' +
+      '<div class="ry-hrow__meta">' +
+        '<span>手机 <b>' + (fc ? ui.esc(fc.ct.phone) : '—') + '</b></span>' +
+        '<span>最近触达 <b>' + ui.esc(last ? last.time : '暂无销售活动') + '</b></span>' +
+      '</div>' +
+      '<div class="ry-hrow__meta">' +
+        '<span>商机 <b>' + (c.oppsCount || 0) + '</b></span>' +
+      '</div>' +
+      '<div class="ry-hrow__foot">' + touch + '</div>' +
+    '</div></li>';
+  }
+
+  function render() {
+    var list = filtered();
+    var shown = list.slice(0, state.page * SIZE);
+
+    if (!list.length) {
+      ui.qs('#cl-host').innerHTML = ui.stateCard('empty', {
+        title: state.q || state.value || state.status || state.mine ? '没有符合条件的客户' : '当前范围内还没有客户',
+        body: '<p class="ry-hint">本页不展示无权客户，也不展示其数量与摘要；因此「没有结果」可能包含已被数据范围过滤的记录。</p>',
+        actions: '<a class="ry-btn ry-btn--primary" href="' + RY.nav.href('h5/customer/create.html') + '">新建客户</a>'
+      });
+      ui.qs('#cl-more').classList.add('is-hidden');
+    } else {
+      ui.qs('#cl-host').innerHTML = '<div class="ry-hlist"><ul>' + shown.map(row).join('') + '</ul></div>';
+      var more = shown.length < list.length;
+      ui.qs('#cl-more').classList.toggle('is-hidden', !more);
+      ui.qs('#cl-more-btn').textContent = '加载更多（已显示 ' + shown.length + ' / ' + list.length + '）';
+    }
+    ui.qs('#cl-search-hint').textContent =
+      '仅在当前用户有权数据范围内检索；共 ' + list.length + ' 条可见结果。' +
+      (P.canViewPlainPhone() ? '当前已获明文查看授权。' : '当前未获联系人明文查看授权，号码保持脱敏。');
+  }
+
+  /* ---------------------------------------------------------- 交互 */
+
+  var timer = null;
+  ui.qs('#cl-q').addEventListener('input', function (e) {
+    var v = e.target.value;
+    clearTimeout(timer);
+    timer = setTimeout(function () { state.q = v; state.page = 1; render(); }, 180);
+  });
+
+  ui.qs('#cl-more-btn').addEventListener('click', function () { state.page++; render(); });
+
+  /* 筛选：底部抽屉承载，避免在窄屏堆叠筛选控件。 */
+  ui.qs('#cl-filter').addEventListener('click', function () {
+    var values = ['', '战略', '重点', '机会'];
+    var statuses = ['', '正常'];
+    function seg(name, opts, cur) {
+      return '<div class="ry-fbar__seg" style="margin:8px 0 14px">' + opts.map(function (o) {
+        return '<button type="button" data-k="' + name + '" data-v="' + ui.esc(o) + '"' +
+          (cur === o ? ' class="is-on"' : '') + '>' + ui.esc(o || '全部') + '</button>';
+      }).join('') + '</div>';
+    }
+    var body = '<div class="ry-field__label">价值分层</div>' + seg('value', values, state.value) +
+      '<div class="ry-field__label">客户状态</div>' + seg('status', statuses, state.status) +
+      '<div class="ry-field__label">列表范围</div><div class="ry-fbar__seg" style="margin:8px 0 14px">' +
+        '<button type="button" data-k="scope" data-v="mine"' + (state.scope === 'mine' ? ' class="is-on"' : '') + '>我负责的</button>' +
+        '<button type="button" data-k="scope" data-v="collab"' + (state.scope === 'collab' ? ' class="is-on"' : '') + '>我协作的</button>' +
+        (S.currentUser().role !== 'R1' ? '<button type="button" data-k="scope" data-v="team"' + (state.scope === 'team' ? ' class="is-on"' : '') + '>团队客户</button>' : '') +
+      '</div>' +
+      '<p class="ry-hint">筛选只在有权数据范围内生效，不会改变数据范围本身。</p>';
+
+    RY.nav.sheet({
+      title: '筛选客户', sub: '筛选为临时条件，不保存视图',
+      body: body,
+      footer: '<button class="ry-btn" data-reset>重置</button><button class="ry-btn ry-btn--primary" data-close>查看结果</button>',
+      onOpen: function (host, close) {
+        host.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-k]');
+          if (b) {
+            var k = b.getAttribute('data-k'), v = b.getAttribute('data-v');
+            state[k] = v;
+            state.page = 1;
+            b.parentNode.querySelectorAll('button').forEach(function (x) { x.classList.remove('is-on'); });
+            b.classList.add('is-on');
+            render();
+            return;
+          }
+          if (e.target.closest('[data-reset]')) {
+            state.value = ''; state.status = ''; state.scope = 'mine'; state.page = 1;
+            close(); render();
+          }
+        });
+      }
+    });
+  });
+
+  /* 数据范围说明：可切换查看当前身份的范围口径，不改变授权。 */
+  ui.qs('#cl-scope').addEventListener('click', function () {
+    var scope = P.dataScope(S.currentUser());
+    RY.nav.sheet({
+      title: '数据范围', sub: '当前身份',
+      body: '<p class="ry-read">' + ui.esc(scope.label) + '</p>' +
+        '<ul class="ry-kv ry-kv--tight" style="margin-top:10px">' +
+        '<li><span>搜索</span><b>只在当前用户有权数据范围内执行，不另建搜索权限模型</b></li>' +
+        '<li><span>列表与详情</span><b>与搜索、导出、下载使用同一数据范围</b></li>' +
+        '<li><span>无权数据</span><b>不返回结果、数量、摘要与标题，也不展示隐藏的关系数量</b></li>' +
+        '<li><span>客户关系网</span><b>只展示当前用户有权查看的关联客户</b></li>' +
+        '</ul>'
+    });
+  });
+
+  ui.qs('#cl-scope-note').textContent =
+    '当前数据范围：' + P.dataScope(S.currentUser()).label +
+    '　每一次进入（列表进详情、搜索、深链、下载与重试）都会重新鉴权。';
+
+  render();
+  ui.bindMasked(document.body);
+})();
+</script>
+</body>
+</html>

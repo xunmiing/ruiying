@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>指标下钻明细 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：指标下钻明细（固定模板，不含自由 BI） */
+  .dr-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .dr-meta { font-size: 12.5px; color: var(--muted); line-height: 1.9; }
+  .dr-formula { border-left: 3px solid var(--brand-line); background: var(--brand-soft); padding: 8px 11px; border-radius: 0 8px 8px 0; font-size: 12.5px; line-height: 1.8; }
+  .dr-ratio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 4px 0 4px; }
+  .dr-ratio__i { border: 1px solid var(--line); border-radius: var(--r-btn); padding: 9px 12px; }
+  .dr-ratio__i b { display: block; font-size: 20px; line-height: 1.3; }
+  .dr-ratio__i span { font-size: 11.5px; color: var(--muted); }
+  .dr-cellname { font-weight: 600; }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="dr-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var PAGE = 'analysis.drill';
+  var code = ui.q('code');
+  var flt = { range: ui.q('range') || '本月' };
+  if (ui.q('region')) flt.region = ui.q('region');
+  if (ui.q('line')) flt.line = ui.q('line');
+  if (ui.q('owner')) flt.owner = ui.q('owner');
+  var page = 1, size = 20;
+  var tab = 'in';
+
+  RY.nav.shell({
+    nav: 'analysis.dashboard',
+    title: '指标下钻明细',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '分析' },
+      { label: '管理分析', href: 'pc/analysis/dashboard.html' }, { label: code || '未指定指标' }],
+    actions: '<a class="ry-btn" href="dashboard.html">返回管理分析</a>'
+  });
+
+  var g = RY.perm.guard(PAGE, 'analysis', {});
+  if (!g.ok) {
+    ui.qs('#dr-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可查看指标下钻明细',
+      body: '<p>' + ui.esc(g.reason) + '</p>' +
+        '<p class="ry-hint">下钻明细同样受数据范围约束，并且跳转源对象时会再次鉴权。</p>'
+    });
+    return;
+  }
+  if (!RY.perm.page(PAGE)) {
+    ui.qs('#dr-host').innerHTML = ui.stateCard('no-permission', { title: '没有下钻页面权限', body: '<p>' + ui.esc(RY.perm.whyNot('analysis.drill')) + '</p>' });
+    return;
+  }
+
+  var d = code ? S.metricDrill(code, flt) : null;
+  if (!d) {
+    ui.qs('#dr-host').innerHTML = ui.stateCard('unavailable', {
+      title: '缺少或无法识别的指标',
+      body: '<p>下钻明细必须携带具体指标进入。请从管理分析页面的指标卡点击「下钻明细」。</p>' +
+        '<p class="ry-hint">下钻明细不是自由 BI：不提供自定义维度、自定义指标与任意交叉分析。</p>',
+      actions: '<a class="ry-btn" href="dashboard.html">返回管理分析</a>'
+    });
+    return;
+  }
+
+  function rowsOf(kind) {
+    if (kind === 'in') return d.rows;
+    if (kind === 'out') return d.excluded;
+    return d.denominatorRows;
+  }
+  function canExport() { return d.canExport && RY.perm.can('analysis.exportMetric'); }
+
+  function render() {
+    var isRatio = d.metric.unit === '%';
+    var cells = rowsOf(tab);
+    var pages = Math.max(1, Math.ceil(cells.length / size));
+    if (page > pages) page = pages;
+    var slice = cells.slice((page - 1) * size, page * size);
+
+    ui.qs('#dr-host').innerHTML =
+      '<div class="ry-card"><div class="ry-card__body">' +
+        '<div class="dr-head"><div>' +
+          '<h2 style="margin:0 0 6px;font-size:17px">' + ui.esc(d.metric.name) + '　<span class="ry-hint">' + ui.esc(d.metric.code) + '</span></h2>' +
+          '<div class="dr-meta">' +
+            '主题 <b>' + ui.esc(d.metric.theme) + '</b>　指标类型 <b>' + ui.esc(d.metric.type) + '</b>　单位 <b>' + ui.esc(d.metric.unit) + '</b><br>' +
+            '指标版本 <b>' + ui.esc(d.version) + '</b>　数据来源 <b>' + ui.esc(d.source) + '</b><br>' +
+            '统计范围 <b>' + ui.esc(d.range.label) + '</b>　周期 ' + ui.esc(d.range.from + ' ~ ' + d.range.to) + '<br>' +
+            '数据截止时间 <b>' + ui.esc(d.dataAt || '—') + '</b>　数据范围 ' + ui.esc(RY.perm.dataScope(u).label) + '<br>' +
+            '当前值 <b>' + ui.esc(d.value.status === 'ok' ? d.value.display : '—') + '</b>' +
+            (d.value.status !== 'ok' ? '　<span class="ry-hint">' + ui.esc(d.value.reason || '') + '</span>' : '') +
+          '</div>' +
+        '</div><div class="ry-acts-row" id="dr-acts"></div></div>' +
+        '<div class="ry-divider"></div>' +
+        '<div class="dr-formula"><b>口径</b>：' + ui.esc(d.metric.formula) + '</div>' +
+        (isRatio && d.value.extra ? '<div class="dr-ratio">' +
+            '<div class="dr-ratio__i"><b>' + (d.value.status === 'ok' ? d.value.display : '—') + '</b><span>指标值（' + ui.esc(d.metric.unit) + '）</span></div>' +
+            '<div class="dr-ratio__i"><b>' + (d.value.extra.numerator !== undefined ? d.value.extra.numerator : '—') + '</b><span>分子（纳入）</span></div>' +
+            '<div class="dr-ratio__i"><b>' + (d.value.extra.denominator !== undefined ? d.value.extra.denominator : '—') + '</b><span>分母（完整）</span></div>' +
+          '</div>' +
+          '<p class="ry-hint">比率指标同时展示<b>完整分母</b>，并区分分子、分母与未纳入记录，避免只给一个百分比。</p>' : '') +
+      '</div></div>' +
+
+      '<div class="ry-card"><header class="ry-card__head"><h3>纳入与未纳入</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">纳入 ' + d.includedCount + ' 条　未纳入 ' + d.excludedCount + ' 条' +
+        (isRatio ? '　分母 ' + d.denominatorRows.length + ' 条' : '') + '</span></div></header>' +
+      '<div class="ry-card__body ry-card__body--flush">' +
+        '<div class="ry-tabs" id="dr-tabs">' +
+          '<button class="ry-tab' + (tab === 'in' ? ' is-on' : '') + '" data-tab="in">纳入明细（' + d.includedCount + '）</button>' +
+          '<button class="ry-tab' + (tab === 'out' ? ' is-on' : '') + '" data-tab="out">未纳入及原因（' + d.excludedCount + '）</button>' +
+          (isRatio ? '<button class="ry-tab' + (tab === 'den' ? ' is-on' : '') + '" data-tab="den">完整分母（' + d.denominatorRows.length + '）</button>' : '') +
+        '</div>' +
+        '<div class="ry-table__wrap"><table class="ry-table ry-table--tight">' +
+          '<thead><tr>' + d.columns.map(function (c, i) {
+            return '<th' + (i === 0 ? ' style="min-width:190px"' : '') + '>' + ui.esc(c) + '</th>';
+          }).join('') + '</tr></thead>' +
+          '<tbody>' + (slice.length ? slice.map(function (r) {
+            return '<tr>' + r.cells.map(function (c, i) {
+              if (i === 0) {
+                /* 跳转始终回到有权源对象：无权对象不给链接，只给编号占位。 */
+                var href = '#' + r.path;
+                return '<td><span class="dr-cellname">' + ui.esc(c) + '</span>' +
+                  '<div class="ry-hint">' + ui.esc(r.id) + '　' +
+                  (r.path ? '<a href="' + srcHref(r) + '">打开源对象</a>' : '无跳转') + '</div></td>';
+              }
+              return '<td>' + (String(c) === '纳入' ? ui.tag('纳入', 'ok') : String(c) === '未纳入' ? ui.tag('未纳入', 'muted') : ui.esc(c)) + '</td>';
+            }).join('') + '</tr>';
+          }).join('') : '<tr><td colspan="' + d.columns.length + '" class="ry-hint">该分区没有记录。</td></tr>') +
+          '</tbody></table></div>' +
+        '<div id="dr-pager" style="padding:10px 14px"></div>' +
+      '</div></div>' +
+
+      '<section class="ry-card ry-card--flat"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ANALYSIS-DRILL</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ANALYSIS-DRILL · PC · 分析</b></li>' +
+        '<li><span>依据</span><b>prd/00 §5.4；prd/06 §7</b></li>' +
+        '<li><span>可进入角色</span><b>销售主管/经理｜管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-52 AC-53</b></li>' +
+        '<li><span>带入上下文</span><b>指标口径、指标版本、筛选条件、统计范围与数据截止时间一并带入，不重新计算</b></li>' +
+        '<li><span>纳入口径</span><b>展示纳入与未纳入及原因；比率指标展示完整分母</b></li>' +
+        '<li><span>跳转边界</span><b>跳转源对象仍受源对象页面权限与数据范围约束，不因来自分析页而放宽</b></li>' +
+        '<li><span>导出边界</span><b>只提供固定模板的异步导出，导出记录进入处理记录；不做自由 BI 与自定义维度</b></li>' +
+      '</ul></div></section>';
+
+    renderActs();
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function srcHref(r) {
+    if (!r.path) return '#';
+    return '../' + r.path + (r.id ? '?id=' + encodeURIComponent(r.id) : '');
+  }
+
+  function renderActs() {
+    var out = [];
+    out.push('<button class="ry-btn" id="dr-copy">复制口径说明</button>');
+    if (canExport()) {
+      out.push('<button class="ry-btn ry-btn--primary" id="dr-exp">按固定模板导出</button>');
+    } else {
+      out.push('<button class="ry-btn" data-denied="1" data-action="analysis.exportMetric">按固定模板导出<i class="ry-btn__lock">无权限</i></button>');
+    }
+    ui.qs('#dr-acts').innerHTML = out.join('');
+  }
+
+  function bind() {
+    ui.qsa('#dr-tabs .ry-tab').forEach(function (b) {
+      b.addEventListener('click', function () { tab = b.getAttribute('data-tab'); page = 1; render(); });
+    });
+    ui.qs('#dr-pager').innerHTML = ui.pager(rowsOf(tab).length, page, size, 'analysis.drill');
+    ui.bindPager('#dr-pager', function (p) { page = p; render(); });
+    ui.qs('#dr-copy').addEventListener('click', function () {
+      ui.modal({
+        title: '指标口径说明', size: 'md',
+        body: '<div class="dr-formula">' + ui.esc(d.metric.formula) + '</div>' +
+          ui.kv([
+            ['指标编码', d.metric.code], ['指标名称', d.metric.name], ['主题', d.metric.theme],
+            ['类型', d.metric.type], ['单位', d.metric.unit], ['当前版本', d.version],
+            ['数据来源', d.source], ['数据截止时间', d.dataAt || '—'],
+            ['纳入条数', String(d.includedCount)], ['未纳入条数', String(d.excludedCount)],
+            ['口径负责人', S.userName(d.metric.owner) || d.metric.owner || '—']
+          ]) +
+          ui.banner('口径说明随指标版本变化：跨版本不计算环比，历史数据不自动重算。', 'info'),
+        footer: '<button class="ry-btn ry-btn--primary" data-close>关闭</button>'
+      });
+    });
+    var eb = ui.qs('#dr-exp');
+    if (eb) eb.addEventListener('click', function (e) {
+      if (e.target.closest('[data-denied]')) return;
+      ui.modal({
+        title: '按固定模板导出下钻明细', size: 'sm',
+        body: '<p>将导出「' + ui.esc(d.metric.name) + '」在当前筛选下的下钻明细，共 <b>' + (rowsOf(tab).length) + '</b> 条。</p>' +
+          ui.banner('导出使用<b>固定模板</b>：列由系统按指标口径决定，不支持自定义列与自定义维度。' +
+            '导出不突破数据范围与字段权限，无权对象不进入文件；导出异步执行并记入处理记录。', 'warn'),
+        footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="dr-exp-ok">提交导出</button>',
+        onOpen: function (el) {
+          ui.qs('#dr-exp-ok', el).addEventListener('click', function () {
+            ui.close();
+            var n = rowsOf(tab).length;
+            var job = S.addJob({
+              type: '导出', action: '指标下钻明细导出（' + d.metric.name + '）', object: '指标下钻',
+              status: '处理中', total: n, fields: d.columns,
+              fileName: d.metric.code + '_下钻明细_' + S.today().replace(/-/g, '') + '.xlsx'
+            });
+            ui.asyncRun({
+              title: '正在生成下钻明细文件', total: n, processId: job.processId,
+              onDone: function () {
+                S.updateJob(job.id, { status: '已完成', success: n, failed: 0 });
+                ui.closeAll(); ui.toast('导出已完成，可在处理记录下载。', 'success');
+              }
+            });
+          });
+        }
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

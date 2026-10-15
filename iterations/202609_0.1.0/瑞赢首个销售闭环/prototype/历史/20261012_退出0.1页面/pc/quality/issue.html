@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>质量问题 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：质量问题清单（当前存在／已消除／已忽略，不复用异常事项状态） */
+  .qi-obj { font-size: 12.5px; }
+  .qi-miss { font-size: 11.5px; color: var(--danger); }
+  .qi-cols { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 14px; align-items: start; }
+  @media (max-width: 1180px) { .qi-cols { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="qi-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'quality.issue';
+  var canIgnore = P.can('quality.ignore');
+  var STATUS = ['当前存在', '已消除', '已忽略'];
+  var TYPES = ['完整度缺失', '疑似重复', '关键映射缺失', '同步异常'];
+  var tab = ui.hash() || '当前存在';
+  var typeF = ui.q('type') || '';
+  var ruleF = ui.q('rule') || '';
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '质量问题',
+    subtitle: '结果状态：<b>当前存在｜已消除｜已忽略</b>，<b>不复用异常事项状态</b>。' +
+      '修正发生在源对象页面，这里只做检测结果的查看与忽略。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '数据质量' }, { label: '质量问题' }],
+    actions: '<a class="ry-btn" href="overview.html">数据质量概览</a><a class="ry-btn" href="rule.html">质量规则</a>'
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#qi-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入质量问题',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示命中对象名称、缺失字段与检测时间。</p>'
+    });
+    return;
+  }
+
+  function all() { return S.qualityIssueList(); }
+  function rules() { return S.arr('qualityRules'); }
+  function ruleOf(code) { return rules().filter(function (r) { return r.code === code; })[0]; }
+
+  /* 跳源对象仍按源对象页面权限与数据范围重新鉴权；不在范围内时不给链接。 */
+  var kindMap = { '客户': 'customers', '商机': 'opportunities', '线索': 'leads', '正式拜访': 'visits', '独立日程': 'schedules', '任务': 'tasks' };
+  function objHref(q) {
+    var kind = kindMap[q.objectType];
+    if (kind) {
+      var src = S.find(kind, q.objectId);
+      if (!src || !P.inScope(kind, src)) return '';
+    }
+    if (q.objectType === '客户') return '../customer/detail.html?id=' + encodeURIComponent(q.objectId);
+    if (q.objectType === '商机') return '../opportunity/detail.html?id=' + encodeURIComponent(q.objectId);
+    if (q.objectType === '线索') return '../lead/detail.html?id=' + encodeURIComponent(q.objectId);
+    if (q.objectType === '独立日程') return '../schedule/detail.html?id=' + encodeURIComponent(q.objectId);
+    return '';
+  }
+  function filtered() {
+    return all().filter(function (q) {
+      if (q.resultStatus !== tab) return false;
+      if (typeF && q.type !== typeF) return false;
+      if (ruleF && q.ruleCode !== ruleF) return false;
+      return true;
+    });
+  }
+
+  function render() {
+    if (STATUS.indexOf(tab) < 0) tab = '当前存在';
+    var list = all(), rows = filtered();
+    var cnt = function (s) { return list.filter(function (q) { return q.resultStatus === s; }).length; };
+
+    ui.qs('#qi-host').innerHTML =
+      ui.banner('质量问题状态是<b>检测结论</b>，与业务对象状态、异常事项状态三者<b>互相独立</b>：' +
+        '对象可以是「正常」同时存在完整度缺失；一条质量问题可以派生异常事项，' +
+        '但异常事项关闭<b>不等于</b>问题消失——只有<b>重新检测后问题不再命中</b>才转为「已消除」。' +
+        '「已忽略」表示经人工判断<b>该问题不应修</b>（例如自然人客户按最小范围采集），' +
+        '忽略必须填写原因并写入审计。' +
+        '修正一律在<b>源对象页面</b>按正式动作执行，本页不提供编辑入口。', 'info') +
+
+      '<div class="ry-card" style="margin:12px 0"><div class="ry-card__body">' +
+        '<div class="ry-filter__row">' +
+          ui.field('问题类型', ui.select('qi-type', [{ value: '', label: '全部类型' }].concat(TYPES), typeF), '', false) +
+          ui.field('规则', ui.select('qi-rule', [{ value: '', label: '全部规则' }].concat(rules().map(function (r) {
+            return { value: r.code, label: r.name + '（' + r.version + '）' };
+          })), ruleF), '', false) +
+        '</div>' +
+        '<div class="ry-filter__act"><button class="ry-btn" id="qi-reset">重置</button>' +
+          '<button class="ry-btn ry-btn--primary" id="qi-apply">查询</button></div>' +
+      '</div></div>' +
+
+      '<div style="display:flex;gap:6px;margin-bottom:10px">' +
+        STATUS.map(function (s) {
+          return '<button class="ry-btn ry-btn--sm' + (tab === s ? ' ry-btn--primary' : '') + '" data-qi-t="' + s + '">' +
+            s + '（' + cnt(s) + '）</button>';
+        }).join('') + '</div>' +
+
+      '<div class="qi-cols">' +
+        '<div>' +
+          (rows.length
+            ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+              '<th style="width:150px">规则与版本</th><th style="width:120px">类型</th><th>命中对象</th>' +
+              '<th style="width:150px">缺失／问题项</th><th style="width:140px">检测时间</th>' +
+              '<th style="width:140px">关联异常</th><th style="width:190px">操作</th></tr></thead><tbody>' +
+              rows.map(function (q) {
+                var href = objHref(q);
+                return '<tr>' +
+                  '<td><span class="ry-cellname">' + ui.esc((ruleOf(q.ruleCode) || {}).name || q.ruleCode) + '</span>' +
+                    '<div class="ry-hint"><span class="ry-code">' + ui.esc(q.ruleCode) + '</span> <span class="ry-code">' + ui.esc(q.ruleVersion) + '</span></div></td>' +
+                  '<td>' + ui.tag(q.type, q.type === '同步异常' ? 'bad' : 'warn') + '</td>' +
+                  '<td class="qi-obj">' + ui.esc(q.objectName) +
+                    '<div class="ry-hint">' + ui.esc(q.objectType) + '　<span class="ry-code">' + ui.esc(q.objectId) + '</span></div>' +
+                    (q.note ? '<div class="ry-hint">' + ui.esc(q.note) + '</div>' : '') + '</td>' +
+                  '<td>' + ((q.missingFields || []).length
+                    ? '<span class="qi-miss">' + ui.esc(q.missingFields.join('、')) + '</span>'
+                    : '<span class="ry-faint">—</span>') + '</td>' +
+                  '<td class="ry-hint">' + ui.esc(q.detectedAt) +
+                    (q.clearedAt ? '<div>消除：' + ui.esc(q.clearedAt) + '</div>' : '') +
+                    (q.ignoredAt ? '<div>忽略：' + ui.esc(q.ignoredAt) + '</div>' : '') + '</td>' +
+                  '<td>' + (q.exceptionId
+                    ? '<a class="ry-code" href="../exception/detail.html?id=' + encodeURIComponent(q.exceptionId) + '">' + ui.esc(q.exceptionId) + '</a>'
+                    : '<span class="ry-faint">无</span>') + '</td>' +
+                  '<td class="ry-tbl-act">' +
+                    (href ? '<a class="ry-btn ry-btn--sm" href="' + href + '">去修正源对象</a>' : '<span class="ry-faint">源对象不可见</span>') +
+                    (q.resultStatus === '当前存在' && canIgnore ? '<button class="ry-btn ry-btn--sm" data-qi-ignore="' + q.id + '">忽略</button>' : '') +
+                    (q.resultStatus === '已忽略' ? '<span class="ry-hint">原因：' + ui.esc(q.ignoredReason || '') + '</span>' : '') +
+                  '</td></tr>';
+              }).join('') + '</tbody></table></div>'
+            : ui.stateCard('empty', { title: '当前没有「' + tab + '」的质量问题' })) +
+        '</div>' +
+
+        '<div>' +
+          ui.section('状态口径',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>当前存在</span><b>最近一次检测仍命中</b></li>' +
+              '<li><span>已消除</span><b>源对象修正后重新检测不再命中</b></li>' +
+              '<li><span>已忽略</span><b>人工判断不需修，必填原因</b></li>' +
+              '<li><span>与异常事项</span><b>互相独立，不复用状态</b></li>' +
+              '<li><span>修正入口</span><b>只在源对象页面的正式动作</b></li>' +
+              '<li><span>版本口径</span><b>结果记录检测时的规则版本</b></li>' +
+            '</ul>') +
+          ui.section('本页能做什么',
+            ui.kv([
+              ['查看检测结果', '是'],
+              ['跳转源对象修正', '是（按源对象权限重新鉴权）'],
+              ['忽略问题', canIgnore ? '是（必填原因）' : '当前身份无此能力项'],
+              ['直接编辑对象', '不允许：必须走源对象正式动作'],
+              ['删除质量问题', '不允许：检测结果不物理删除'],
+              ['导出问题清单', '不提供：0.1 不建设数据质量导出']
+            ]) +
+            ui.banner('忽略是<b>有代价</b>的：被忽略的问题不再出现在「当前存在」中，' +
+              '但它仍保留在历史里，并记录了谁在什么时候以什么理由放过了它。', 'warn')) +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-QUALITY-ISSUE</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-QUALITY-ISSUE · PC · 数据质量</b></li>' +
+        '<li><span>依据</span><b>prd/08 §10</b></li>' +
+        '<li><span>可进入角色</span><b>管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-73</b></li>' +
+        '<li><span>结果状态</span><b>当前存在｜已消除｜已忽略（不复用异常事项状态）</b></li>' +
+        '<li><span>明确不做</span><b>不在本页编辑业务对象、不物理删除结果、不提供问题清单导出</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    ui.qs('#qi-apply').addEventListener('click', function () {
+      var v = ui.formValues(ui.qs('#qi-host')); typeF = v['qi-type'] || ''; ruleF = v['qi-rule'] || ''; render();
+    });
+    ui.qs('#qi-reset').addEventListener('click', function () { typeF = ''; ruleF = ''; render(); });
+    ui.qsa('[data-qi-t]').forEach(function (b) {
+      b.addEventListener('click', function () { tab = b.getAttribute('data-qi-t'); window.location.hash = tab; render(); });
+    });
+    ui.qsa('[data-qi-ignore]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]')) return;
+        var id = b.getAttribute('data-qi-ignore');
+        var q = S.find('qualityIssues', id);
+        ui.confirm({
+          title: '忽略质量问题',
+          message: '<p>将把「' + ui.esc((ruleOf(q.ruleCode) || {}).name || q.ruleCode) + '」在 ' +
+            '<b>' + ui.esc(q.objectName) + '</b> 上的这条结果标记为「已忽略」。</p>' +
+            '<p class="ry-hint">忽略后它不再出现在「当前存在」中，<b>但不会删除记录</b>，' +
+            '也不会改变源对象本身。忽略原因必填并写入审计。' +
+            '如果之后规则重新检测仍命中，会生成<b>新的结果</b>——忽略只对当前这一条有效。</p>',
+          requireReason: true, reasonLabel: '忽略原因', reasonPlaceholder: '如：自然人客户按最小范围采集，不要求信用代码',
+          confirmText: '确认忽略',
+          onConfirm: function (reason) {
+            var r = S.qualityIgnore(id, reason);
+            ui.toast(r.ok ? '已忽略该条质量问题。' : r.msg, r.ok ? 'success' : 'warn');
+            render();
+          }
+        });
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>线索整条转换 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：线索整条转换（单条整体事务、一次校验、失败整体回滚）。 */
+  .xc-step { border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px; background: var(--surface); }
+  .xc-step__h { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+  .xc-step__n { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; border-radius: 50%; background: var(--brand-soft); color: var(--brand-ink); font-size: 11.5px; font-weight: 600; }
+  .xc-step__h b { font-size: 13.5px; }
+  .xc-opp { border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px; background: var(--bg); }
+  .xc-opp__h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .xc-opp__h b { font-size: 13px; }
+  .xc-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; font-size: 12.5px; line-height: 1.85; padding: 7px 0; border-bottom: 1px dashed var(--line); }
+  .xc-row:last-child { border-bottom: 0; }
+  .xc-row__m { color: var(--muted); font-size: 11.5px; }
+  .xc-block { color: var(--danger); font-weight: 600; }
+  .xc-sel { display: flex; gap: 6px; margin-bottom: 10px; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom" id="xc-body">
+  <div id="xc-host"></div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script src="../../assets/js/lead-convert-flow.js"></script>
+<script>RY.leadConvertFlow('h5');
+</script>
+</body>
+</html>

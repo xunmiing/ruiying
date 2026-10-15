@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>任务列表 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：任务列表 */
+  .tk-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 14px; }
+  .tk-filters .ry-field { margin: 0; }
+  .tk-table { min-width: 980px; white-space: nowrap; }
+  .tk-quick { display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 16px; }
+  .tk-relations { display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px; }
+  .tk-relations span { color:var(--muted);font-size:12px; }
+  .tk-relations button { border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:8px 12px;font:inherit;cursor:pointer; }
+  .tk-relations button.is-on { border-color:var(--brand);background:var(--brand-soft);color:var(--brand);font-weight:700; }
+  .tk-quick button { border:1px solid var(--line); border-radius:10px; background:var(--surface); color:var(--text); padding:9px 12px; cursor:pointer; font:inherit; }
+  .tk-quick button.is-on { border-color:var(--brand); background:var(--brand-soft); color:var(--brand); font-weight:700; }
+  .tk-quick b { margin-left:6px; }
+  .tk-detail-mask .ry-drawer { width:min(920px, 96vw); max-width:96vw; }
+  .tk-detail-mask .ry-layer__body { padding:0; overflow:hidden; }
+  .tk-detail-frame { display:block; width:100%; height:100%; border:0; background:var(--bg); }
+  .tk-table th, .tk-table td { padding-left: 12px; padding-right: 12px; }
+  .tk-table .tk-name-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
+  .tk-row-m { font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.6; }
+  .tk-res { max-height: 340px; overflow: auto; }
+  .tk-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; }
+  .tk-cols label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 4px 0; }
+  .tk-create-choices { display:grid; gap:10px; }
+  .tk-create-choice { width:100%; border:1px solid var(--line); background:var(--surface); border-radius:12px; padding:14px 16px; text-align:left; cursor:pointer; font:inherit; }
+  .tk-create-choice:hover { border-color:var(--brand); background:var(--brand-soft); }
+  .tk-create-choice b { display:block; margin-bottom:4px; }
+  .tk-create-choice span { display:block; color:var(--muted); font-size:12px; line-height:1.6; }
+  .tk-candidate-head { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; padding:18px 20px 14px; border-bottom:1px solid var(--line); }
+  .tk-candidate-head h3 { margin:0 0 5px; font-size:18px; color:var(--ink); }
+  .tk-candidate-tally { white-space:nowrap; color:var(--muted); font-size:12px; padding-top:5px; }
+  .tk-candidate-tally b { color:var(--ink); font-size:17px; }
+  .tk-candidate-filter { margin:14px 20px 0; }
+  .tk-candidate-table { min-width:1160px; }
+  .tk-candidate-name { display:block; min-width:220px; font-size:13px; font-weight:650; color:var(--ink); white-space:normal; }
+  .tk-candidate-meta { display:block; margin-top:4px; font-size:11px; color:var(--muted); }
+  .tk-candidate-evidence { max-width:220px; white-space:normal; font-size:11.5px; color:var(--muted); }
+  .tk-candidate-flag { display:inline-block; border-radius:6px; padding:2px 7px; font-size:11px; font-weight:600; }
+  .tk-candidate-flag--ready { background:#e8f4ed; color:#217449; }
+  .tk-candidate-flag--review { background:#fff3d9; color:#91600b; }
+  .tk-candidate-flag--missing { background:#ffebe7; color:#a6402d; }
+  .tk-candidate-actions { display:flex; justify-content:flex-end; gap:6px; }
+  .tk-candidate-empty { padding:28px 20px; color:var(--muted); }
+  @media (max-width:1080px) { .tk-candidate-head { flex-direction:column; gap:5px; } }
+  @media (max-width: 1280px) { .tk-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="tk-guard"></div>
+      <div id="tk-body" style="display:none">
+
+        <div class="ry-tabs" id="tk-scopes" role="tablist" aria-label="任务范围"></div>
+        <div class="tk-relations" id="tk-relations" aria-label="与我的关系，可多选"></div>
+        <div class="tk-quick" id="tk-quick" aria-label="截止时间"></div>
+        <div class="ry-card" id="tk-candidates" style="display:none"></div>
+
+        <section class="ry-filter" id="tk-filter">
+          <div class="ry-filter__row">
+            <label class="ry-filter__item ry-filter__item--wide"><span>关键词</span>
+              <input class="ry-input" id="f-kw" placeholder="任务编号 / 任务名称 / 关联对象名称"></label>
+            <label class="ry-filter__item"><span>任务状态</span><select class="ry-input" id="f-status"></select></label>
+            <label class="ry-filter__item"><span>任务来源</span><select class="ry-input" id="f-source"></select></label>
+            <label class="ry-filter__item"><span>业务类型</span><select class="ry-input" id="f-biz"></select></label>
+            <label class="ry-filter__item"><span>排序</span><select class="ry-input" id="f-sort">
+              <option value="due-asc">截止时间近→远</option>
+              <option value="due-desc">截止时间远→近</option>
+              <option value="created-desc">创建时间新→旧</option>
+            </select></label>
+          </div>
+          <div class="ry-filter__more" id="tk-more">
+            <div class="ry-filter__row">
+              <label class="ry-filter__item"><span>责任人</span><select class="ry-input" id="f-owner"></select></label>
+
+              <label class="ry-filter__item"><span>截止时间口径</span><select class="ry-input" id="f-due">
+                <option value="">全部</option><option value="overdue">仅看待办中的已逾期</option>
+                <option value="soon">仅看 3 天内到期</option>
+              </select></label>
+
+              <label class="ry-filter__item"><span>阶段任务</span><select class="ry-input" id="f-stage">
+                <option value="">全部</option><option value="1">仅看阶段任务</option><option value="0">排除阶段任务</option>
+              </select></label>
+              <label class="ry-filter__item"><span>关联对象类型</span><select class="ry-input" id="f-rel"></select></label>
+              <label class="ry-filter__item"><span>创建时间（起）</span><input class="ry-input" type="date" id="f-from"></label>
+              <label class="ry-filter__item"><span>创建时间（止）</span><input class="ry-input" type="date" id="f-to"></label>
+            </div>
+          </div>
+          <div class="ry-filter__foot">
+            <div class="ry-resultbar__tools">
+              <button class="ry-btn" id="toggle-more">更多筛选</button>
+              <button class="ry-btn ry-btn--primary" id="do-filter">查询</button>
+              <button class="ry-btn" id="reset-filter">重置条件</button>
+            </div>
+            <div class="ry-resultbar__tools">
+              <button class="ry-btn" id="colset-btn">列显示设置</button>
+              <span id="btn-export"></span>
+            </div>
+          </div>
+        </section>
+
+        <div class="ry-resultbar" id="tk-resultbar"></div>
+
+        <div id="tk-selbar"></div>
+        <div class="ry-selbar" id="tk-batchbar" style="display:none"></div>
+
+        <div class="ry-card" id="tk-table-card"><div class="ry-card__body ry-card__body--flush">
+          <div class="ry-table__wrap ry-standard-list-wrap ry-standard-list-wrap--select ry-standard-list-wrap--actions" role="region" aria-label="任务列表，可左右滚动" tabindex="0">
+            <table class="ry-table ry-table--tight tk-table">
+              <thead><tr id="tk-thead"></tr></thead>
+              <tbody id="tk-rows"></tbody>
+            </table>
+          </div>
+        </div></div>
+        <div id="tk-pager"></div>
+
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm, u = S.currentUser();
+  var LS = 'task.list';
+  var PAGE = 'task.list';
+
+  var STATUSES = ['待处理', '已完成', '已取消'];
+  var SOURCES = ['自建任务', '主管指派', '沟通提炼', '规则生成'];
+  var BIZ_TYPES = ['会议任务', '客户跟进', '线索跟进', '商机推进', '客户维护', '阶段任务', '其他'];
+  var REL_TYPES = ['客户', '联系人', '线索', '商机'];
+  var OPEN_STATUSES = ['待处理'];
+  function taskStatus(t) { return t.status; }
+
+  RY.nav.shell({
+    nav: 'task.list',
+    title: '任务列表',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '工作管理' }, { label: '任务' }],
+    actions: ui.actionBtn('task.create', '新建任务', ' id="tk-new"', 'ry-btn--primary') +
+             '<a class="ry-btn" href="../schedule/list.html">日程</a>' +
+             '<a class="ry-btn" href="../report/list.html">日报</a>'
+  });
+
+  if (!P.page(PAGE)) {
+    ui.renderState('#tk-guard', 'no-permission', {
+      title: '没有任务列表权限',
+      body: '<p>当前账号没有「任务列表」的页面权限。</p><p class="ry-hint">无权限时不展示任何任务标题、数量与摘要。</p>',
+      actions: '<a class="ry-btn" href="../../pc.html">返回工作台</a>'
+    });
+    return;
+  }
+  ui.qs('#tk-body').style.display = '';
+
+  /* ---------------------------------------------------------------- 列定义 */
+
+  var COLS = [
+    { k: 'id', n: '任务编号', on: false, mono: true },
+    { k: 'name', n: '任务名称', on: true },
+    { k: 'source', n: '任务来源', on: false },
+    { k: 'bizType', n: '业务类型', on: false },
+    { k: 'status', n: '状态', on: true },
+    { k: 'owner', n: '责任人', on: true },
+    { k: 'collab', n: '参与人', on: false },
+    { k: 'dueAt', n: '任务时间', on: true },
+    { k: 'dueFlag', n: '到期标识', on: true },
+    { k: 'originalDueAt', n: '原截止时间', on: false },
+    { k: 'relatedType', n: '关联对象类型', on: false },
+    { k: 'relatedName', n: '关联对象名称', on: true },
+    { k: 'stageCode', n: '生成阶段', on: false },
+    { k: 'stageRound', n: '阶段轮次', on: false },
+    { k: 'ruleVersion', n: '模板版本', on: false },
+    { k: 'createdAt', n: '创建时间', on: false }
+  ];
+  var st = S.listState(LS);
+  if (ui.q('menu') === '1') { S.listState(LS, { scope:'all', quick:'all', relations:{ owner:true, participant:true, creator:false }, filters:{}, page:1 }); st = S.listState(LS); }
+  if (ui.q('menu') === '1') { var menuUrl = new URL(location.href); menuUrl.searchParams.delete('menu'); history.replaceState(null, '', menuUrl.href); }
+  if (st.columns) {
+    var selected = st.columns.filter(function (key) { return key !== 'next'; });
+    if (!selected.length) selected.push('name');
+    if (selected.indexOf('source') >= 0) selected.push('bizType');
+    if (selected.indexOf('dueAt') >= 0) selected.push('dueFlag', 'originalDueAt');
+    if (selected.indexOf('related') >= 0) selected.push('relatedType', 'relatedName');
+    if (selected.indexOf('stage') >= 0) selected.push('stageCode', 'stageRound', 'ruleVersion');
+    COLS.forEach(function (c) { c.on = selected.indexOf(c.k) >= 0; });
+  }
+
+  var F = Object.assign({
+    kw: '', status: '', source: '', biz: '', sort: 'due-asc', owner: '',
+    due: '', stage: '', rel: '', from: '', to: ''
+  }, st.filters || {});
+  if (['待确认', '待接收', '待完成', '进行中', '待验收'].indexOf(F.status) >= 0) F.status = '待处理';
+  var scope = ui.q('scope') || st.scope || 'all';
+  if (scope === 'track') scope = 'mine';
+  if (['mine', 'candidate', 'team', 'all'].indexOf(scope) < 0) scope = 'all';
+  var relations = Object.assign({ owner:true, participant:true, creator:false }, st.relations || {});
+  if (!relations.owner && !relations.participant && !relations.creator) { relations.owner = true; relations.participant = true; }
+  var quick = st.quick || 'all';
+  if (['active', 'confirm', 'doing', 'due', 'created', 'participated'].indexOf(quick) >= 0) quick = 'all';
+  if (['today', 'week', 'all', 'overdue'].indexOf(quick) < 0) quick = 'all';
+  var page = st.page || 1, size = st.size || 20;
+
+  function opts(list, cur, all) {
+    return '<option value="">' + (all || '全部') + '</option>' + list.map(function (v) {
+      return '<option value="' + ui.esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + ui.esc(v) + '</option>';
+    }).join('');
+  }
+
+  function userOpts(cur, allowAll) {
+    return '<option value="">' + (allowAll || '全部') + '</option>' + S.all('users').map(function (x) {
+      return '<option value="' + x.id + '"' + (x.id === cur ? ' selected' : '') + '>' + ui.esc(x.name) + '（' + RY.perm.ROLES[x.role].name + '）</option>';
+    }).join('');
+  }
+
+  ui.qs('#f-status').innerHTML = opts(STATUSES, F.status);
+  ui.qs('#f-source').innerHTML = opts(SOURCES, F.source);
+  ui.qs('#f-biz').innerHTML = opts(BIZ_TYPES, F.biz);
+  ui.qs('#f-owner').innerHTML = '<option value="">全部</option><option value="__ungroup"' + (F.owner === '__ungroup' ? ' selected' : '') + '>仅看无解析组</option>' + userOpts(F.owner, '全部').replace('<option value="">全部</option>', '');
+
+  ui.qs('#f-rel').innerHTML = opts(REL_TYPES, F.rel);
+  ui.qs('#f-kw').value = F.kw; ui.qs('#f-sort').value = F.sort;
+  ui.qs('#f-due').value = F.due; ui.qs('#f-stage').value = F.stage;
+  ui.qs('#f-from').value = F.from; ui.qs('#f-to').value = F.to;
+
+  /* -------------------------------------------------------------- 数据范围 */
+
+  function scoped() {
+    /* 先按数据范围过滤，再渲染；绝不先取全量再前端隐藏。 */
+    return S.arr('tasks').filter(function (t) { return P.inScope('task', t); });
+  }
+
+  function isMine(t) { return t.owner === u.id; }
+  function canTeam() { return ['team', 'all'].indexOf(P.dataScope(u).scope) >= 0; }
+
+  function scopeDefs() {
+    return [{ key:'all', name:'全部', desc:'当前账号有权查看的全部正式任务' },
+      { key:'candidate', name:'待确认', desc:'分配给我的 Agent 任务候选' },
+      { key:'mine', name:'我的', desc:'按负责、参与、创建关系组合查看' },
+      { key:'team', name:'团队', desc:'我和团队成员负责的正式任务' }];
+  }
+
+  function matchesMine(t) {
+    return (relations.owner && t.owner === u.id) ||
+      (relations.participant && (t.collaborators || []).indexOf(u.id) >= 0) ||
+      (relations.creator && t.createdBy === u.id);
+  }
+  function scopeRows() {
+    var base = scoped();
+    if (scope === 'mine') return base.filter(matchesMine);
+    if (scope === 'team') return base.filter(function (t) { return t.owner === u.id || S.inTeamOf(t.owner, u.id); });
+    return base;
+  }
+  function candidates() {
+    return S.candidateList({ status:'待确认' }).filter(function (c) { return c.kind === '候选任务' && c.owner === u.id && P.inScope('candidate', c); });
+  }
+  var candidateTab = 'pending';
+  function failedCandidates() {
+    return S.candidateList({ writeFail:true }).filter(function (c) { return c.kind === '候选任务' && c.status === '已确认' && c.owner === u.id && P.inScope('candidate', c); });
+  }
+  function candidateTabs() {
+    return '<div class="ry-tabs" role="tablist" aria-label="任务候选处理状态">' +
+      [['pending','当前待确认',candidates().length],['failed','写入失败',failedCandidates().length]].map(function (x) {
+        return '<button type="button" role="tab" data-candidate-tab="' + x[0] + '" aria-selected="' + (candidateTab === x[0]) + '" class="ry-tab' + (candidateTab === x[0] ? ' is-on' : '') + '">' + x[1] + ' ' + x[2] + '</button>';
+      }).join('') + '</div>';
+  }
+  function bindCandidateTabs() {
+    ui.qsa('#tk-candidates [data-candidate-tab]').forEach(function (button) {
+      button.addEventListener('click', function () { candidateTab = button.getAttribute('data-candidate-tab'); candidatePage = 1; renderCandidates(); });
+    });
+  }
+  function renderFailedCandidates() {
+    var list = failedCandidates().sort(function (a,b) { return String(b.confirmedAt || '').localeCompare(String(a.confirmedAt || '')); });
+    ui.qs('#tk-candidates').innerHTML = candidateTabs() +
+      '<div class="tk-candidate-head"><div><h3>写入失败</h3><p class="ry-hint">已确认但尚未生成正式任务。业务字段缺失时先补齐，再手动重试。</p></div></div>' +
+      '<div class="ry-table__wrap ry-standard-list-wrap ry-standard-list-wrap--actions" role="region" aria-label="写入失败的任务候选">' +
+      '<table class="ry-table ry-table--tight tk-candidate-table"><thead><tr><th>候选编号</th><th>任务名称</th><th>确认时间</th><th>失败原因</th><th>处理方式</th><th>操作</th></tr></thead><tbody>' +
+      (list.length ? list.map(function (c) { var v = c.finalValue || c.aiSuggestion || {}, business = (c.failKind || '').indexOf('不可自动重试') >= 0;
+        return '<tr><td>' + ui.esc(c.id) + '</td><td>' + ui.esc(v['任务名称'] || '待补齐') + '</td><td>' + ui.esc(c.confirmedAt || '—') + '</td><td>' + ui.esc(c.failReason || '写入未成功') + '</td><td>' + (business ? '补齐后重试' : '可直接重试') + '</td><td class="ry-tbl-act"><button class="ry-btn ry-btn--primary ry-btn--sm" type="button" data-candidate-retry="' + ui.esc(c.id) + '">' + (business ? '补齐并重试' : '重试写入') + '</button></td></tr>';
+      }).join('') : '<tr><td colspan="6" class="tk-candidate-empty">暂无写入失败的任务候选。</td></tr>') + '</tbody></table></div>';
+    bindCandidateTabs();
+    ui.qsa('#tk-candidates [data-candidate-retry]').forEach(function (button) { button.addEventListener('click', function () { retryCandidate(button.getAttribute('data-candidate-retry')); }); });
+  }
+  function retryCandidate(id) {
+    var c = S.candidate(id); if (!c || c.owner !== u.id || c.status !== '已确认' || c.writeStatus !== '写入失败') { ui.toast('候选状态已变化，请刷新。', 'warn'); renderCandidates(); return; }
+    var v = c.finalValue || c.aiSuggestion || {}, business = (c.failKind || '').indexOf('不可自动重试') >= 0;
+    if (!business) { var direct = S.candidateRetryWrite(id); ui.toast(direct.ok ? '正式任务已创建。' : direct.msg, direct.ok ? 'success' : 'warn'); render(); return; }
+    ui.modal({ title:'补齐并重试写入', size:'lg', subtitle:'已确认的内容仍保留；请修正失败原因后手动提交。',
+      body:'<p class="ry-hint">失败原因：' + ui.esc(c.failReason || '—') + '</p>' +
+        ui.field('任务名称', '<input class="ry-input" id="tk-retry-name" value="' + ui.esc(v['任务名称'] || '') + '">', '', true) +
+        ui.field('截止时间', '<input class="ry-input" id="tk-retry-due" value="' + ui.esc(v['截止时间'] || '') + '" placeholder="YYYY-MM-DD HH:mm">', '', true) +
+        ui.field('责任人', '<select class="ry-input" id="tk-retry-owner">' + S.all('users').filter(function (p) { return p.role === 'R1' || p.role === 'R2'; }).map(function (p) { return '<option value="' + ui.esc(p.id) + '"' + (v['责任人'] === p.id ? ' selected' : '') + '>' + ui.esc(p.name) + '</option>'; }).join('') + '</select>', '', true),
+      footer:'<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="tk-retry-submit">提交重试</button>',
+      onOpen:function (host) { ui.qs('#tk-retry-submit', host).addEventListener('click', function () {
+        var name = ui.qs('#tk-retry-name', host).value.trim(), due = ui.qs('#tk-retry-due', host).value.trim(), owner = ui.qs('#tk-retry-owner', host).value;
+        if (!name || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(due) || !owner) { ui.toast('请补齐任务名称、有效截止时间和责任人。', 'warn'); return; }
+        var result = S.candidateRetryWrite(id, { '任务名称':name, '截止时间':due, '责任人':owner });
+        ui.toast(result.ok ? '正式任务已创建。' : result.msg, result.ok ? 'success' : 'warn'); if (result.ok) { ui.close(); render(); }
+      }); }
+    });
+  }
+  function renderRelations() {
+    var host = ui.qs('#tk-relations');
+    host.style.display = scope === 'mine' ? 'flex' : 'none';
+    if (scope !== 'mine') return;
+    host.innerHTML = '<span>与我的关系</span>' + [['owner','我负责'],['participant','我参与'],['creator','我创建']].map(function (x) {
+      return '<button type="button" data-relation="' + x[0] + '" class="' + (relations[x[0]] ? 'is-on' : '') + '" aria-pressed="' + !!relations[x[0]] + '">' + x[1] + '</button>';
+    }).join('');
+    ui.qsa('#tk-relations [data-relation]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        var key = button.getAttribute('data-relation');
+        if (relations[key] && Object.keys(relations).filter(function (k) { return relations[k]; }).length === 1) { ui.toast('至少保留一项关系筛选。', 'warn'); return; }
+        relations[key] = !relations[key]; page = 1;
+        S.listState(LS, { relations:relations, page:1 }); data = rows(); render();
+      });
+    });
+  }
+  var candidateFilter = { keyword:'', origin:'', check:'' };
+  var candidatePage = 1, candidateSize = 10;
+  var candidateCols = [
+    { key:'id', label:'候选编号', on:true }, { key:'name', label:'任务名称', on:true },
+    { key:'origin', label:'来源', on:true }, { key:'related', label:'关联对象', on:true },
+    { key:'created', label:'生成时间', on:true }, { key:'due', label:'拟定截止', on:true },
+    { key:'owner', label:'责任人', on:true }, { key:'check', label:'核对状态', on:true },
+    { key:'evidence', label:'核对依据', on:true }
+  ];
+  function candidateCheck(c) {
+    var v = c.aiSuggestion || {};
+    if (!v['任务名称'] || !v['截止时间'] || !v['责任人']) return { key:'missing', label:'需补齐' };
+    if ((c.fieldEvidence || []).some(function (e) { return e.certainty === '推断' || e.certainty === '缺失'; }) ||
+        String(v['截止时间']).slice(0, 10) < S.today()) return { key:'review', label:'需核对' };
+    return { key:'ready', label:'信息完整' };
+  }
+  function candidateCell(c, key) {
+    var v = c.aiSuggestion || {}, check = candidateCheck(c);
+    var hint = (c.fieldEvidence || []).filter(function (e) { return e.certainty === '推断' || e.certainty === '缺失'; })[0] || (c.fieldEvidence || [])[0];
+    if (key === 'id') return ui.esc(c.id);
+    if (key === 'name') return '<span class="tk-candidate-name">' + ui.esc(v['任务名称'] || '待补齐任务名称') + '</span>';
+    if (key === 'origin') return ui.esc(c.origin || '来源未标注');
+    if (key === 'related') return ui.esc(c.sourceRef && c.sourceRef.name || '无关联对象');
+    if (key === 'created') return ui.esc(c.createdAt || '—');
+    if (key === 'due') return ui.esc(v['截止时间'] || '待补齐');
+    if (key === 'owner') return ui.esc(v['责任人'] ? S.userName(v['责任人']) : '待补齐');
+    if (key === 'check') return '<span class="tk-candidate-flag tk-candidate-flag--' + check.key + '">' + check.label + '</span>';
+    if (key === 'evidence') return '<span class="tk-candidate-evidence">' + ui.esc(hint ? hint.k + '：' + hint.evidence : '请核对来源与建议字段') + '</span>';
+    return '—';
+  }
+  function renderCandidates() {
+    if (candidateTab === 'failed') { renderFailedCandidates(); return; }
+    var all = candidates().sort(function (a,b) { return String(b.createdAt || '').localeCompare(String(a.createdAt || '')); });
+    var keyword = candidateFilter.keyword.toLowerCase();
+    var list = all.filter(function (c) {
+      var v = c.aiSuggestion || {}, ref = c.sourceRef || {};
+      return (!keyword || [c.id, v['任务名称'], ref.name].join(' ').toLowerCase().indexOf(keyword) >= 0) &&
+        (!candidateFilter.origin || c.origin === candidateFilter.origin) &&
+        (!candidateFilter.check || candidateCheck(c).key === candidateFilter.check);
+    });
+    var origins = Array.from(new Set(all.map(function (c) { return c.origin; }).filter(Boolean)));
+    var checkCount = all.filter(function (c) { return candidateCheck(c).key !== 'ready'; }).length;
+    var cols = candidateCols.filter(function (col) { return col.on; });
+    candidatePage = Math.min(candidatePage, Math.max(1, Math.ceil(list.length / candidateSize)));
+    var pageRows = list.slice((candidatePage - 1) * candidateSize, candidatePage * candidateSize);
+    ui.qs('#tk-candidates').innerHTML =
+      candidateTabs() + '<div class="tk-candidate-head"><h3>当前待确认</h3>' +
+        '<div class="tk-candidate-tally">待确认 <b>' + all.length + '</b>　·　需核对或补齐 <b>' + checkCount + '</b> <button type="button" data-pcn-rule="taskCandidateCheck"></button></div></div>' +
+      '<section class="ry-filter tk-candidate-filter"><div class="ry-filter__row">' +
+        '<label class="ry-filter__item ry-filter__item--wide"><span>关键词</span><input class="ry-input" id="tk-candidate-keyword" value="' + ui.esc(candidateFilter.keyword) + '" placeholder="任务名称 / 关联对象 / 候选编号"></label>' +
+        '<label class="ry-filter__item"><span>核对状态</span><select class="ry-input" id="tk-candidate-check"><option value="">全部</option>' +
+          [['missing','需补齐'],['review','需核对'],['ready','信息完整']].map(function (x) {
+            return '<option value="' + x[0] + '"' + (candidateFilter.check === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
+          }).join('') + '</select></label>' +
+        '<label class="ry-filter__item"><span>来源</span><select class="ry-input" id="tk-candidate-origin"><option value="">全部来源</option>' + origins.map(function (origin) {
+          return '<option value="' + ui.esc(origin) + '"' + (candidateFilter.origin === origin ? ' selected' : '') + '>' + ui.esc(origin) + '</option>';
+        }).join('') + '</select></label></div>' +
+        '<div class="ry-filter__foot"><div class="ry-resultbar__tools">' +
+          '<button class="ry-btn ry-btn--primary" type="button" id="tk-candidate-query">查询</button>' +
+          '<button class="ry-btn" type="button" id="tk-candidate-reset">重置条件</button></div>' +
+          '<button class="ry-btn" type="button" id="tk-candidate-cols">列显示设置</button></div></section>' +
+      '<div class="ry-resultbar"><span class="ry-resultbar__sum">当前视图 <b>' + list.length + '</b> 条候选（待确认共 ' + all.length + ' 条）</span></div>' +
+      '<div class="ry-table__wrap ry-standard-list-wrap ry-standard-list-wrap--actions" role="region" aria-label="待确认任务候选列表，可左右滚动" tabindex="0">' +
+        '<table class="ry-table ry-table--tight tk-candidate-table"><thead><tr>' + cols.map(function (col) { return '<th>' + col.label + '</th>'; }).join('') + '<th>操作</th></tr></thead><tbody>' +
+        (pageRows.length ? pageRows.map(function (c) {
+          return '<tr>' + cols.map(function (col) { return '<td>' + candidateCell(c, col.key) + '</td>'; }).join('') +
+            '<td class="ry-tbl-act"><div class="tk-candidate-actions"><button class="ry-btn ry-btn--primary ry-btn--sm" type="button" data-candidate-confirm="' + ui.esc(c.id) + '">确认</button>' +
+              '<button class="ry-btn ry-btn--sm" type="button" data-candidate-ignore="' + ui.esc(c.id) + '">忽略</button></div></td></tr>';
+        }).join('') : '<tr><td colspan="' + (cols.length + 1) + '" class="tk-candidate-empty">' + (all.length ? '当前筛选条件下没有候选任务，请调整条件。' : '暂无分配给我的待确认任务候选。') + '</td></tr>') +
+        '</tbody></table></div>' +
+      ui.pager(list.length, candidatePage, candidateSize);
+    bindCandidateTabs();
+    ui.qs('#tk-candidate-query').addEventListener('click', function () {
+      candidateFilter.keyword = ui.qs('#tk-candidate-keyword').value.trim();
+      candidateFilter.origin = ui.qs('#tk-candidate-origin').value;
+      candidateFilter.check = ui.qs('#tk-candidate-check').value;
+      candidatePage = 1; renderCandidates();
+    });
+    ui.qs('#tk-candidate-keyword').addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); ui.qs('#tk-candidate-query').click(); }
+    });
+    ui.qs('#tk-candidate-reset').addEventListener('click', function () { candidateFilter = { keyword:'', origin:'', check:'' }; candidatePage = 1; renderCandidates(); });
+    ui.qs('#tk-candidate-cols').addEventListener('click', function () {
+      ui.modal({ title:'待确认列显示设置', size:'sm', body:'<div class="tk-cols">' + candidateCols.map(function (col) {
+        return '<label><input type="checkbox" data-candidate-col="' + col.key + '"' + (col.on ? ' checked' : '') + '> ' + col.label + '</label>';
+      }).join('') + '</div>', footer:'<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="tk-candidate-save-cols">保存</button>',
+        onOpen:function (host) { ui.qs('#tk-candidate-save-cols', host).addEventListener('click', function () {
+          var selected = ui.qsa('[data-candidate-col]', host).filter(function (x) { return x.checked; }).map(function (x) { return x.getAttribute('data-candidate-col'); });
+          if (!selected.length) { ui.toast('至少保留一列。', 'warn'); return; }
+          candidateCols.forEach(function (col) { col.on = selected.indexOf(col.key) >= 0; }); ui.close(); renderCandidates();
+        }); }
+      });
+    });
+    ui.qsa('#tk-candidates [data-pg]').forEach(function (button) { button.addEventListener('click', function () { candidatePage = Number(button.getAttribute('data-pg')); renderCandidates(); }); });
+    ui.qsa('#tk-candidates [data-candidate-confirm]').forEach(function (button) {
+      button.addEventListener('click', function () { confirmCandidate(button.getAttribute('data-candidate-confirm')); });
+    });
+    ui.qsa('#tk-candidates [data-candidate-ignore]').forEach(function (button) {
+      button.addEventListener('click', function () { ignoreCandidate(button.getAttribute('data-candidate-ignore')); });
+    });
+  }
+
+  function confirmCandidate(id) {
+    var c = S.candidate(id);
+    if (!c || c.owner !== u.id || c.kind !== '候选任务' || c.status !== '待确认') { ui.toast('候选已变化，请刷新后重试。', 'warn'); render(); return; }
+    if (!P.can('agent.candidateConfirm')) { ui.toast('当前账号没有候选确认权限。', 'warn'); return; }
+    var v = c.aiSuggestion || {};
+    var evidence = (c.fieldEvidence || []).map(function (e) {
+      return '<li>' + ui.esc(e.k) + '（' + ui.esc(e.certainty) + '）：' + ui.esc(e.evidence) + '</li>';
+    }).join('');
+    ui.modal({
+      title: '确认任务候选', size: 'lg',
+      subtitle: '核对 Agent 建议与来源，确认后生成正式待处理任务。',
+      body: ui.kv([['候选编号', c.id], ['来源', c.origin || '—'], ['关联对象', c.sourceRef && c.sourceRef.name || '—'], ['来源版本', c.sourceVersion || '—']]) +
+        (evidence ? '<h4>字段依据</h4><ul>' + evidence + '</ul>' : '') +
+        ui.field('任务名称', '<input class="ry-input" id="tk-cand-name" value="' + ui.esc(v['任务名称'] || '') + '">', '', true) +
+        ui.field('截止时间', '<input class="ry-input" id="tk-cand-due" value="' + ui.esc(v['截止时间'] || '') + '" placeholder="YYYY-MM-DD HH:mm">', '', true) +
+        ui.field('业务类型', '<select class="ry-input" id="tk-cand-biz">' + BIZ_TYPES.map(function (name) { return '<option value="' + ui.esc(name) + '"' + (v['业务类型'] === name ? ' selected' : '') + '>' + ui.esc(name) + '</option>'; }).join('') + '</select>', '', true) +
+        ui.field('责任人', '<select class="ry-input" id="tk-cand-owner">' + S.all('users').filter(function (person) { return person.role === 'R1' || person.role === 'R2'; }).map(function (person) { return '<option value="' + ui.esc(person.id) + '"' + (v['责任人'] === person.id ? ' selected' : '') + '>' + ui.esc(person.name) + '</option>'; }).join('') + '</select>', '', true),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="tk-cand-submit">确认并生成任务</button>',
+      onOpen: function (host) {
+        ui.qs('#tk-cand-submit', host).addEventListener('click', function () {
+          var name = ui.qs('#tk-cand-name', host).value.trim();
+          var due = ui.qs('#tk-cand-due', host).value.trim();
+          var owner = ui.qs('#tk-cand-owner', host).value;
+          if (!name || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(due) || !owner) { ui.toast('请填写任务名称、有效的截止时间和责任人。', 'warn'); return; }
+          var finalValue = Object.assign({}, v, { '任务名称':name, '截止时间':due, '业务类型':ui.qs('#tk-cand-biz', host).value, '责任人':owner });
+          var result = S.candidateConfirm(id, finalValue);
+          ui.toast(result.ok ? '已确认并生成正式任务。' : result.msg, result.ok ? 'success' : 'warn');
+          if (result.ok || result.candidate && result.candidate.status !== '待确认') { ui.close(); render(); }
+        });
+      }
+    });
+  }
+  function ignoreCandidate(id) {
+    var c = S.candidate(id);
+    if (!c || c.owner !== u.id || c.status !== '待确认') { ui.toast('候选已变化，请刷新后重试。', 'warn'); render(); return; }
+    if (!P.can('agent.candidateIgnore')) { ui.toast('当前账号没有忽略候选权限。', 'warn'); return; }
+    ui.confirm({
+      title: '忽略任务候选',
+      message: '<p>忽略“' + ui.esc((c.aiSuggestion || {})['任务名称'] || c.id) + '”后，不会生成正式任务。</p>',
+      confirmText: '确认忽略',
+      onConfirm: function () {
+        var result = S.candidateIgnore(id, 'PC 任务列表忽略');
+        ui.toast(result.ok ? '已忽略候选。' : result.msg, result.ok ? 'success' : 'warn');
+        render();
+      }
+    });
+  }
+
+  function scopeName() {
+    var d = scopeDefs().filter(function (x) { return x.key === scope; })[0];
+    return d ? d.name : scope;
+  }
+
+  function inQuick(t, key) {
+    if (key === 'all') return true;
+    var today = S.today(), due = (t.dueAt || '').slice(0, 10);
+    if (!due) return false;
+    if (key === 'overdue') return S.taskOverdue(t);
+    if (key === 'today') return due === today;
+    if (key === 'week') {
+      var d = new Date(today + 'T12:00:00'), start = new Date(d), end = new Date(d);
+      start.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      end.setDate(start.getDate() + 6);
+      function dateKey(x) { return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); }
+      return due >= dateKey(start) && due <= dateKey(end);
+    }
+    return true;
+  }
+
+  function renderQuick() {
+    var base = scopeRows();
+    var views = [['all', '全部'], ['today', scope === 'mine' ? '今天' : '今日'], ['week', '本周'], ['overdue', '逾期']];
+    if (!views.some(function (v) { return v[0] === quick; })) quick = views[0][0];
+    ui.qs('#tk-quick').innerHTML = views.map(function (v) {
+      return '<button type="button" data-quick="' + v[0] + '" class="' + (quick === v[0] ? 'is-on' : '') + '">' +
+        v[1] + '<b>' + base.filter(function (t) { return inQuick(t, v[0]); }).length + '</b></button>';
+    }).join('');
+    ui.qsa('#tk-quick [data-quick]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        quick = btn.getAttribute('data-quick'); page = 1;
+        S.listState(LS, { quick: quick, page: 1 });
+        data = rows(); render();
+      });
+    });
+  }
+
+  /* ---------------------------------------------------------------- 筛选 */
+
+  function rows() {
+    var list = scopeRows().filter(function (t) { return inQuick(t, quick); });
+    var kw = F.kw.trim().toLowerCase();
+    if (kw) {
+      list = list.filter(function (t) {
+        return (t.id + ' ' + t.name + ' ' + ((t.related || {}).name || '') + ' ' + ((t.related || {}).id || '')).toLowerCase().indexOf(kw) >= 0;
+      });
+    }
+    if (F.status) list = list.filter(function (t) { return taskStatus(t) === F.status; });
+    if (F.source) list = list.filter(function (t) { return t.source === F.source; });
+    if (F.biz) list = list.filter(function (t) { return t.bizType === F.biz; });
+    if (F.owner === '__ungroup') list = list.filter(function (t) { return false; });
+    else if (F.owner) list = list.filter(function (t) { return t.owner === F.owner; });
+        if (F.due === 'overdue') list = list.filter(function (t) { return S.taskOverdue(t); });
+    if (F.due === 'soon') list = list.filter(function (t) { return S.taskSoon(t); });
+        if (F.stage === '1') list = list.filter(function (t) { return !!t.stageTask; });
+    if (F.stage === '0') list = list.filter(function (t) { return !t.stageTask; });
+    if (F.rel) list = list.filter(function (t) { return (t.related || {}).type === F.rel; });
+    if (F.from) list = list.filter(function (t) { return (t.createdAt || '').slice(0, 10) >= F.from; });
+    if (F.to) list = list.filter(function (t) { return (t.createdAt || '').slice(0, 10) <= F.to; });
+
+    /* 排序：截止时间优先（空截止时间排最后），其次创建时间。 */
+    list.sort(function (a, b) {
+      if (F.sort === 'created-desc') return (b.createdAt || '').localeCompare(a.createdAt || '');
+      var x = a.dueAt || '9999', y = b.dueAt || '9999';
+      return F.sort === 'due-desc' ? y.localeCompare(x) : x.localeCompare(y);
+    });
+    return list;
+  }
+
+  var data = rows();
+
+  /* ---------------------------------------------------------------- 渲染 */
+
+  function cell(t, k) {
+    switch (k) {
+      case 'id': return '<code>' + ui.esc(t.id) + '</code>';
+      case 'name':
+        return '<a class="ry-cellname tk-name-cell" title="' + ui.esc(t.name) + '" href="detail.html?id=' + encodeURIComponent(t.id) + '&from=' + encodeURIComponent(scope) + '">' + ui.esc(t.name) + '</a>' +
+          (scope === 'mine' ? '<div class="tk-row-m">' + [t.owner === u.id ? '我负责' : '', (t.collaborators || []).indexOf(u.id) >= 0 ? '我参与' : '', t.createdBy === u.id ? '我创建' : ''].filter(Boolean).join(' · ') + '</div>' : '');
+      case 'source': return ui.esc(t.source || '—');
+      case 'bizType': return ui.esc(t.bizType || '未分类');
+      case 'status': return ui.statusTag(taskStatus(t));
+      case 'owner': return ui.esc(S.userName(t.owner));
+      case 'collab': return (t.collaborators || []).length ? ui.esc((t.collaborators || []).map(S.userName).join('、')) : '<span class="ry-faint">无</span>';
+      case 'dueAt':
+        var startAt = t.startAt || t.plannedStartAt || (t.meeting && t.meeting.at) || '';
+        return ui.esc(startAt ? '开始 ' + startAt + ' — 截止 ' + (t.dueAt || '未设置') : '截止 ' + (t.dueAt || '未设置'));
+      case 'dueFlag': return S.taskOverdue(t) ? ui.tag('已逾期', 'bad') :
+        S.taskSoon(t) ? ui.tag(S.taskDaysLeft(t) === 0 ? '今日到期' : '临近到期', 'warn') : '—';
+      case 'originalDueAt': return ui.esc(t.originalDueAt || '—');
+      case 'relatedType': return ui.esc(t.related && t.related.id ? t.related.type : '—');
+      case 'relatedName':
+        var r = t.related || {};
+        if (!r.id) return '<span class="ry-faint">无关联</span>';
+        return '<a href="' + relHref(r) + '">' + ui.esc(r.name || r.id) + '</a>';
+      case 'next':
+        var canComplete = t.owner === u.id && t.status === '待处理';
+        return '<a class="ry-btn ry-btn--sm' + (canComplete ? ' ry-btn--primary' : '') + '" href="detail.html?id=' + encodeURIComponent(t.id) + '&from=' + encodeURIComponent(scope) + (canComplete ? '&action=complete' : '') + '">' + (canComplete ? '完成任务' : '查看详情') + '</a>';
+      case 'stageCode': return ui.esc(t.stageTask ? t.stageCode || '—' : '—');
+      case 'stageRound': return t.stageTask ? '第 ' + ui.esc(t.stageRound || 1) + ' 轮' : '—';
+      case 'ruleVersion': return ui.esc(t.stageTask ? t.ruleVersion || '—' : '—');
+      case 'createdAt': return ui.esc(t.createdAt || '—');
+      default: return '—';
+    }
+  }
+
+  function relHref(r) {
+    /* RY.nav.href() 会加上 data-root 前缀，因此这里的取值必须是「相对原型根」的路径，
+       不能写成 '../customer/...'——那会被再加一层前缀而指到原型目录之外。 */
+    var p = { '客户': 'pc/customer/detail.html', '联系人': 'pc/contact/detail.html', '线索': 'pc/lead/detail.html', '商机': 'pc/opportunity/detail.html' }[r.type];
+    return p ? RY.nav.href(p) + '?id=' + encodeURIComponent(r.id) + '&from=task' : '#';
+  }
+
+  function renderScopes() {
+    ui.qs('#tk-scopes').innerHTML = scopeDefs().map(function (s) {
+      var n = scoped().filter(function (t) {
+        if (s.key === 'mine') return matchesMine(t);
+        if (s.key === 'team') return t.owner === u.id || S.inTeamOf(t.owner, u.id);
+        return true;
+      }).length;
+      if (s.key === 'candidate') n = candidates().length;
+      return '<button class="ry-tab' + (scope === s.key ? ' is-on' : '') + '" role="tab" aria-selected="' + (scope === s.key) + '" data-scope="' + s.key + '" title="' + ui.esc(s.desc) + '">' +
+        ui.esc(s.name) + ' <b>' + n + '</b></button>';
+    }).join('');
+    ui.qsa('#tk-scopes [data-scope]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        scope = b.getAttribute('data-scope');
+        quick = 'all';
+        S.listState(LS, { scope: scope, quick: quick, page: 1 });
+        page = 1; data = rows(); render();
+      });
+    });
+  }
+
+  var pageData = [];
+
+  function render() {
+    renderScopes();
+    renderRelations();
+    var isCandidate = scope === 'candidate';
+    ['tk-candidates','tk-filter','tk-resultbar','tk-selbar','tk-batchbar','tk-table-card','tk-pager'].forEach(function (id) {
+      ui.qs('#' + id).style.display = id === 'tk-candidates' ? (isCandidate ? '' : 'none') : (isCandidate ? 'none' : '');
+    });
+    ui.qs('#tk-quick').style.display = isCandidate ? 'none' : 'flex';
+    if (isCandidate) { renderCandidates(); return; }
+    renderQuick();
+    var cols = COLS.filter(function (c) { return c.on; });
+    pageData = data.slice((page - 1) * size, page * size);
+
+    ui.qs('#tk-thead').innerHTML = '<th style="width:34px"><input type="checkbox" id="tk-selall"></th>' +
+      cols.map(function (c) { return '<th>' + c.n + '</th>'; }).join('') + '<th>操作</th>';
+
+    ui.qs('#tk-rows').innerHTML = pageData.length ? pageData.map(function (t) {
+      return '<tr data-id="' + ui.esc(t.id) + '">' +
+        '<td><input type="checkbox" class="rowsel" value="' + ui.esc(t.id) + '"></td>' +
+        cols.map(function (col) { return '<td>' + cell(t, col.k) + '</td>'; }).join('') +
+        '<td class="ry-tbl-act">' + cell(t, 'next') + '</td></tr>';
+    }).join('') : '<tr><td colspan="' + (cols.length + 2) + '">' +
+      ui.empty('当前筛选条件下没有任务。注意：列表已先按你的数据范围过滤，没有结果可能是筛选条件或数据范围造成的，而不是全库没有任务。') + '</td></tr>';
+
+    ui.qs('#tk-pager').innerHTML = ui.pager(data.length, page, size);
+
+    var all = scopeRows().length;
+    ui.qs('#tk-resultbar').innerHTML =
+      '<span class="ry-resultbar__sum">当前视图 <b>' + data.length + '</b> 条任务（范围：' + ui.esc(scopeName()) + '）　·　数据范围：' + ui.esc(P.dataScope(u).label) +
+      (data.length !== all ? '　·　已应用筛选（该范围共 ' + all + ' 条）' : '') + '</span>' +
+      '<span class="ry-resultbar__tools"></span>';
+
+    ui.qs('#tk-selbar').innerHTML = ui.selectionBar({
+      id: 'tk-sel', filteredTotal: data.length,
+      crossPageCount: S.selection(LS).length
+    });
+    ui.qs('#tk-batchbar').innerHTML =
+      '<b>已选 <span id="tk-batch-n">0</span> 条</b><span class="ry-selbar__sep"></span>' +
+      '<button type="button" data-pcn-rule="taskBatchRule"></button>' +
+      '<span style="margin-left:auto"></span>' +
+      ui.actionBtn('task.batchReassign', '批量转派', ' data-batch="reassign"', 'ry-btn--sm') +
+      '<button class="ry-btn ry-btn--sm" data-batch="clear">清空选择</button>';
+
+    ui.bindSelection({
+      id: 'tk-sel', key: LS,
+      pageIds: pageData.map(function (t) { return t.id; }),
+      filteredIds: data.map(function (t) { return t.id; }),
+      filteredTotal: data.length,
+      crossPageCount: S.selection(LS).length,
+      onChange: function (ids) {
+        ui.qs('#tk-batchbar').style.display = ids.length ? 'flex' : 'none';
+        ui.qs('#tk-batch-n').textContent = ids.length;
+      }
+    });
+    ui.qs('#tk-batchbar').style.display = ui.selected(LS).length ? 'flex' : 'none';
+    ui.qs('#tk-batch-n').textContent = ui.selected(LS).length;
+    ui.bindMasked('#tk-body');
+    bindRows();
+  }
+
+  function openTaskDetail(id, action) {
+    var task = S.task(id);
+    if (!task || !P.inScope('task', task)) return;
+    var changed = false, frame;
+    function onMessage(event) { if (frame && event.source === frame.contentWindow && event.data && event.data.type === 'ry-task-detail-changed') changed = true; }
+    window.addEventListener('message', onMessage);
+    ui.drawer({
+      title: task.name,
+      subtitle: '任务详情 · ' + ui.esc(task.id),
+      size: 'lg',
+      body: '<iframe class="tk-detail-frame" title="任务详情" src="detail.html?id=' + encodeURIComponent(id) + '&from=' + encodeURIComponent(scope) + '&drawer=1' + (action === 'complete' ? '&action=complete' : '') + '"></iframe>',
+      onOpen: function (mask) { mask.classList.add('tk-detail-mask'); frame = mask.querySelector('iframe'); },
+      onClose: function () { window.removeEventListener('message', onMessage); if (changed) location.reload(); }
+    });
+  }
+
+  function bindRows() {
+    ui.qsa('#tk-rows a[href^="detail.html?"]').forEach(function (a) {
+      a.addEventListener('click', function (e) { e.preventDefault(); openTaskDetail(a.closest('tr[data-id]').getAttribute('data-id'), new URL(a.href).searchParams.get('action')); });
+    });
+    ui.qsa('.rowsel').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var ids = ui.selected(LS).slice();
+        var id = cb.value;
+        if (cb.checked) { if (ids.indexOf(id) < 0) ids.push(id); }
+        else ids = ids.filter(function (x) { return x !== id; });
+        ui.syncSel(LS, ids);
+        ui.qs('#tk-batchbar').style.display = ids.length ? 'flex' : 'none';
+        ui.qs('#tk-batch-n').textContent = ids.length;
+      });
+    });
+    var all = ui.qs('#tk-selall');
+    if (all) all.addEventListener('change', function () {
+      ui.qsa('.rowsel').forEach(function (cb) { cb.checked = all.checked; cb.dispatchEvent(new Event('change')); });
+    });
+    ui.qsa('#tk-rows tr[data-id]').forEach(function (tr) {
+      tr.addEventListener('click', function (e) {
+        if (e.target.closest('input') || e.target.closest('a')) return;
+        openTaskDetail(tr.getAttribute('data-id'));
+      });
+    });
+  }
+
+  /* ------------------------------------------------------------ 批量预检 */
+
+  var REASSIGN_OK = ['待处理'];
+
+  function precheck(act, ids) {
+    return ids.map(function (id) {
+      var t = S.task(id);
+      if (!t) return { id: id, t: null, ok: false, problems: ['任务不存在或已不可见'] };
+      if (!P.inScope('task', t)) return { id: id, t: t, ok: false, problems: ['对象已不在你的数据范围内'] };
+      var problems = [];
+      if (REASSIGN_OK.indexOf(t.status) < 0) problems.push('仅待处理任务可转派');
+      return { id: id, t: t, ok: problems.length === 0, problems: problems };
+    });
+  }
+
+  function batchDialog(act) {
+    var ids = ui.selected(LS);
+    if (!ids.length) { ui.toast('请先勾选任务。', 'warn'); return; }
+
+    /* 单批上限 100 条：超出必须提示收窄，绝不静默截断。 */
+    if (ids.length > 100) {
+      ui.modal({
+        title: '超出单批上限', size: 'sm',
+        body: '<p>当前已选 <b>' + ids.length + '</b> 条，超过单批上限 <b>100</b> 条。</p>' +
+          '<p class="ry-hint">请收窄筛选条件或分批提交。系统不会静默截断，也不会只处理前 100 条。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+      });
+      return;
+    }
+
+    var pre = precheck(act, ids);
+    var okOnes = pre.filter(function (x) { return x.ok; });
+    var badOnes = pre.filter(function (x) { return !x.ok; });
+    var title = '批量转派任务';
+
+    ui.modal({
+      title: title,
+      subtitle: '所有批量均为异步执行：提交前预检，执行时按行重新校验权限与对象状态；已成功项永不重复处理，失败项可按原参数重试。',
+      size: 'lg',
+      body:
+        '<h4>第 1 步 · 预检结果</h4>' +
+        '<button type="button" data-pcn-rule="taskBatchRule"></button>' +
+        '<div class="ry-jobsum">' +
+          '<div class="ry-jobsum__item"><b>' + ids.length + '</b><span>已选任务</span></div>' +
+          '<div class="ry-jobsum__item ry-ok"><b>' + okOnes.length + '</b><span>可执行</span></div>' +
+          '<div class="ry-jobsum__item ry-bad"><b>' + badOnes.length + '</b><span>将被跳过</span></div>' +
+        '</div>' +
+        (badOnes.length ? '<div class="tk-res"><table class="ry-table ry-table--tight"><thead><tr><th>任务</th><th>状态</th><th>跳过原因</th></tr></thead><tbody>' +
+          badOnes.map(function (x) {
+            return '<tr><td>' + ui.esc(x.t ? x.t.name : x.id) + '<div class="ry-mini">' + ui.esc(x.id) + '</div></td>' +
+              '<td>' + (x.t ? ui.statusTag(x.t.status) : '—') + '</td>' +
+              '<td class="ry-muted">' + ui.esc(x.problems.join('；')) + '</td></tr>';
+          }).join('') + '</tbody></table></div>' : '') +
+        '<h4>第 2 步 · 执行参数</h4>' +
+        ui.field('目标责任人', ui.select('target', S.all('users').filter(function (x) { return x.role === 'R1' || x.role === 'R2'; }).map(function (x) { return { value: x.id, label: x.name }; })), '转派后仍为待处理，由新责任人执行。', true) +
+        ui.field('原因 / 备注', ui.textarea('note', '', '将写入任务历史与审计'), false) +
+        '<button type="button" data-pcn-rule="taskBatchRule"></button>',
+      footer: '<button class="ry-btn" data-close>取消</button>' +
+        '<button class="ry-btn ry-btn--primary" id="tk-do-batch"' + (okOnes.length ? '' : ' disabled') + '>提交批量（' + okOnes.length + ' 条）</button>',
+      onOpen: function (el) {
+        ui.qs('#tk-do-batch', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!v.target) { ui.toast('请选择目标责任人。', 'warn'); return; }
+          if (okOnes.length > 100) { ui.toast('单批上限 100 条，请收窄条件。', 'warn'); return; }
+          ui.close();
+
+          var job = S.addJob({
+            type: '批量处理', action: title, object: '任务', status: '处理中',
+            total: okOnes.length, success: 0, failed: 0,
+            items: okOnes.map(function (x) { return { key: x.id, name: x.t.name, result: '处理中', reason: '' }; })
+          });
+
+          ui.asyncRun({
+            title: '正在执行：' + title, total: okOnes.length, processId: job.processId,
+            onDone: function () {
+              /* 执行阶段按行重新校验：调用 store 的正式动作，逐条返回成败与原因。 */
+              var perRow = [];
+              okOnes.forEach(function (x) {
+                var t = S.task(x.id);
+                if (!t || REASSIGN_OK.indexOf(t.status) < 0) {
+                  perRow.push({ id: x.id, name: x.t.name, ok: false, msg: '执行时任务已变化，跳过' });
+                  return;
+                }
+                var oldOwner = t.owner;
+                t.owner = v.target;
+                t.history = t.history || [];
+                t.history.push({ at: S.now(), actor: u.name, action: '批量转派', from: S.userName(oldOwner), to: S.userName(v.target), note: v.note || '' });
+                S.audit('任务', x.id, '批量转派', S.userName(oldOwner), S.userName(v.target));
+                perRow.push({ id: x.id, name: t.name, ok: true, msg: '已转派给 ' + S.userName(v.target) + '，状态仍为待处理' });
+              });
+              S.save();
+
+              var items = perRow.map(function (r) { return { key: r.id, name: r.name, result: r.ok ? '成功' : '失败', reason: r.ok ? '' : r.msg }; })
+                .concat(badOnes.map(function (x) { return { key: x.id, name: x.t ? x.t.name : x.id, result: '失败', reason: x.problems.join('；') }; }));
+
+              var succ = perRow.filter(function (r) { return r.ok; }).length;
+              var stuck = perRow.filter(function (r) { return !r.ok; });
+              var allBad = badOnes.length + stuck.length;
+              S.updateJob(job.id, { status: allBad === 0 ? '已完成' : (succ ? '部分成功' : '失败'), success: succ, failed: allBad, items: items });
+
+              ui.closeAll();
+              ui.syncSel(LS, []);
+              render();
+              resultDialog(title, job, perRow.concat(badOnes.map(function (x) {
+                return { id: x.id, name: x.t ? x.t.name : x.id, ok: false, msg: x.problems.join('；') };
+              })));
+            }
+          });
+        });
+      }
+    });
+  }
+
+  /* 逐条结果：每一条都能看出成败与原因，并可只重试失败项。 */
+  function resultDialog(title, job, rowsAll) {
+    var ok = rowsAll.filter(function (r) { return r.ok; }).length;
+    var bad = rowsAll.length - ok;
+    ui.modal({
+      title: title + ' · 逐条结果',
+      subtitle: '处理记录仅本人可见，保留 7 天，不替代正式审计。',
+      size: 'lg',
+      body:
+        '<div class="ry-jobsum">' +
+          '<div class="ry-jobsum__item"><b>' + rowsAll.length + '</b><span>总条数</span></div>' +
+          '<div class="ry-jobsum__item ry-ok"><b>' + ok + '</b><span>成功</span></div>' +
+          '<div class="ry-jobsum__item ry-bad"><b>' + bad + '</b><span>失败 / 跳过</span></div>' +
+        '</div>' +
+        '<div class="tk-res"><table class="ry-table ry-table--tight"><thead><tr><th>对象</th><th>结果</th><th>原因</th></tr></thead><tbody>' +
+        rowsAll.map(function (r) {
+          return '<tr><td>' + ui.esc(r.name) + '<div class="ry-mini">' + ui.esc(r.id) + '</div></td>' +
+            '<td>' + (r.ok ? ui.tag('成功', 'ok') : ui.tag('失败', 'bad')) + '</td>' +
+            '<td class="ry-muted">' + ui.esc(r.msg) + '</td></tr>';
+        }).join('') + '</tbody></table></div>' +
+        '<button type="button" data-pcn-rule="taskBatchRule"></button>',
+      footer: '<button class="ry-btn" data-close>关闭</button>' +
+        (bad ? '<button class="ry-btn" data-retry>仅重试失败项（' + bad + '）</button>' : '') +
+        '<a class="ry-btn ry-btn--primary" href="../processing/detail.html?id=' + job.id + '&from=batch">去处理记录查看</a>',
+      onOpen: function (el) {
+        var rb = ui.qs('[data-retry]', el);
+        if (rb) rb.addEventListener('click', function () {
+          ui.close();
+          var retryJob = S.addJob({
+            type: '批量处理', action: title + '（失败项重试）', object: '任务', status: '处理中',
+            total: bad, success: 0, failed: 0, retryOf: job.id,
+            items: rowsAll.filter(function (r) { return !r.ok; }).map(function (r) { return { key: r.id, name: r.name, result: '处理中', reason: '' }; })
+          });
+          ui.asyncRun({
+            title: '正在重试失败项', total: bad, processId: retryJob.processId,
+            onDone: function () {
+              var again = rowsAll.filter(function (r) { return !r.ok; }).map(function (r) {
+                var t = S.task(r.id);
+                var okNow = !!(t && REASSIGN_OK.indexOf(t.status) >= 0);
+                return { id: r.id, name: r.name, ok: okNow, msg: okNow ? '原参数重试成功' : ('原参数重试仍失败：' + r.msg) };
+              });
+              var s2 = again.filter(function (r) { return r.ok; }).length;
+              S.updateJob(retryJob.id, {
+                status: s2 === again.length ? '已完成' : (s2 ? '部分成功' : '失败'), success: s2, failed: again.length - s2,
+                items: again.map(function (r) { return { key: r.id, name: r.name, result: r.ok ? '成功' : '失败', reason: r.ok ? '' : r.msg }; })
+              });
+              ui.closeAll(); render(); resultDialog(title + '（失败项重试）', retryJob, again);
+            }
+          });
+        });
+      }
+    });
+  }
+
+  ui.qs('#tk-batchbar').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-batch]');
+    if (!b) return;
+    var act = b.getAttribute('data-batch');
+    if (act === 'clear') {
+      ui.syncSel(LS, []);
+      ui.qsa('.rowsel').forEach(function (x) { x.checked = false; });
+      ui.qs('#tk-batchbar').style.display = 'none';
+      render();
+      return;
+    }
+    batchDialog(act);
+  });
+
+  /* ---------------------------------------------------------- 导出与列设置 */
+
+  function exportBtn() {
+    var ok = P.can('task.export');
+    return '<button class="ry-btn" id="tk-exp"' + (ok ? '' : ' data-denied="1" data-action="task.export"') + '>导出' +
+      (ok ? '' : '<i class="ry-btn__lock">无权限</i>') + '</button>';
+  }
+  ui.qs('#btn-export').innerHTML = exportBtn();
+  ui.qs('#btn-export').addEventListener('click', function (e) {
+    if (e.target.closest('[data-denied]')) return;
+    exportDialog();
+  });
+
+  function exportDialog() {
+    var fields = COLS.map(function (c) { return { value: c.k, label: c.n }; });
+    ui.modal({
+      title: '导出任务列表',
+      subtitle: '按当前可见范围提交导出任务。',
+      size: 'md',
+      body: ui.field('导出范围', ui.select('range', [
+        { value: 'filtered', label: '当前筛选结果（' + data.length + ' 条）' },
+        { value: 'selected', label: '已勾选记录（' + ui.selected(LS).length + ' 条）' },
+        { value: 'current', label: '仅当前页（' + pageData.length + ' 条）' }
+      ]), '导出在异步任务中生成，完成后可在处理记录下载。') +
+        ui.field('导出字段', '<div class="tk-cols">' + fields.map(function (f, i) {
+          return '<label><input type="checkbox" name="f' + i + '" value="' + f.value + '"' + (i < 8 ? ' checked' : '') + '> ' + ui.esc(f.label) + '</label>';
+        }).join('') + '</div>') +
+        '<button type="button" data-pcn-rule="taskExportRule"></button>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="tk-do-exp">提交导出</button>',
+      onOpen: function (el) {
+        ui.qs('#tk-do-exp', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          var cols = fields.filter(function (f, i) { return v['f' + i]; }).map(function (f) { return f.label; });
+          var n = v.range === 'selected' ? ui.selected(LS).length : v.range === 'current' ? pageData.length : data.length;
+          if (n === 0) { ui.toast('导出范围为空，请先勾选记录或调整筛选。', 'warn'); return; }
+          if (n > 100) { ui.toast('单批上限 100 条，请收窄条件后再导出。', 'warn'); return; }
+          ui.close();
+          var job = S.addJob({
+            type: '导出', action: '任务列表导出', object: '任务', status: '处理中',
+            total: n, success: 0, failed: 0, fileName: '任务列表_' + S.today().replace(/-/g, '') + '.xlsx', fields: cols
+          });
+          ui.asyncRun({
+            title: '正在生成导出文件', total: n, processId: job.processId,
+            onDone: function () {
+              S.updateJob(job.id, { status: '已完成', success: n, failed: 0 });
+              ui.closeAll();
+              ui.modal({
+                title: '导出已完成', size: 'sm',
+                body: '<p>共 ' + n + ' 条，文件已生成。</p>' +
+                  ui.kv([['文件', job.fileName], ['记录数', n + ' 条'], ['字段数', cols.length + ' 个'], ['保留期', '处理记录保留 7 天']]),
+                footer: '<button class="ry-btn" data-close>关闭</button>' +
+                  '<a class="ry-btn ry-btn--primary" href="../processing/detail.html?id=' + job.id + '&from=export">去处理记录下载</a>'
+              });
+            }
+          });
+        });
+      }
+    });
+  }
+
+  ui.qs('#colset-btn').addEventListener('click', function () {
+    ui.modal({
+      title: '列显示设置', size: 'sm',
+      subtitle: '仅影响当前浏览器的展示偏好，不改变任何业务规则。',
+      body: '<div class="tk-cols">' + COLS.map(function (c) {
+        return '<label><input type="checkbox" data-col="' + c.k + '"' + (c.on ? ' checked' : '') + '> ' + ui.esc(c.n) + '</label>';
+      }).join('') + '</div>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="tk-save-col">保存</button>',
+      onOpen: function (el) {
+        ui.qs('#tk-save-col', el).addEventListener('click', function () {
+          var on = ui.qsa('[data-col]', el).filter(function (x) { return x.checked; }).map(function (x) { return x.getAttribute('data-col'); });
+          if (!on.length) { ui.toast('至少保留一列。', 'warn'); return; }
+          COLS.forEach(function (c) { c.on = on.indexOf(c.k) >= 0; });
+          S.listState(LS, { columns: on });
+          ui.close(); render();
+        });
+      }
+    });
+  });
+
+  /* ---------------------------------------------------------- 筛选与分页 */
+
+  function collect() {
+    F.kw = ui.qs('#f-kw').value;
+    F.status = ui.qs('#f-status').value; F.source = ui.qs('#f-source').value;
+    F.biz = ui.qs('#f-biz').value; F.sort = ui.qs('#f-sort').value;
+    F.owner = ui.qs('#f-owner').value;
+    F.due = ui.qs('#f-due').value;
+    F.stage = ui.qs('#f-stage').value; F.rel = ui.qs('#f-rel').value;
+    F.from = ui.qs('#f-from').value; F.to = ui.qs('#f-to').value;
+    page = 1;
+    S.listState(LS, { filters: F, page: 1, size: size, scope: scope });
+  }
+
+  function reload() {
+    data = rows();
+    page = 1;
+    S.listState(LS, { page: 1 });
+    render();
+  }
+
+  ui.qs('#do-filter').addEventListener('click', function () { collect(); reload(); });
+  ui.qs('#f-kw').addEventListener('keydown', function (e) { if (e.key === 'Enter') { collect(); reload(); } });
+  ui.qs('#reset-filter').addEventListener('click', function () {
+    F = { kw: '', status: '', source: '', biz: '', sort: 'due-asc', owner: '', due: '', stage: '', rel: '', from: '', to: '' };
+    ui.qs('#f-kw').value = ''; ui.qs('#f-status').value = ''; ui.qs('#f-source').value = '';
+    ui.qs('#f-biz').value = ''; ui.qs('#f-sort').value = 'due-asc'; ui.qs('#f-owner').value = '';
+    ui.qs('#f-due').value = '';
+    ui.qs('#f-stage').value = ''; ui.qs('#f-rel').value = ''; ui.qs('#f-from').value = ''; ui.qs('#f-to').value = '';
+    S.listState(LS, { filters: F, page: 1 });
+    reload();
+  });
+
+  RY.nav.bindFilterToggle('#toggle-more', '#tk-more');
+
+  ui.bindPager('#tk-pager', function (p) {
+    page = p;
+    S.listState(LS, { page: p });
+    render();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  /* 新建任务入口按权限表达，不使用隐藏代替权限说明。 */
+  var newBtn = ui.qs('#tk-new');
+  if (newBtn && newBtn.getAttribute('data-denied')) {
+    newBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      ui.modal({
+        title: '该动作当前不可执行', size: 'sm',
+        body: '<p>' + ui.esc(P.whyNot('task.create')) + '</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+      });
+    });
+  } else if (newBtn) {
+    newBtn.addEventListener('click', function () {
+      ui.modal({
+        title: '新建任务 · 先选择类型', size:'sm',
+        body: '<div class="tk-create-choices">' +
+          '<button type="button" class="tk-create-choice" data-task-kind="meeting"><b>🎥 新建会议任务</b><span>安排主题和时间，完成时填写会议结果与附件。</span></button>' +
+          '<button type="button" class="tk-create-choice" data-task-kind="visit"><b>📍 新建拜访计划</b><span>进入正式拜访流程，签到、签退和拜访总结保留在同一拜访对象。</span></button>' +
+          '<button type="button" class="tk-create-choice" data-task-kind="other"><b>📋 新建其他任务</b><span>创建执行或协作事项，按任务要求填写完成成果。</span></button></div>',
+        footer:'<button class="ry-btn" data-close>取消</button>',
+        onOpen:function (choiceEl) { ui.qsa('[data-task-kind]', choiceEl).forEach(function (b) { b.addEventListener('click', function () {
+          var kind = b.getAttribute('data-task-kind'); ui.close();
+          if (kind === 'visit') {
+            ui.modal({ title:'新建拜访计划', size:'sm', body:'<p>正式拜访保留独立编号和签到、签退、纪要。本期在 H5 新建，PC 可查看正式拜访列表。</p>',
+              footer:'<button class="ry-btn" data-close>关闭</button><a class="ry-btn" href="../visit/list.html">查看正式拜访</a><a class="ry-btn ry-btn--primary" href="../../h5/visit/list.html">前往新建拜访</a>' });
+            return;
+          }
+          openTaskCreate(kind);
+        }); }); }
+      });
+    });
+  }
+
+  function openTaskCreate(kind) {
+      var meeting = kind === 'meeting';
+      var canAssign = P.can('task.assign');
+      var people = canAssign ? S.all('users').filter(function (x) { return x.role === 'R1' || x.role === 'R2'; }) : [u];
+      ui.drawer({
+        title: meeting ? '新建会议任务' : '新建其他任务',
+        subtitle: '创建后直接进入「待处理」；一个任务 ID 可包含多名参与人。',
+        body: ui.field('任务名称', ui.input('name', '', meeting ? '如：远驰科技项目评审会' : '如：整理远驰科技技术方案初稿'), '', true) +
+          ui.grid2(
+            ui.field('业务类型', meeting ? '<span>会议任务</span>' : ui.select('bizType', BIZ_TYPES.filter(function (x) { return x !== '阶段任务' && x !== '会议任务'; }), '客户跟进'), '', true),
+            ui.field('责任人', ui.select('owner', people.map(function (x) { return { value: x.id, label: x.name }; }), u.id), '', true)
+          ) +
+          (meeting ? '<h4>会议安排</h4>' + ui.grid2(
+            ui.field('会议开始时间', ui.input('meetingAt', '', 'YYYY-MM-DD HH:mm'), '', true),
+            ui.field('会议结束时间', ui.input('meetingEndAt', '', 'YYYY-MM-DD HH:mm'), '', true)
+          ) + ui.field('会议方式', ui.select('meetingMode', [{ value:'线下', label:'线下' }, { value:'线上', label:'线上' }], '线下'), '', true) +
+          '<div id="tk-meeting-place"></div>' : '') +
+          ui.field('任务说明', ui.textarea('description', '', '说明交付目标或会议议程', 3), '', false) +
+          '<div class="ry-field"><span class="ry-field__label">参与人</span>' + ui.personPicker() +
+            '<span class="ry-field__hint">可查询公司全部人员并多选；参与同一个任务，不按人数复制任务。会议任务一期不发送企微邀请。</span></div>' +
+          (meeting ? '' : ui.field('截止时间', ui.input('dueAt', '', 'YYYY-MM-DD HH:mm'), '', true)) +
+          ui.field('关联对象', ui.select('relatedType', [{ value: '', label: '不关联' }].concat(REL_TYPES))) +
+          '<button type="button" data-pcn-rule="taskAssignConfirm"></button>',
+        footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="tk-create-ok">创建任务</button>',
+        onOpen: function (el) {
+          var picker = ui.bindPersonPicker(ui.qs('.ry-person-picker', el), S.all('users'), function () {
+            return ui.qs('[name=owner]', el).value;
+          });
+          ui.qs('[name=owner]', el).addEventListener('change', picker.syncOwner);
+          function renderMeetingPlace() {
+            var host = ui.qs('#tk-meeting-place', el);
+            if (!host) return;
+            var online = ui.qs('[name=meetingMode]', el).value === '线上';
+            host.innerHTML = online ? ui.field('会议链接', ui.input('meetingLink', '', '填写线上会议链接'), '', true) :
+              ui.field('会议地点', ui.input('meetingLocation', '', '填写会议地点'), '', true);
+          }
+          if (meeting) {
+            ui.qs('[name=meetingMode]', el).addEventListener('change', renderMeetingPlace);
+            renderMeetingPlace();
+          }
+          ui.qs('#tk-create-ok', el).addEventListener('click', function () {
+            var v = ui.formValues(el);
+            if (!v.name) { ui.toast('请填写任务名称。', 'warn'); return; }
+            if (!meeting && !v.dueAt) { ui.toast('请填写截止时间。', 'warn'); return; }
+            if (meeting) {
+              if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(v.meetingAt || '') ||
+                  !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(v.meetingEndAt || '') || v.meetingEndAt <= v.meetingAt) {
+                ui.toast('请填写有效的会议开始、结束时间，结束时间须晚于开始时间。', 'warn'); return;
+              }
+              if (v.meetingMode === '线上' ? !v.meetingLink : !v.meetingLocation) {
+                ui.toast(v.meetingMode === '线上' ? '请填写会议链接。' : '请填写会议地点。', 'warn'); return;
+              }
+            }
+            if (v.owner !== u.id && !canAssign) { ui.toast('当前身份不能向他人指派任务。', 'warn'); return; }
+            var assigned = v.owner !== u.id;
+            var t = S.createTask({
+              name: v.name, source: assigned ? '主管指派' : '自建任务', status: '待处理',
+              bizType: meeting ? '会议任务' : v.bizType, owner: v.owner, description: v.description,
+              meeting: meeting ? { at:v.meetingAt, endAt:v.meetingEndAt, mode:v.meetingMode,
+                location:v.meetingMode === '线下' ? v.meetingLocation : '',
+                link:v.meetingMode === '线上' ? v.meetingLink : '' } : null,
+              dueAt: meeting ? v.meetingEndAt : v.dueAt,
+              participants: picker.values(),
+              related: v.relatedType ? { type: v.relatedType, id: '', name: '' } : { type: '', id: '', name: '' }
+            });
+            ui.close();
+            ui.toast('任务已创建：' + t.id + '（' + t.status + '）。', 'success');
+            data = rows(); render();
+            openTaskDetail(t.id);
+          });
+        }
+      });
+  }
+
+  render();
+  var deepTask = ui.q('openTask');
+  if (deepTask) {
+    var cleanUrl = new URL(location.href);
+    cleanUrl.searchParams.delete('openTask');
+    try { history.replaceState(null, '', cleanUrl.href); } catch (e) { /* file:// 预览可能限制 History API */ }
+    openTaskDetail(deepTask);
+  }
+  ui.bindDenied('#ry-page');
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>候选确认 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：候选确认（当前待确认 / 候选详情 / 字段证据 / 修改后确认 / 写入状态与幂等）。 */
+  .ac-row { border: 1px solid var(--line); border-radius: 12px; padding: 10px 11px; margin-bottom: 8px; background: var(--surface); }
+  .ac-row.is-on { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand) inset; }
+  .ac-row__t { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .ac-row__t b { font-size: 13px; }
+  .ac-row__m { font-size: 11.5px; color: var(--muted); line-height: 1.8; margin-top: 5px; }
+  .ac-fv { border: 1px solid var(--line-soft); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; background: var(--surface); }
+  .ac-fv__h { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; font-weight: 600; }
+  .ac-fv__ai { font-size: 11.5px; color: var(--muted); line-height: 1.7; margin: 4px 0 6px; word-break: break-all; }
+  .ac-fv__ev { font-size: 11.5px; color: var(--muted); line-height: 1.7; margin-top: 5px; word-break: break-all; }
+  .ac-diff { font-size: 11.5px; line-height: 1.9; word-break: break-all; }
+  .ac-res { border: 1px solid var(--line); border-radius: 12px; padding: 10px 11px; margin-top: 8px; background: var(--surface); }
+  .ac-res--ok { border-color: var(--ok, #2f7a4d); }
+  .ac-res--bad { border-color: var(--bad, #b4362f); }
+  .ac-fbar { position: sticky; bottom: 0; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+  <div id="ac-host"></div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.agent.confirm';
+
+  RY.nav.h5shell({
+    title: '候选确认',
+    sub: '当前／历史／写入失败 · 可逐条或勾选批量确认',
+    back: 'h5/agent/index.html',
+    nav: 'more',
+    tabbar: true
+  });
+
+  /* ---------------------------------------------------------- 鉴权 */
+  if (!P.page(PAGE)) {
+    ui.qs('#ac-host').innerHTML = ui.stateCard('no-permission', {
+      title: '没有候选确认的访问权限',
+      body: '<p>' + ui.esc(P.whyNot('agent.candidateConfirm') || '当前身份没有「候选确认」页面权限。') + '</p>' +
+            '<p class="ry-hint">候选确认是正式写入的入口：没有动作权限时即使能看到候选，也不能确认写入。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/agent/index.html') + '">返回瑞赢 AI</a>'
+    });
+    return;
+  }
+
+  var u = S.currentUser();
+
+  /* 字段顺序与必填口径（prd/05 §7／§8 字段映射）：
+     字段严格映射正式销售活动／任务字段，不建立第二套业务模型。
+     缺失字段未补齐前不得写入；责任人必须能解析为唯一在职用户才能写入。 */
+  var FIELD_ORDER = ['沟通方式', '沟通对象', '沟通时间', '沟通内容', '客户诉求', '共识与承诺', '下一步动作',
+    '任务名称', '截止时间', '业务类型', '责任人'];
+  var REQUIRED = {
+    '候选销售活动': ['沟通内容'],
+    '候选任务': ['任务名称', '截止时间', '责任人']
+  };
+
+  var state = { tab: '待确认', sel: '', draft: {}, result: null, denied: '', selected: {}, batchResults: [] };
+
+  /* ---------------------------------------------------------- 数据 */
+
+  /* 列表先按数据范围取数：候选人本人可见；R5 以技术元数据身份可见。不先取全量再前端隐藏。 */
+  function list() {
+    var all = S.candidateList({});
+    if (state.tab === '待确认') return all.filter(function (c) { return c.status === '待确认'; });
+    if (state.tab === '写入失败') {
+      return all.filter(function (c) { return c.writeStatus === '写入失败' || c.status === '已失效'; });
+    }
+    return all.filter(function (c) { return c.status !== '待确认'; });
+  }
+
+  function cur() { return state.sel ? S.candidate(state.sel) : null; }
+
+  function keysOf(c) {
+    var keys = [];
+    FIELD_ORDER.forEach(function (k) { if (c.aiSuggestion && k in c.aiSuggestion) keys.push(k); });
+    Object.keys(c.aiSuggestion || {}).forEach(function (k) { if (keys.indexOf(k) < 0) keys.push(k); });
+    return keys;
+  }
+
+  function evidenceOf(c, k) {
+    var e = (c.fieldEvidence || []).filter(function (x) { return x.k === k; })[0];
+    return e || null;
+  }
+
+  function initDraft(c) {
+    state.draft = {};
+    keysOf(c).forEach(function (k) {
+      var v = (c.finalValue && c.finalValue[k] !== undefined) ? c.finalValue[k] : c.aiSuggestion[k];
+      state.draft[k] = v === undefined || v === null ? '' : String(v);
+    });
+    state.result = null;
+  }
+
+  function userOptions(value) {
+    var opts = ['<option value="">请选择责任人（未补齐）</option>'];
+    S.arr('users').forEach(function (x) {
+      opts.push('<option value="' + ui.esc(x.id) + '"' + (x.id === value ? ' selected' : '') + '>' +
+        ui.esc(x.name + '（' + x.id + '）') + '</option>');
+    });
+    return '<select class="ry-input" name="f-责任人">' + opts.join('') + '</select>';
+  }
+
+  function isUser(v) { return !!S.user(v); }
+
+  /* 写入前校验：缺失必填未补齐则阻止该条写入（不写入、不降级、不自动兜底）。 */
+  function validate(c) {
+    /* R5 以技术元数据身份进入：可查看与诊断，但不得替销售确认或修改业务内容。 */
+    if (u.role === 'R5' && c.owner !== u.id) {
+      return { ok: false, msg: '系统管理员只能查看技术元数据与失败诊断，不得替销售确认候选或修改业务内容；确认必须由候选人本人完成。' };
+    }
+    var miss = [];
+    (REQUIRED[c.kind] || []).forEach(function (k) {
+      if (!String(state.draft[k] || '').trim()) miss.push(k);
+    });
+    if (c.kind === '候选任务' && String(state.draft['责任人'] || '').trim() && !isUser(state.draft['责任人'])) {
+      return { ok: false, msg: '责任人「' + state.draft['责任人'] + '」无法解析为唯一在职用户，请重新选择后再确认。' };
+    }
+    if (!(c.relatedObjects || []).length) {
+      return { ok: false, msg: '该候选没有关联合法业务对象（客户／线索／商机），无合法业务对象不能写入正式对象。' };
+    }
+    if (miss.length) return { ok: false, msg: '必填字段「' + miss.join('、') + '」缺失，未补齐前不得写入该条。' };
+    return { ok: true };
+  }
+
+  function diffText(c) {
+    var parts = [];
+    keysOf(c).forEach(function (k) {
+      var ai = c.aiSuggestion[k] === undefined || c.aiSuggestion[k] === null ? '' : String(c.aiSuggestion[k]);
+      var fin = String(state.draft[k] || '');
+      if (ai !== fin) parts.push(k + '：' + (ai || '（空）') + ' → ' + (fin || '（空）'));
+    });
+    return parts.join('；');
+  }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function certaintyTag(c) {
+    return c === '事实' ? ui.tag('事实', 'ok') : c === '推断' ? ui.tag('推断', 'warn') : ui.tag('缺失', 'bad');
+  }
+
+  function statusOf(c) {
+    var s = ui.statusTag(c.status);
+    if (c.status === '已确认' && c.writeStatus === '写入成功') s += ' ' + ui.tag('已写入', 'ok');
+    if (c.writeStatus === '写入失败') s += ' ' + ui.tag('写入失败', 'bad');
+    if (c.status === '已失效') s += ' ' + ui.tag('不能继续确认', 'bad');
+    return s;
+  }
+
+  function rowHtml(c) {
+    return '<div class="ac-row' + (state.sel === c.id ? ' is-on' : '') + '" data-cand="' + ui.esc(c.id) + '">' +
+      '<div class="ac-row__t"><b>' + ui.esc(c.kind) + ' · ' + ui.esc(c.aiSuggestion['任务名称'] || c.aiSuggestion['沟通内容'] || '').slice(0, 22) + '</b>' + statusOf(c) + '</div>' +
+      (c.status === '待确认' ? '<label class="ry-hint"><input type="checkbox" data-batch-id="' + ui.esc(c.id) + '"' + (state.selected[c.id] ? ' checked' : '') + '> 加入批量确认</label>' : '') +
+      '<div class="ac-row__m">' + ui.esc(c.id) + '　来源 ' + ui.esc(c.origin) + '　' + ui.esc(c.sourceRef.type) + ' ' + ui.esc(c.sourceRef.id) +
+        (c.sourceRef.name ? '（' + ui.esc(c.sourceRef.name) + '）' : '') + '<br>' +
+        '来源版本：' + ui.esc(c.sourceVersion) + '<br>' +
+        '生成时间 ' + ui.esc(c.createdAt) + '　Run ID <code>' + ui.esc(c.runId) + '</code>' +
+        (c.writeStatus === '写入失败' ? '<br>失败分类：' + ui.esc(c.failKind || '—') + '　原因：' + ui.esc(c.failReason || '—') : '') +
+        (c.status === '已失效' ? '<br>已失效原因：来源版本已更新，原候选不可继续确认，须基于最新来源重新生成。' : '') +
+      '</div></div>';
+  }
+
+  function detailHtml(c) {
+    var html = '<div class="ry-hcard"><div class="ry-hcard__head"><h3>候选详情</h3>' +
+      '<div class="ry-hcard__extra">' + statusOf(c) + '</div></div><div class="ry-hcard__body">' +
+      ui.kv([
+        ['候选编号', ui.esc(c.id)],
+        ['候选类型', ui.esc(c.kind)],
+        ['候选主状态', ui.esc(c.status) + '（待确认／已确认／已忽略／已失效）'],
+        ['写入状态', ui.esc(c.writeStatus) + '（未写入／写入中／写入成功／写入失败）'],
+        ['来源类型', ui.esc(c.origin) + '　' + ui.esc(c.sourceRef.type) + ' ' + ui.esc(c.sourceRef.id) +
+          (c.sourceRef.name ? '（' + ui.esc(c.sourceRef.name) + '）' : '')],
+        ['来源版本', ui.esc(c.sourceVersion)],
+        ['运行记录', 'Run ID <code>' + ui.esc(c.runId) + '</code>（可按 Run ID 反查来源、版本、候选、修改、确认、写入与失败重试）'],
+        ['幂等键', '<code>' + ui.esc(c.idemKey) + '</code>'],
+        ['生成时间', ui.esc(c.createdAt)],
+        ['已历史待处理', c.age === '历史待处理' ? '是（主状态仍为待确认）' : '否']
+      ]) + '</div></div>';
+
+    /* 字段证据与确定性 */
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>字段证据与确定性</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">AI 原建议不可抹除</span></div></div>' +
+      '<div class="ry-hcard__body">' + keysOf(c).map(function (k) {
+        var ev = evidenceOf(c, k);
+        var ai = c.aiSuggestion[k];
+        var req = (REQUIRED[c.kind] || []).indexOf(k) >= 0;
+        var ctrl = k === '责任人' ? userOptions(state.draft[k])
+          : '<input class="ry-input" name="f-' + ui.esc(k) + '" value="' + ui.esc(state.draft[k] || '') + '" placeholder="' +
+            (req ? '必填，未补齐前不得写入' : '可留空') + '">';
+        return '<div class="ac-fv" data-field="' + ui.esc(k) + '">' +
+          '<div class="ac-fv__h"><span>' + ui.esc(k) + (req ? '<i class="ry-req">必填</i>' : '') + '</span>' +
+            (ev ? certaintyTag(ev.certainty) : ui.tag('未标注确定性', 'muted')) + '</div>' +
+          '<div class="ac-fv__ai">AI 原建议：' + (ai === undefined || ai === null || ai === '' ? '<span class="ry-hint">缺失</span>' : ui.esc(String(ai))) + '</div>' +
+          ui.field('最终值（人工确认后写入）', ctrl, '') +
+          '<div class="ac-fv__ev">证据：' + (ev ? ui.esc(ev.evidence) : '<span class="ry-hint">该字段没有来源证据记录，须人工核对后再确认</span>') + '</div>' +
+          '<div class="ac-fv__ev" data-diff="' + ui.esc(k) + '"></div>' +
+          '</div>';
+      }).join('') +
+      '<p class="ry-hint">确定性只描述来源支持程度：事实＝来源直接出现；推断＝AI 由上下文推断；缺失＝来源未提及。' +
+      '推断与缺失字段在写入前必须由人核对或补齐；AI 不得为「缺失」编造值。</p>' +
+      (c.status === '已确认' && c.finalValue && c.diff ?
+        '<p class="ry-hint">本次确认保存的差异：' + ui.esc(c.diff) + '（确认人 ' + ui.esc(S.userName(c.confirmedBy)) + '，' + ui.esc(c.confirmedAt) + '）</p>' : '') +
+      '</div></div>';
+
+    /* 写入状态与幂等 */
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>写入状态与幂等</h3></div><div class="ry-hcard__body">' +
+      ui.kv([
+        ['写入状态', ui.esc(c.writeStatus)],
+        ['写入的正式对象', c.writtenObjectId ? (objectLink(c) || '<code>' + ui.esc(c.writtenObjectId) + '</code>') : '—'],
+        ['写入时间', c.writtenAt ? ui.esc(c.writtenAt) : '—'],
+        ['确认人／时间', c.confirmedBy ? ui.esc(S.userName(c.confirmedBy)) + '　' + ui.esc(c.confirmedAt) : '—'],
+        ['失败分类', ui.esc(c.failKind || '—')],
+        ['失败原因', ui.esc(c.failReason || '—')],
+        ['幂等键', '<code>' + ui.esc(c.idemKey) + '</code>（重复点击／多端并发使用同一幂等键，服务端只允许一次有效写入）'],
+        ['合法组合', '候选已确认 + 写入失败 是合法组合：候选处理已完成，写入可以按原参数重试，不需要重新确认']
+      ]) +
+      '<p class="ry-hint">技术异常（可重试）可按原参数重试，重试使用原幂等键，不会重复创建正式对象；' +
+      '业务异常（不可自动重试）不提供直接重试，须先补齐前提条件或手工接管。重试前重新校验权限与对象状态，不机械重试。</p>' +
+      (c.writeStatus === '写入失败' ?
+        (String(c.failKind).indexOf('技术异常') >= 0
+          ? '<div class="ry-acts-row" style="margin-top:8px"><button class="ry-btn ry-btn--primary" id="ac-retry">按原参数重试写入</button>' +
+            '<a class="ry-btn" href="' + RY.nav.href('h5/agent/pending.html') + '">到 AI 待处理</a></div>'
+          : '<div class="ry-acts-row" style="margin-top:8px"><a class="ry-btn" href="' + RY.nav.href('h5/agent/pending.html') + '">业务异常：到 AI 待处理补齐前提条件</a></div>') : '') +
+      '</div></div>';
+
+    /* 确认动作 */
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>确认与写入</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">人工核对后确认</span></div></div><div class="ry-hcard__body">';
+
+    if (c.status === '已失效') {
+      html += ui.banner('该候选已失效：来源版本已更新，原候选不可继续确认。失效候选不提供确认入口，也不参与批量确认。', 'bad') +
+        '<div class="ry-acts-row"><a class="ry-btn ry-btn--primary" href="' + RY.nav.href('h5/agent/organize.html') + '">到沟通整理基于最新来源重新生成</a></div>';
+    } else if (c.status === '已忽略') {
+      html += ui.banner('该候选已被忽略，忽略不等于事实：不产生任何正式对象写入，仅保留最小审计记录（忽略原因、时间、人）。', 'warn');
+    } else if (c.status === '已确认' && c.writeStatus === '写入成功') {
+      html += ui.banner('该候选已确认并写入成功。再次确认不会产生第二个正式对象（幂等阻止重复写入）；' +
+        '如需修改，请到正式对象上按正式字段规则纠错，AI 不会回改已写入的正式对象。', 'info') +
+        '<div class="ry-acts-row"><button class="ry-btn" id="ac-again">再次确认（演示幂等阻止）</button>' +
+        (objectLink(c) ? objectLink(c, 'ry-btn ry-btn--primary', '查看正式对象') : '') + '</div>';
+    } else {
+      var v = validate(c);
+      html += ui.banner('可逐条确认，也可勾选多条批量确认；每条都要单独校验并返回写入结果。取消或忽略不写入。', 'info');
+      html += '<div class="ac-fbar"><div class="ry-acts-row">' +
+        (v.ok ? '<button class="ry-btn ry-btn--primary" id="ac-ok">' + (diffText(c) ? '修改后确认并写入' : '确认并写入') + '</button>'
+              : '<button class="ry-btn ry-btn--primary" id="ac-block">确认并写入</button>') +
+        '<button class="ry-btn" id="ac-ignore">忽略（不写入）</button>' +
+        '<button class="ry-btn" id="ac-cancel">取消</button></div>' +
+        (v.ok ? '' : '<p class="ry-hint">' + ui.esc(v.msg) + '</p>') +
+        '<p class="ry-hint">确认前请核对字段值、证据与确定性；确认后 AI 原建议、最终值、差异和确认人都会保留。</p></div>';
+    }
+    html += '</div></div>';
+    return html;
+  }
+
+  function objectLink(c, cls, text) {
+    if (!c.writtenObjectId) return '';
+    var path = c.kind === '候选销售活动' ? 'h5/activity/detail.html?id=' : 'h5/task/detail.html?id=';
+    return '<a class="' + (cls || 'ry-inline-btn') + '" href="' + RY.nav.href(path + encodeURIComponent(c.writtenObjectId)) + '">' +
+      (text || '查看正式对象 ' + ui.esc(c.writtenObjectId)) + '</a>';
+  }
+
+  function resultHtml() {
+    var r = state.result; if (!r) return '';
+    if (r.denied) {
+      return ui.stateCard(r.denied, { title: r.title || '操作被拒绝', body: '<p>' + ui.esc(r.msg) + '</p>',
+        actions: '<button class="ry-btn" data-act="dismiss">知道了</button>' });
+    }
+    var c = S.candidate(r.id);
+    if (r.ok) {
+      var tgt = c.kind === '候选销售活动' ? '正式销售活动' : '正式任务';
+      return '<div class="ac-res ac-res--ok">' +
+        '<div class="ac-fv__h"><span>' + ui.esc(tgt) + '写入成功</span>' + ui.tag('写入成功', 'ok') + '</div>' +
+        ui.kv([
+          ['返回正式对象 ID', objectLink(c) || '<code>' + ui.esc(c.writtenObjectId) + '</code>'],
+          ['候选编号', ui.esc(c.id)],
+          ['幂等键', '<code>' + ui.esc(c.idemKey) + '</code>'],
+          ['确认人／时间', ui.esc(S.userName(c.confirmedBy)) + '　' + ui.esc(c.confirmedAt)],
+          ['最终值来源', diffTextOf(c) || '与 AI 原建议一致（直接确认）']
+        ]) +
+        '<p class="ry-hint">写入只创建该条对应的正式对象：一次沟通默认一条候选销售活动，派生候选任务按确认结果分别写入。' +
+        '活动写入失败时派生任务不继续创建；活动成功、部分任务失败时活动与已成功任务保留。</p>' +
+        '<div class="ry-acts-row"><button class="ry-btn ry-btn--primary" data-act="next">下一条待确认</button>' +
+        '<a class="ry-btn" href="' + RY.nav.href('h5/agent/pending.html') + '">到 AI 待处理</a></div></div>';
+    }
+    var canRetry = String(c.failKind).indexOf('技术异常') >= 0;
+    return '<div class="ac-res ac-res--bad">' +
+      '<div class="ac-fv__h"><span>写入失败</span>' + ui.tag(c.failKind || '写入失败', 'bad') + '</div>' +
+      '<p class="ry-ac-msg">' + ui.esc(r.msg) + '</p>' +
+      ui.kv([
+        ['候选主状态', ui.esc(c.status) + '（候选已确认，写入失败是合法组合）'],
+        ['写入状态', ui.esc(c.writeStatus)],
+        ['失败分类', ui.esc(c.failKind || '—')],
+        ['处理建议', canRetry ? '技术异常：可按原参数重试，重试沿用原幂等键，不重复创建正式对象'
+          : '业务异常：不可自动重试，须先补齐前提条件（如验收入、责任人）或手工接管，禁止无脑重试'],
+        ['幂等键', '<code>' + ui.esc(c.idemKey) + '</code>']
+      ]) +
+      '<div class="ry-acts-row">' + (canRetry ? '<button class="ry-btn ry-btn--primary" data-act="retry">按原参数重试写入</button>' : '') +
+      '<a class="ry-btn" href="' + RY.nav.href('h5/agent/pending.html') + '">到 AI 待处理诊断</a></div></div>';
+  }
+
+  function diffTextOf(c) {
+    if (!c.diff) return '';
+    return ui.esc(c.diff);
+  }
+
+  function render() {
+    var ls = list();
+    var pending = S.candidateList({}).filter(function (c) { return c.status === '待确认'; });
+    var fail = S.candidateList({ writeFail: true });
+    var invalid = S.candidateList({}).filter(function (c) { return c.status === '已失效'; });
+
+    var html = '';
+    html += '<div class="ry-brief">' +
+      '<div class="ry-brief__row"><span class="ry-brief__k">当前待确认</span>' +
+        '<span>' + ui.tag('待确认 ' + pending.length + ' 条', 'warn') + ' ' + ui.tag('写入失败 ' + fail.length + ' 条', 'bad') + '</span></div>' +
+      '<div class="ry-brief__next" style="margin-top:6px">已失效 ' + invalid.length + ' 条（不可继续确认）　共 ' + S.candidateList({}).length + ' 条在本人范围</div>' +
+      '<p class="ry-hint">候选均需人工确认；批量操作逐条校验并返回成功或失败原因。</p></div>';
+
+    html += '<div class="ry-fbar"><div class="ry-fbar__seg">' +
+      ['待确认', '历史', '写入失败'].map(function (t) {
+        return '<button type="button" class="' + (state.tab === t ? 'is-on' : '') + '" data-tab="' + t + '">' + t + '</button>';
+      }).join('') + '</div></div>';
+
+    html += ls.length ? ls.map(rowHtml).join('') : ui.empty('当前分类下没有候选。');
+    if (state.tab === '待确认') html += '<div class="ry-acts-row"><button class="ry-btn ry-btn--primary" id="ac-batch">确认选中候选</button></div>';
+    if (state.batchResults.length) html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>逐条写入结果</h3></div><div class="ry-hcard__body">' +
+      state.batchResults.map(function (r) { return '<p>' + ui.esc(r.id) + ' · ' + ui.tag(r.ok ? '成功' : '失败', r.ok ? 'ok' : 'bad') + ' ' + ui.esc(r.msg) + (r.objectId ? ' · ' + ui.esc(r.objectId) : '') + '</p>'; }).join('') + '</div></div>';
+
+    var c = cur();
+    if (c) {
+      var g = P.guard(PAGE, 'agentCandidates', c.id);
+      if (!g.ok) {
+        html += ui.stateCard(g.kind, { body: '<p>' + ui.esc(g.reason) + '</p>',
+          actions: '<button class="ry-btn" data-act="dismiss">返回列表</button>' });
+      } else {
+        html += detailHtml(c) + resultHtml();
+      }
+    } else {
+      html += '<p class="ry-hint">选择上方任意一条候选查看详情：字段证据、确定性、最终值、写入状态与幂等键。</p>';
+    }
+
+    /* 本页契约 */
+    html += '<div class="ry-hcard ry-hcard--flat" style="margin-top:14px">' +
+      '<div class="ry-hcard__head"><h3>本页契约</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">PG-AI-CONFIRM</span></div></div>' +
+      '<div class="ry-hcard__body">' + ui.kv([
+        ['页面契约', 'PG-AI-CONFIRM · 候选确认'],
+        ['所属模块', 'Agent（05 Agent 候选与人工确认）'],
+        ['端', '企业微信 H5'],
+        ['可进入角色', 'ALL5：R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员（仅本人候选写入；R5 见技术元数据，主管不代销售确认）'],
+        ['PRD 来源', 'prd/05 §4（逐条确认、修改后确认、写入状态与幂等）'],
+        ['覆盖 AC', 'AI-02 AI-03 AI-19 AI-24 AI-61 AI-62'],
+        ['本页视图', '当前待确认｜候选详情｜字段证据与确定性｜修改后确认｜写入状态与幂等'],
+        ['关键边界', '所有已开放候选可勾选批量确认；逐条校验、逐条返回结果；取消／忽略不写入；缺失必填未补齐不写入；重复确认由幂等阻止']
+      ]) + '</div></div>';
+
+    ui.qs('#ac-host').innerHTML = html;
+    bind();
+  }
+
+  /* ---------------------------------------------------------- 交互 */
+
+  function bind() {
+    ui.qsa('[data-batch-id]').forEach(function (el) {
+      el.addEventListener('click', function (e) { e.stopPropagation(); state.selected[el.getAttribute('data-batch-id')] = el.checked; });
+    });
+    var batch = ui.qs('#ac-batch');
+    if (batch) batch.addEventListener('click', function () {
+      var ids = Object.keys(state.selected).filter(function (id) { return state.selected[id]; });
+      if (!ids.length) { ui.toast('请先勾选待确认候选', 'warn'); return; }
+      ui.confirm({
+        title: '批量确认 ' + ids.length + ' 条候选',
+        message: '<p>每条沿用已核对的最终值，按正式对象规则逐条校验。必填缺口、权限或来源失效的条目会失败并保留待处理。</p>',
+        confirmText: '确认并逐条写入',
+        onConfirm: function () {
+          state.batchResults = ids.map(function (id) {
+            var c = S.candidate(id);
+            if (!c || c.status !== '待确认' || c.owner !== u.id) return { id: id, ok: false, msg: '候选已变化或无确认权限' };
+            var values = c.finalValue || c.aiSuggestion || {};
+            var missing = (REQUIRED[c.kind] || []).filter(function (k) { return !String(values[k] || '').trim(); });
+            if (missing.length) return { id: id, ok: false, msg: '必填缺口：' + missing.join('、') };
+            var r = S.candidateConfirm(id, values);
+            return { id: id, ok: r.ok, msg: r.msg, objectId: r.candidate && r.candidate.writtenObjectId || '' };
+          });
+          state.selected = {}; render();
+        }
+      });
+    });
+    ui.qsa('[data-tab]').forEach(function (b) {
+      b.addEventListener('click', function () { state.tab = b.getAttribute('data-tab'); state.sel = ''; state.result = null; render(); });
+    });
+    ui.qsa('[data-cand]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-cand');
+        var c = S.candidate(id);
+        if (!c) return;
+        state.sel = state.sel === id ? '' : id;
+        state.denied = '';
+        initDraft(c);
+        render();
+        if (state.sel) {
+          var el = ui.qs('[data-field="沟通内容"] input, [data-field="任务名称"] input');
+          if (el) el.focus();
+        }
+      });
+    });
+    ui.qsa('[data-act]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var a = b.getAttribute('data-act');
+        if (a === 'dismiss') { state.result = null; render(); }
+        if (a === 'next') {
+          var ls = list().filter(function (x) { return x.status === '待确认'; });
+          var next = ls[0] ? ls[0].id : '';
+          var c = next ? S.candidate(next) : null;
+          state.sel = next; if (c) initDraft(c);
+          render();
+        }
+        if (a === 'retry') doRetry();
+      });
+    });
+
+    /* 字段编辑：只更新差值与内存草稿，不整页重渲染，避免打断输入。 */
+    var c = cur();
+    if (!c) return;
+    ui.qsa('#ac-host [name^="f-"]').forEach(function (el) {
+      var k = el.getAttribute('name').slice(2);
+      function upd() {
+        state.draft[k] = el.value;
+        var box = ui.qs('[data-diff="' + k + '"]');
+        if (box) {
+          var ai = String(c.aiSuggestion[k] === undefined || c.aiSuggestion[k] === null ? '' : c.aiSuggestion[k]);
+          var fin = String(el.value || '');
+          box.innerHTML = ai === fin ? '' : ui.tag('已修改', 'warn') + ' 从「' + ui.esc(ai || '空') + '」改为「' + ui.esc(fin || '空') + '」';
+        }
+        var btn = ui.qs('#ac-ok') || ui.qs('#ac-block');
+        if (btn && state.result === null) { /* 差值变化后按钮文案在渲染时确定，这里只提示需重新校验 */ }
+      }
+      el.addEventListener('input', upd);
+      el.addEventListener('change', upd);
+      upd();
+    });
+
+    var ok = ui.qs('#ac-ok');
+    if (ok) ok.addEventListener('click', function () { askWrite(c, false); });
+    var block = ui.qs('#ac-block');
+    if (block) block.addEventListener('click', function () {
+      var v = validate(c);
+      ui.modal({ title: '阻止该条写入', size: 'sm',
+        body: '<p>' + ui.esc(v.msg) + '</p><p class="ry-hint">缺失字段必须由人补齐后才可写入；AI 不自动兜底、不降级、不编造。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>继续补齐</button>' });
+    });
+    var ignore = ui.qs('#ac-ignore');
+    if (ignore) ignore.addEventListener('click', function () { askIgnore(c); });
+    var cancel = ui.qs('#ac-cancel');
+    if (cancel) cancel.addEventListener('click', function () {
+      state.sel = ''; state.result = null; render();
+      ui.toast('已取消，未写入任何正式对象。', 'ok');
+    });
+    var again = ui.qs('#ac-again');
+    if (again) again.addEventListener('click', function () { doWrite(c, '再次确认'); });
+    var retry = ui.qs('#ac-retry');
+    if (retry) retry.addEventListener('click', doRetry);
+  }
+
+  /* 二次确认：写入前明确展示写入哪个对象、哪些字段、从什么改到什么。 */
+  function askWrite(c, again) {
+    var v = validate(c);
+    if (!v.ok) { ui.toast(v.msg, 'warn'); return; }
+    var d = diffText(c);
+    var rows = keysOf(c).map(function (k) {
+      var ai = c.aiSuggestion[k] === undefined || c.aiSuggestion[k] === null ? '' : String(c.aiSuggestion[k]);
+      var fin = String(state.draft[k] || '');
+      var changed = ai !== fin;
+      return '<li><span>' + ui.esc(k) + '</span><b>' + (changed
+        ? '<s>' + ui.esc(ai || '空') + '</s> → ' + ui.esc(fin || '空') + ' ' + ui.tag('修改', 'warn')
+        : ui.esc(fin || '空')) + '</b></li>';
+    }).join('');
+    ui.confirm({
+      title: again || (d ? '修改后确认并写入' : '确认并写入'),
+      message: ui.kv([
+        ['写入对象', ui.esc(c.kind === '候选销售活动' ? '正式销售活动' : '正式任务') + '（新建 1 条）'],
+        ['归属对象', (c.relatedObjects || []).map(function (r) { return ui.esc(r.type + ' ' + r.id); }).join('、')],
+        ['来源与版本', ui.esc(c.origin) + '｜' + ui.esc(c.sourceVersion)],
+        ['幂等键', '<code>' + ui.esc(c.idemKey) + '</code>'],
+        ['字段差异', d ? ui.esc(d) : '与 AI 原建议一致（直接确认）'],
+        ['不会创建', '不会创建客户、联系人、线索、商机等其他正式对象；不修改已存在的正式对象']
+      ]) + '<ul class="ry-kv ry-kv--tight" style="margin-top:8px">' + rows + '</ul>',
+      confirmText: '确认并写入',
+      onConfirm: function () { doWrite(c, again); }
+    });
+  }
+
+  function askIgnore(c) {
+    var v = validate(c); /* 忽略不需要补齐字段，这里不做阻断，仅提示 */
+    ui.modal({
+      title: '忽略该候选（不写入）', size: 'sm',
+      body: '<p>忽略后候选主状态变为「已忽略」，不产生任何正式对象写入；已忽略候选不再出现在待确认列表。</p>' +
+        ui.field('忽略原因（选填）', ui.textarea('ig-reason', '', '例如：与正式记录重复、内容不属实、已由他人手工录入', 3)) +
+        '<p class="ry-hint">' + (v.ok ? '' : '当前仍有必填字段缺失，但忽略不会写入，因此不阻止。') + '</p>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--danger" id="ac-ig-ok">确认忽略</button>',
+      onOpen: function (el) {
+        ui.qs('#ac-ig-ok', el).addEventListener('click', function () {
+          var reason = ui.qs('[name="ig-reason"]', el).value.trim();
+          var r = S.candidateIgnore(c.id, reason);
+          ui.close();
+          if (!r.ok) { state.result = { id: c.id, denied: 'no-permission', title: '忽略被拒绝', msg: r.msg }; render(); return; }
+          state.result = null;
+          ui.toast('已忽略，未写入任何正式对象。', 'ok');
+          render();
+        });
+      }
+    });
+  }
+
+  /* 写入：调用候选层确认接口，原值、最终值、差异、确认人、写入结果都由候选层落库。 */
+  function doWrite(c, again) {
+    var v = validate(c);
+    if (!v.ok) { state.result = { id: c.id, denied: 'no-permission', title: '阻止该条写入', msg: v.msg }; render(); return; }
+    var writes = again ? c.finalValue || c.aiSuggestion : null;
+    var finalValue = {};
+    keysOf(c).forEach(function (k) { finalValue[k] = state.draft[k] === '' ? '' : state.draft[k]; });
+    var r = S.candidateConfirm(c.id, writes || finalValue);
+    var nc = S.candidate(c.id);
+    state.result = { id: c.id, ok: r.ok, msg: r.msg };
+    render();
+    if (r.ok) ui.toast('已确认并写入正式对象 ' + (nc.writtenObjectId || '') + '。', 'ok');
+    else ui.toast(r.msg, 'warn');
+  }
+
+  function doRetry() {
+    var c = cur() || S.candidate(state.sel);
+    if (!c) { ui.toast('请先选择一条写入失败的候选。', 'warn'); return; }
+    var r = S.candidateRetryWrite(c.id);
+    state.result = { id: c.id, ok: r.ok, msg: r.msg };
+    render();
+    ui.toast(r.ok ? '已按原参数重试并写入成功。' : r.msg, r.ok ? 'ok' : 'warn');
+  }
+
+  var initialCandidate = S.candidateList({ status: '待确认' }).filter(function (c) { return c.id === ui.q('id'); })[0];
+  if (initialCandidate) { state.sel = initialCandidate.id; initDraft(initialCandidate); }
+  render();
+})();
+</script>
+</body>
+</html>

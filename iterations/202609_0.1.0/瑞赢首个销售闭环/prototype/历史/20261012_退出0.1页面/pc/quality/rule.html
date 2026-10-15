@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>质量规则 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：质量规则（四类固定规则，不建设自由规则设计器） */
+  .qr-cols { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; }
+  .qr-card { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); margin-bottom: 10px; overflow: hidden; }
+  .qr-card__h { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 10px 13px; background: #FBFCFC; border-bottom: 1px solid var(--line-soft); }
+  .qr-card__n { font-size: 13.5px; font-weight: 600; }
+  .qr-card__b { padding: 10px 13px; }
+  .qr-k { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px; font-size: 12.5px; line-height: 1.85; }
+  .qr-k > span { color: var(--muted); }
+  @media (max-width: 1180px) { .qr-cols { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="qr-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'quality.rule';
+  var canRerun = P.can('quality.rerun');
+  var TYPE_ORDER = ['完整度缺失', '疑似重复', '关键映射缺失', '同步异常'];
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '质量规则',
+    subtitle: '<b>四类固定规则</b>，规则有版本。<b>不建设自由规则设计器</b>：不提供自定义条件、表达式或阈值编辑器。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '数据质量' }, { label: '质量规则' }],
+    actions: '<a class="ry-btn" href="issue.html">质量问题</a><a class="ry-btn" href="overview.html">数据质量概览</a>'
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#qr-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入质量规则',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示规则名称、检测范围与阈值口径。</p>'
+    });
+    return;
+  }
+
+  function rules() { return S.arr('qualityRules'); }
+  function hit(cur, code, type) {
+    return S.qualityIssueList().filter(function (q) {
+      return q.ruleCode === code && q.resultStatus === '当前存在';
+    }).length;
+  }
+
+  function render() {
+    var list = rules();
+    ui.qs('#qr-host').innerHTML =
+      ui.banner('质量规则是<b>固定四类</b>的检测口径：完整度缺失、疑似重复、关键映射缺失、同步异常。' +
+        '0.1 <b>不建设自由规则设计器</b>——不提供自定义条件、表达式、阈值编辑器，也不允许业务人员新增规则。' +
+        '原因很直接：质量规则一旦可以被随意改写，「为什么这条被拦住了」就无从回答，' +
+        '而质量检测又直接影响建档与商机推进。因此规则的调整走<b>版本</b>：' +
+        '<b>新版本只用于之后的检测，历史数据需要重新检测才按新版本判定</b>，不做追溯重算。', 'info') +
+
+      '<div class="qr-cols" style="margin-top:12px">' +
+        '<div>' + TYPE_ORDER.map(function (t) {
+          var rs = list.filter(function (r) { return r.type === t; });
+          if (!rs.length) return '';
+          return '<h3 style="font-size:13.5px;margin:0 0 8px">' + ui.esc(t) + '　<span class="ry-hint">' + rs.length + ' 条规则</span></h3>' +
+            rs.map(function (r) {
+              var n = hit(null, r.code, r.type);
+              return '<div class="qr-card"><div class="qr-card__h">' +
+                  '<div><div class="qr-card__n">' + ui.esc(r.name) + '</div>' +
+                    '<div class="ry-hint"><span class="ry-code">' + ui.esc(r.code) + '</span>　版本 <span class="ry-code">' + ui.esc(r.version) + '</span></div></div>' +
+                  '<div>' + (r.status === '启用' ? ui.tag('启用', 'ok') : ui.tag('停用', 'muted')) +
+                    (n ? ' ' + ui.tag('命中 ' + n, 'warn') : ' ' + ui.tag('无命中', 'muted')) + '</div>' +
+                '</div>' +
+                '<div class="qr-card__b"><div class="qr-k">' +
+                  '<span>检测范围</span><b>' + ui.esc(r.scope) + '</b>' +
+                  '<span>判定口径</span><b>' + ui.esc(r.threshold) + '</b>' +
+                  '<span>最近执行</span><b>' + ui.esc(r.lastRunAt) + '　累计命中 ' + r.hitCount + ' 次</b>' +
+                  '<span>版本说明</span><b>' + ui.esc(r.note || '—') + '</b>' +
+                '</div></div></div>';
+            }).join('');
+        }).join('') +
+          '<p class="ry-hint">规则只做<b>检测</b>，不改数据、不改状态。' +
+            '检测结果见「质量问题」，需要人工治理时派生统一异常事项。</p>' +
+        '</div>' +
+
+        '<div>' +
+          ui.section('规则版本口径',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>版本来源</span><b>随正式规则口径更新</b></li>' +
+              '<li><span>新版本生效范围</span><b>只用于之后的检测</b></li>' +
+              '<li><span>历史数据</span><b>不追溯重算；需要重新检测才按新版本判定</b></li>' +
+              '<li><span>结果记录</span><b>每条结果记录检测时的规则版本</b></li>' +
+              '<li><span>版本回拨</span><b>不提供</b></li>' +
+              '<li><span>定时生效</span><b>不提供</b></li>' +
+            '</ul>' +
+            (canRerun
+              ? '<div class="ry-acts-row" style="margin-top:8px"><button class="ry-btn ry-btn--primary" id="qr-run">手工重新检测</button></div>' +
+                '<div id="qr-out" style="margin-top:10px"></div>'
+              : '')) +
+
+          ui.section('为什么不做规则设计器',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>可解释性</span><b>固定口径才能回答「为什么这条被判定为问题」</b></li>' +
+              '<li><span>一致性</span><b>避免同一批数据在不同人手里有不同结论</b></li>' +
+              '<li><span>影响面</span><b>质量结果会派生治理动作，不能由任意条件触发</b></li>' +
+              '<li><span>维护成本</span><b>自由表达式难以校验与回归测试</b></li>' +
+            '</ul>' +
+            ui.banner('如果确实需要新的检测口径，应作为<b>正式规则变更</b>进入产品流程，' +
+              '而不是在界面上由管理员临时拼一个条件。0.1 把这条路径明确关闭，避免出现无法解释的拦截。', 'warn')) +
+
+          ui.section('相关页面',
+            ui.kv([
+              ['质量问题', '<a href="issue.html">按规则查看检测结果</a>'],
+              ['数据质量概览', '<a href="overview.html">四类问题与检测链路</a>'],
+              ['异常事项', '<a href="../exception/list.html">需要人工治理的事项</a>'],
+              ['审计', '<a href="../audit/list.html?q=数据质量">质量规则相关审计</a>']
+            ])) +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-QUALITY-RULE</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-QUALITY-RULE · PC · 数据质量</b></li>' +
+        '<li><span>依据</span><b>prd/08 §10</b></li>' +
+        '<li><span>可进入角色</span><b>管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-73</b></li>' +
+        '<li><span>规则集合</span><b>四类质量规则（完整度缺失｜疑似重复｜关键映射缺失｜同步异常）</b></li>' +
+        '<li><span>版本口径</span><b>新版本只用于后续检测；历史不追溯重算</b></li>' +
+        '<li><span>明确不做</span><b>不建设自由规则设计器、不做自定义条件与表达式、不做版本回拨与定时生效</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    var b = ui.qs('#qr-run');
+    if (b) b.addEventListener('click', function () {
+      ui.confirm({
+        title: '手工重新检测',
+        message: '<p>将按<b>当前生效的规则版本</b>重新检测全部结果。</p>' +
+          '<p class="ry-hint">已经修正的源对象，其问题转为「已消除」，关联的统一异常事项同步完成；' +
+          '已忽略的结果不重复计入。规则「最近执行时间」会更新。</p>',
+        confirmText: '开始检测',
+        onConfirm: function () {
+          var r = S.qualityRerun();
+          var el = ui.qs('#qr-out');
+          if (el) el.innerHTML = ui.banner('重新检测完成：<b>已消除 ' + r.cleared + ' 条</b>。', 'brand');
+          ui.toast('重新检测完成，已消除 ' + r.cleared + ' 条。', 'success');
+          render();
+        }
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

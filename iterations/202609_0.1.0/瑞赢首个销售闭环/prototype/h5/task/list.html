@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>任务 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：候选待确认与正式任务分层，范围内再按日期或关系切换。 */
+  .tl-scope { position: sticky; top: 0; z-index: 6; background: var(--bg); padding: 8px 0 6px; }
+  .tl-head { display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px; }
+  .tl-head b { font-size:14px; }
+  .tl-head__actions { display:flex;align-items:center;gap:6px;min-width:0; }
+  .tl-head .ry-btn { padding:6px 8px;font-size:12px;white-space:nowrap; }
+  .tl-head #tl-filter.is-on { border-color:var(--brand);color:var(--brand-ink);background:var(--brand-soft); }
+  #tl-scope-seg { width:100%; }
+  #tl-scope-seg button { flex:1;padding:7px 3px;font-size:12px; }
+  .tl-relation { display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px; }
+  .tl-relation span { font-size:12px;color:var(--muted); }
+  .tl-relation button { border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);font:inherit;font-size:12px;padding:6px 9px; }
+  .tl-relation button.is-on { border-color:var(--brand-line);background:var(--brand-soft);color:var(--brand-ink);font-weight:600; }
+  .tl-scope__hint { font-size: 12px; color: var(--muted); margin: 9px 2px 2px; line-height: 1.4; }
+  .tl-subtabs { display:flex;gap:6px;margin-top:8px;overflow-x:auto; }
+  .tl-subtabs button { border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);font:inherit;font-size:12px;white-space:nowrap;padding:6px 10px;cursor:pointer; }
+  .tl-subtabs button.is-on { border-color:var(--brand-line);background:var(--brand-soft);color:var(--brand-ink);font-weight:600; }
+  .tl-applied { display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:7px; }
+  .tl-applied:empty { display:none; }
+  .tl-applied span { border-radius:6px;background:var(--brand-soft);color:var(--brand-ink);font-size:11px;padding:2px 7px; }
+  .tl-applied button { border:0;background:none;color:var(--brand-ink);font:inherit;font-size:11px;padding:2px 4px;cursor:pointer; }
+  .ry-hlist > ul { list-style:none;margin:0;padding:0; }
+  .tl-group { display:flex;align-items:center;gap:8px;color:var(--ink);font-size:12px;font-weight:700;margin:12px 2px 7px; }
+  .tl-group span { color:var(--faint);font-weight:400; }
+  .tl-card { border:1px solid var(--line);border-left:3px solid var(--brand);border-radius:12px;margin-bottom:8px;padding:10px 11px;overflow:hidden; }
+  .tl-card--closed { border-left-color:var(--line); }
+  .tl-card--overdue { border-left-color:var(--danger); }
+  .tl-card--candidate { border-left-color:var(--warn); }
+  .tl-card .ry-hrow__top { display:flex;align-items:flex-start;gap:8px; }
+  .tl-card .ry-hrow__t { flex:1;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;line-height:1.4;max-height:2.8em; }
+  .tl-card .ry-hrow__tags { flex:0 0 auto; }
+  .tl-card__due { display:flex;align-items:center;gap:7px;margin-top:7px;font-size:12px;color:var(--ink);font-weight:600; }
+  .tl-card__due em { font-style:normal;color:var(--danger);font-size:11px; }
+  .tl-card__due em.is-soon { color:var(--warn); }
+  .tl-card__meta { margin-top:4px;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .tl-card__meta b { color:var(--ink);font-weight:500; }
+  .tl-card .ry-hrow__foot { justify-content:flex-end;margin-top:7px; }
+  .tl-card .ry-hrow__foot .ry-btn { padding:5px 10px;font-size:12px; }
+  .tl-more { text-align: center; padding: 14px 0 4px; }
+  .tl-more.is-hidden { display: none; }
+  .tl-filter-group { margin-bottom:16px; }
+  .tl-filter-group h4 { margin:0 0 8px;font-size:13px; }
+  .tl-filter-options { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
+  .tl-filter-options button { border:1px solid var(--line);border-radius:9px;background:var(--surface);padding:10px 8px;color:var(--ink);font:inherit;font-size:12px;text-align:center;cursor:pointer; }
+  .tl-filter-options button.is-on { border-color:var(--brand);background:var(--brand-soft);color:var(--brand-ink);font-weight:700; }
+  .tl-create-options { display:grid;gap:9px; }
+  .tl-create-options button { width:100%;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:12px;text-align:left;font:inherit;cursor:pointer; }
+  .tl-create-options strong { display:block;font-size:14px;color:var(--ink); }
+  .tl-create-options small { display:block;margin-top:4px;font-size:11px;line-height:1.4;color:var(--muted); }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<!-- H5 外壳：顶部条与底部五入口由 navigation.js 渲染，本页不重复实现 -->
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+
+  <!-- 候选与正式任务分层；各正式任务范围按二级 Tab 展示 -->
+  <div class="tl-scope">
+    <div class="tl-head"><b>任务清单</b><div class="tl-head__actions"><button type="button" class="ry-btn" id="tl-filter">筛选状态与来源</button><button type="button" class="ry-btn ry-btn--primary" id="tl-create">＋ 新建任务</button></div></div>
+    <div class="ry-fbar" style="position:static;padding:0;">
+      <div class="ry-fbar__seg" id="tl-scope-seg">
+        <button type="button" data-scope="candidate">待确认</button>
+        <button type="button" data-scope="mine" class="is-on">我的</button>
+        <button type="button" data-scope="team">团队</button>
+      </div>
+    </div>
+    <div class="tl-relation" id="tl-relation" aria-label="与我的关系，可多选"></div>
+    <div class="tl-subtabs" id="tl-subtabs"></div>
+    <p class="tl-scope__hint" id="tl-hint">—</p>
+    <div class="tl-applied" id="tl-applied"></div>
+  </div>
+
+  <div id="tl-host"></div>
+
+  <div class="tl-more is-hidden" id="tl-more">
+    <button class="ry-btn" id="tl-more-btn">加载更多</button>
+  </div>
+
+  <!-- 本页契约：评审对照用，列出页面契约编号与边界，不承载业务事实 -->
+  <div class="ry-hcard ry-hcard--flat" style="margin-top:14px">
+    <div class="ry-hcard__head"><h3>本页契约</h3><div class="ry-hcard__extra"><span class="h5-sec-note">PG-TASK-LIST</span></div></div>
+    <div class="ry-hcard__body">
+      <ul class="ry-kv ry-kv--tight" id="tl-contract">
+        <li><span>页面契约</span><b>PG-TASK-LIST · 任务与销售活动 · H5</b></li>
+        <li><span>可进入角色</span><b>R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员（ALL5）</b></li>
+        <li><span>依据</span><b>prd/04 §2</b></li>
+        <li><span>覆盖验收</span><b>AC-25 AC-09</b></li>
+        <li><span>本页视图</span><b>待确认｜我的（关系多选：我负责／我参与／我创建；时间：全部／今天／本周／逾期）｜团队（全部／今日／本周／逾期）</b></li>
+        <li><span>列表表达</span><b>待处理优先；混合状态分为待处理、已结束。卡片突出标题、状态、任务时间与关联对象；有开始时间显示“开始—截止”，否则只显示截止时间。完整参与人、成果和取消原因进入详情查看。逾期只标记仍待处理的任务。</b></li>
+        <li><span>候选边界</span><b>当前待确认含需补齐的 AI 任务候选；写入失败仅含已确认但未生成正式任务的候选。缺必填先补齐再确认或手动重试；正式任务筛选只作用于我的和团队</b></li>
+        <li><span>新建入口</span><b>先在弹窗选择会议任务、拜访计划或其他任务，再进入对应创建流程；拜访计划保留独立 visit_id</b></li>
+        <li><span>拜访权限</span><b>拜访计划入口在本 HTML 原型中可点击走查；正式新建权限由拜访源页面及服务端校验，详见拜访页面说明</b></li>
+        <li><span>执行边界</span><b>正式任务创建或指派后直接待处理，由负责人完成；参与人只补充记录；H5 不代他人执行</b></li>
+        <li><span>数据范围</span><b>先按当前身份与对象权限过滤再渲染；仅创建的本人任务可查看但不获得完成权限；无权任务不返回结果、数量与摘要</b></li>
+      </ul>
+      <p class="ry-hint" id="tl-scope-note">—</p>
+    </div>
+  </div>
+
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.task.list';
+  var SIZE = 20;
+  /* 任务来源固定 4 类；阶段生成是「规则生成」的子类，不扩大前台枚举。 */
+  var SOURCES = ['', '自建任务', '主管指派', '沟通提炼', '规则生成'];
+  var BIZ = ['', '客户跟进', '线索跟进', '商机推进', '阶段任务', '客户维护'];
+  var STATUS = ['', '待处理', '已完成', '已取消'];
+  /* 逾期是时间标识；候选待确认不进入正式任务三态。 */
+  var SUBTABS = {
+    candidate: [{ k:'pending', n:'当前待确认' }, { k:'failed', n:'写入失败' }],
+    mine: [{ k: 'all', n: '全部' }, { k: 'today', n: '今天' }, { k: 'week', n: '本周' }, { k: 'overdue', n: '逾期' }],
+    team: [{ k: 'all', n: '全部' }, { k: 'today', n: '今日' }, { k: 'week', n: '本周' }, { k: 'overdue', n: '逾期' }]
+  };
+  var initialScope = ui.q('scope');
+  var initialTime = ui.q('filter');
+  var initialStatus = ui.q('status');
+  var state = {
+    scope: ['candidate', 'mine', 'team'].indexOf(initialScope) >= 0 ? initialScope : 'mine',
+    status: STATUS.indexOf(initialStatus) >= 0 ? initialStatus : '', source: '', bizType: '',
+    sub: { candidate:'pending', mine: ['today', 'week', 'overdue', 'all'].indexOf(initialTime) >= 0 ? initialTime : 'all', team: 'all' },
+    relations: { owner: true, participant: true, creator: false },
+    page: 1
+  };
+
+  RY.nav.h5shell({
+    title: '任务',
+    sub: '待确认 · 我的 · 团队',
+    back: false,
+    nav: 'task',
+    tabbar: true
+  });
+
+  /* ---------------------------------------------------------- 鉴权 */
+  /* 进入页面即重新鉴权；无权限时不展示标题、摘要与数量。 */
+  if (!P.page(PAGE)) {
+    ui.qs('#tl-host').innerHTML = ui.stateCard('no-permission', {
+      title: '没有任务页面的访问权限',
+      body: '<p>' + ui.esc(P.whyNot('task.list') || '当前身份没有「任务」页面权限。') + '</p>' +
+            '<p class="ry-hint">页面权限、动作权限、数据范围与字段规则相互独立；获得其中一个不等于获得其余。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('index.html') + '">返回工作台</a>'
+    });
+    ui.qs('.tl-scope').style.display = 'none';
+    ui.qs('#tl-more').classList.add('is-hidden');
+    ui.qs('#tl-scope-note').textContent = '当前身份无该页面权限，因此不展示任何任务数量与摘要。';
+    return;
+  }
+
+  /* ---------------------------------------------------------- 数据 */
+
+  /* 只取当前用户数据范围内的任务，绝不先取全量再前端隐藏。 */
+  function scoped() {
+    return S.arr('tasks').filter(function (t) { return P.inScope('task', t); });
+  }
+
+  function isMine(t) { return t.owner === S.currentUser().id; }
+  function isOwner(t) { return t.owner === S.currentUser().id; }
+
+  function isToday(t) {
+    return !!t.dueAt && t.dueAt.slice(0, 10) === S.today();
+  }
+  function dateKey(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function isThisWeek(t) {
+    if (!t.dueAt) return false;
+    var now = new Date(S.today() + 'T00:00:00');
+    var monday = new Date(now); monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+    var sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+    return t.dueAt.slice(0, 10) >= dateKey(monday) && t.dueAt.slice(0, 10) <= dateKey(sunday);
+  }
+
+  function filtered() {
+    return scoped().filter(function (t) {
+      if (state.scope === 'mine' && !((state.relations.owner && t.owner === S.currentUser().id) ||
+        (state.relations.participant && (t.collaborators || []).indexOf(S.currentUser().id) >= 0) ||
+        (state.relations.creator && t.createdBy === S.currentUser().id))) return false;
+      if (state.status && t.status !== state.status) return false;
+      if (state.source && t.source !== state.source) return false;
+      if (state.bizType && t.bizType !== state.bizType) return false;
+      var sub = state.sub[state.scope];
+      if (sub === 'today' && !isToday(t)) return false;
+      if (sub === 'week' && !isThisWeek(t)) return false;
+      if (sub === 'overdue' && !S.taskOverdue(t)) return false;
+      return true;
+    }).sort(function (a, b) {
+      var ap = a.status === '待处理', bp = b.status === '待处理';
+      if (ap !== bp) return ap ? -1 : 1;
+      if (ap) return (a.dueAt || '9999').localeCompare(b.dueAt || '9999');
+      return (b.doneAt || b.createdAt || '').localeCompare(a.doneAt || a.createdAt || '');
+    });
+  }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function row(t) {
+    var mine = isMine(t);
+    var acts = '<a class="ry-btn" href="' + RY.nav.href('h5/task/detail.html?id=' + encodeURIComponent(t.id)) + '">详情</a>';
+    /* 单条执行入口：只在本人是责任人且状态允许时出现；其余情况回到详情页判断与留痕。 */
+    if (mine && isOwner(t) && t.status === '待处理') {
+      acts += '<button class="ry-btn ry-btn--primary" data-done="' + ui.esc(t.id) + '">完成</button>';
+    }
+    if (t.createdBy === S.currentUser().id && t.status === '待处理' && t.owner !== S.currentUser().id) {
+      acts += '<button class="ry-btn" data-remind="' + ui.esc(t.id) + '">催办</button>';
+    }
+
+    var timeFlag = t.status !== '待处理' ? '' : S.taskOverdue(t) ? '<em>已逾期</em>' :
+      isToday(t) ? '<em class="is-soon">今日到期</em>' : S.taskSoon(t) ? '<em class="is-soon">临近截止</em>' : '';
+    var cardClass = t.status !== '待处理' ? ' tl-card--closed' : S.taskOverdue(t) ? ' tl-card--overdue' : '';
+    var related = t.related && t.related.name ? t.related.name : '无关联对象';
+    var startAt = t.startAt || t.plannedStartAt || (t.meeting && t.meeting.at) || '';
+    var taskTime = startAt ? '开始 ' + startAt + ' — 截止 ' + (t.dueAt || '未设置') : '截止 ' + (t.dueAt || '未设置');
+    return '<li><div class="ry-hrow tl-card' + cardClass + '">' +
+      '<div class="ry-hrow__top">' +
+        '<span class="ry-hrow__t" title="' + ui.esc(t.name) + '">' + ui.esc(t.name) + '</span>' +
+        '<span class="ry-hrow__tags">' + ui.statusTag(t.status) + '</span>' +
+      '</div>' +
+      '<div class="tl-card__due">' + ui.esc(taskTime) + timeFlag + '</div>' +
+      '<div class="tl-card__meta">' + (state.scope === 'mine' ? [t.owner === S.currentUser().id ? '我负责' : '', (t.collaborators || []).indexOf(S.currentUser().id) >= 0 ? '我参与' : '', t.createdBy === S.currentUser().id ? '我创建' : ''].filter(Boolean).join(' · ') + ' · ' : '') + ui.esc(t.source || '来源未标注') + (t.bizType ? ' · ' + ui.esc(t.bizType) : '') +
+        (t.stageTask ? ' · 阶段任务' : '') + '</div>' +
+      '<div class="tl-card__meta">关联 <b>' + ui.esc(related) + '</b>' +
+        ' · 负责人 <b>' + ui.esc(S.userName(t.owner)) + '</b></div>' +
+      '<div class="ry-hrow__foot">' + acts + '</div>' +
+    '</div></li>';
+  }
+
+  function taskRows(shown, list) {
+    var pendingCount = list.filter(function (t) { return t.status === '待处理'; }).length;
+    var closedCount = list.length - pendingCount;
+    var pending = shown.filter(function (t) { return t.status === '待处理'; });
+    var closed = shown.filter(function (t) { return t.status !== '待处理'; });
+    var mixed = pendingCount > 0 && closedCount > 0;
+    return (pending.length ? (mixed ? '<div class="tl-group">待处理 <span>' + pendingCount + ' 项</span></div>' : '') +
+      '<div class="ry-hlist"><ul>' + pending.map(row).join('') + '</ul></div>' : '') +
+      (closed.length ? (mixed ? '<div class="tl-group">已结束 <span>' + closedCount + ' 项</span></div>' : '') +
+      '<div class="ry-hlist"><ul>' + closed.map(row).join('') + '</ul></div>' : '');
+  }
+
+  function renderRelations() {
+    var host = ui.qs('#tl-relation');
+    host.style.display = state.scope === 'mine' ? 'flex' : 'none';
+    if (state.scope !== 'mine') return;
+    host.innerHTML = '<span>与我的关系</span>' + [['owner','我负责'],['participant','我参与'],['creator','我创建']].map(function (x) {
+      return '<button type="button" data-relation="' + x[0] + '" class="' + (state.relations[x[0]] ? 'is-on' : '') + '" aria-pressed="' + !!state.relations[x[0]] + '">' + x[1] + '</button>';
+    }).join('');
+    ui.qsa('#tl-relation [data-relation]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        var key = button.getAttribute('data-relation');
+        if (state.relations[key] && Object.keys(state.relations).filter(function (k) { return state.relations[k]; }).length === 1) { ui.toast('至少保留一项关系筛选', 'warn'); return; }
+        state.relations[key] = !state.relations[key]; state.page = 1; render();
+      });
+    });
+  }
+
+  function renderSubtabs() {
+    var tabs = SUBTABS[state.scope] || [];
+    ui.qs('#tl-subtabs').innerHTML = tabs.map(function (x) {
+      return '<button type="button" data-sub="' + x.k + '" class="' + (state.sub[state.scope] === x.k ? 'is-on' : '') + '">' + x.n + '</button>';
+    }).join('');
+    ui.qsa('#tl-subtabs [data-sub]').forEach(function (b) {
+      b.addEventListener('click', function () { state.sub[state.scope] = b.getAttribute('data-sub'); state.page = 1; render(); });
+    });
+  }
+
+  function renderCandidates() {
+    if (!P.page('h5.agent.confirm')) {
+      ui.qs('#tl-host').innerHTML = ui.stateCard('no-permission', { title: '没有候选任务查看权限' });
+      ui.qs('#tl-hint').textContent = '候选确认需单独取得 Agent 页面权限。';
+      ui.qs('#tl-more').classList.add('is-hidden');
+      return;
+    }
+    var failed = state.sub.candidate === 'failed';
+    var list = S.candidateList(failed ? { writeFail:true } : { status:'待确认' }).filter(function (c) {
+      return c.kind === '候选任务' && c.owner === S.currentUser().id && P.inScope('candidate', c) && (failed ? c.status === '已确认' : true);
+    }).sort(function (a, b) { return (b.createdAt || '').localeCompare(a.createdAt || ''); });
+    ui.qs('#tl-hint').textContent = failed ? list.length + ' 项已确认但写入失败 · 处理后可重试' : list.length + ' 项待确认候选 · 补齐必填后确认生成正式任务';
+    ui.qs('#tl-more').classList.add('is-hidden');
+    ui.qs('#tl-host').innerHTML = list.length
+      ? '<div class="ry-hlist"><ul>' + list.map(function (c) {
+          var v = failed ? (c.finalValue || c.aiSuggestion || {}) : (c.aiSuggestion || {});
+          return '<li><div class="ry-hrow tl-card tl-card--candidate"><div class="ry-hrow__top">' +
+            '<span class="ry-hrow__t">' + ui.esc(v['任务名称'] || '未命名候选任务') + '</span>' +
+            '<span class="ry-hrow__tags">' + ui.tag(failed ? '写入失败' : (!v['任务名称'] || !v['截止时间'] || !v['责任人'] ? '需补齐' : '待确认'), failed ? 'bad' : 'warn') + '</span></div>' +
+            '<div class="tl-card__due">拟定截止 ' + ui.esc(v['截止时间'] || '待补齐') + '</div>' +
+            (failed ? '<div class="tl-card__meta">失败原因：' + ui.esc(c.failReason || '写入未成功') + '</div>' : '') +
+            '<div class="tl-card__meta">' + ui.esc(c.origin || '来源未标注') +
+              (c.age === '历史待处理' ? ' · 历史待处理' : '') + '</div>' +
+            '<div class="tl-card__meta">关联 <b>' + ui.esc(c.sourceRef && c.sourceRef.name || '无关联对象') + '</b></div>' +
+            '<div class="ry-hrow__foot">' + (failed ? '<button class="ry-btn ry-btn--primary" type="button" data-task-retry="' + ui.esc(c.id) + '">' + ((c.failKind || '').indexOf('不可自动重试') >= 0 ? '补齐并重试' : '重试写入') + '</button>' : '<a class="ry-btn ry-btn--primary" href="' + RY.nav.href('h5/agent/confirm.html?id=' + encodeURIComponent(c.id)) + '">查看并确认</a>') + '</div>' +
+            '</div></li>';
+        }).join('') + '</ul></div>'
+      : ui.stateCard('empty', { title: failed ? '暂无写入失败任务' : '暂无待确认候选任务', body: '<p class="ry-hint">' + (failed ? '已确认但未成功创建正式任务的候选会出现在这里。' : '新候选由 AI 整理后进入此处。') + '</p>' });
+    ui.qsa('#tl-host [data-task-retry]').forEach(function (button) { button.addEventListener('click', function () { retryCandidate(button.getAttribute('data-task-retry')); }); });
+  }
+  function retryCandidate(id) {
+    var c = S.candidate(id); if (!c || c.owner !== S.currentUser().id || c.status !== '已确认' || c.writeStatus !== '写入失败') { ui.toast('候选状态已变化，请刷新。', 'warn'); render(); return; }
+    var business = (c.failKind || '').indexOf('不可自动重试') >= 0;
+    if (!business) { var direct = S.candidateRetryWrite(id); ui.toast(direct.ok ? '正式任务已创建。' : direct.msg, direct.ok ? 'success' : 'warn'); render(); return; }
+    var v = c.finalValue || c.aiSuggestion || {};
+    ui.modal({ title:'补齐并重试写入', body:'<p class="ry-hint">失败原因：' + ui.esc(c.failReason || '—') + '</p>' +
+      ui.field('任务名称', '<input class="ry-input" id="tl-retry-name" value="' + ui.esc(v['任务名称'] || '') + '">', '', true) +
+      ui.field('截止时间', '<input class="ry-input" id="tl-retry-due" value="' + ui.esc(v['截止时间'] || '') + '" placeholder="YYYY-MM-DD HH:mm">', '', true) +
+      ui.field('责任人', '<select class="ry-input" id="tl-retry-owner">' + S.all('users').filter(function (p) { return p.role === 'R1' || p.role === 'R2'; }).map(function (p) { return '<option value="' + ui.esc(p.id) + '"' + (v['责任人'] === p.id ? ' selected' : '') + '>' + ui.esc(p.name) + '</option>'; }).join('') + '</select>', '', true),
+      footer:'<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="tl-retry-submit">提交重试</button>',
+      onOpen:function (host) { ui.qs('#tl-retry-submit', host).addEventListener('click', function () {
+        var name = ui.qs('#tl-retry-name', host).value.trim(), due = ui.qs('#tl-retry-due', host).value.trim(), owner = ui.qs('#tl-retry-owner', host).value;
+        if (!name || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(due) || !owner) { ui.toast('请补齐任务名称、有效截止时间和责任人。', 'warn'); return; }
+        var result = S.candidateRetryWrite(id, { '任务名称':name, '截止时间':due, '责任人':owner });
+        ui.toast(result.ok ? '正式任务已创建。' : result.msg, result.ok ? 'success' : 'warn'); if (result.ok) { ui.close(); render(); }
+      }); }
+    });
+  }
+
+  function render() {
+    var activeFilters = [state.status, state.source, state.bizType].filter(Boolean);
+    ui.qs('#tl-filter').textContent = activeFilters.length
+      ? '筛选状态与来源（' + activeFilters.length + '）'
+      : '筛选状态与来源';
+    ui.qs('#tl-filter').classList.toggle('is-on', activeFilters.length > 0);
+    ui.qs('#tl-filter').title = activeFilters.length ? '已选：' + activeFilters.join(' · ') : '筛选正式任务状态、来源与业务类型';
+    renderRelations();
+    renderSubtabs();
+    ui.qs('#tl-applied').innerHTML = state.scope === 'candidate' || !activeFilters.length ? '' :
+      activeFilters.map(function (x) { return '<span>' + ui.esc(x) + '</span>'; }).join('') +
+      '<button type="button" id="tl-clear-filter">清除筛选</button>';
+    var clearFilter = ui.qs('#tl-clear-filter');
+    if (clearFilter) clearFilter.addEventListener('click', function () {
+      state.status = ''; state.source = ''; state.bizType = ''; state.page = 1; render();
+    });
+    if (state.scope === 'candidate') { renderCandidates(); return; }
+    var list = filtered();
+    var shown = list.slice(0, state.page * SIZE);
+
+    if (!list.length) {
+      ui.qs('#tl-host').innerHTML = ui.stateCard('empty', {
+        title: '此分类暂无任务',
+        body: '<p class="ry-hint">可切换上方分类或调整筛选条件。</p>'
+      });
+      ui.qs('#tl-more').classList.add('is-hidden');
+    } else {
+      ui.qs('#tl-host').innerHTML = taskRows(shown, list);
+      var more = shown.length < list.length;
+      ui.qs('#tl-more').classList.toggle('is-hidden', !more);
+      ui.qs('#tl-more-btn').textContent = '加载更多（已显示 ' + shown.length + ' / ' + list.length + '）';
+    }
+
+    ui.qs('#tl-hint').textContent = list.length + ' 项任务' +
+      (state.status ? ' · ' + state.status : ' · 待处理优先') +
+      (state.scope === 'mine' ? ' · 按所选关系去重' : '');
+
+    ui.qsa('#tl-host [data-done]').forEach(function (b) {
+      b.addEventListener('click', function () { quick(b.getAttribute('data-done'), '完成'); });
+    });
+    ui.qsa('#tl-host [data-remind]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var r = S.remindTask(b.getAttribute('data-remind'));
+        ui.toast(r.msg, r.ok ? 'ok' : 'warn');
+        if (r.ok) render();
+      });
+    });
+  }
+
+  /* 单条执行：不做批量，成功后回到列表并保留当前筛选。 */
+  function quick(id) {
+    var t = S.task(id);
+    RY.nav.sheet({
+      title: '完成任务',
+      sub: t ? t.name : '',
+      body: ui.field('完成说明', ui.textarea('result', '', '说明本次完成的内容与成果', 3), '', false) +
+        '<div class="ry-field"><label for="tl-attachments">成果附件（图片、文件或视频）</label><input type="file" id="tl-attachments" multiple><p class="ry-hint" id="tl-attachment-list">可选择多个附件；原型仅记录文件名与大小，正式上传需接入文件服务。</p></div>' +
+        '<p class="ry-hint">保存后任务直接进入「已完成」，成果和操作记录可在详情查看。</p>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="tl-do">确定</button>',
+      onOpen: function (host, close) {
+        var attachmentInput = ui.qs('#tl-attachments', host);
+        attachmentInput.addEventListener('change', function () {
+          ui.qs('#tl-attachment-list', host).textContent = attachmentInput.files.length
+            ? '已选择：' + Array.from(attachmentInput.files).map(function (f) { return f.name; }).join('、')
+            : '可选择多个附件；原型仅记录文件名与大小，正式上传需接入文件服务。';
+        });
+        host.addEventListener('click', function (e) {
+          if (!e.target.closest('#tl-do')) return;
+          var v = ui.formValues(ui.qs('#ry-sheet'));
+          var r = S.taskAct(id, '完成', { result: v.result || '', attachments: Array.from(attachmentInput.files).map(function (f) {
+            return { name: f.name, size: f.size, type: f.type };
+          }) });
+          if (!r.ok) { ui.toast(r.msg || '操作未完成', 'warn'); return; }
+          close();
+          ui.toast(r.msg || '已完成', 'ok');
+          render();
+        });
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------- 交互 */
+
+  ui.qsa('#tl-scope-seg [data-scope]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      state.scope = b.getAttribute('data-scope'); state.page = 1;
+      ui.qsa('#tl-scope-seg [data-scope]').forEach(function (x) { x.classList.toggle('is-on', x === b); });
+      render();
+    });
+  });
+
+  ui.qs('#tl-more-btn').addEventListener('click', function () { state.page++; render(); });
+
+  ui.qs('#tl-filter').addEventListener('click', function () {
+    function options(name, label, opts, cur) {
+      return '<section class="tl-filter-group"><h4>' + label + '</h4><div class="tl-filter-options">' + opts.map(function (o) {
+        return '<button type="button" data-k="' + name + '" data-v="' + ui.esc(o) + '"' +
+          (cur === o ? ' class="is-on"' : '') + '>' + ui.esc(o || '全部') + '</button>';
+      }).join('') + '</div></section>';
+    }
+    ui.modal({
+      title: '筛选正式任务', subtitle: '适用于我的和团队',
+      body: options('status', '任务状态', STATUS, state.status) +
+        options('source', '任务来源', SOURCES, state.source) +
+        options('bizType', '业务类型', BIZ, state.bizType) +
+        '<p class="ry-hint">逾期是按截止时间派生的时间标识，不是任务状态；筛选不会改变数据范围本身。</p>',
+      footer: '<button class="ry-btn" data-reset>重置</button><button class="ry-btn ry-btn--primary" data-apply>查看结果</button>',
+      onOpen: function (host) {
+        var draft = { status: state.status, source: state.source, bizType: state.bizType };
+        host.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-k]');
+          if (b) {
+            draft[b.getAttribute('data-k')] = b.getAttribute('data-v');
+            b.parentNode.querySelectorAll('button').forEach(function (x) { x.classList.remove('is-on'); });
+            b.classList.add('is-on');
+            return;
+          }
+          if (e.target.closest('[data-reset]')) {
+            draft = { status: '', source: '', bizType: '' };
+            host.querySelectorAll('[data-k]').forEach(function (x) {
+              x.classList.toggle('is-on', x.getAttribute('data-v') === '');
+            });
+            return;
+          }
+          if (e.target.closest('[data-apply]')) {
+            state.status = draft.status; state.source = draft.source; state.bizType = draft.bizType;
+            state.page = 1;
+            ui.close(); render();
+          }
+        });
+      }
+    });
+  });
+
+  ui.qs('#tl-create').addEventListener('click', function () {
+    ui.modal({
+      title: '选择新建类型', subtitle: '选择后进入对应的创建页面', size: 'sm',
+      body: '<div class="tl-create-options">' +
+        '<button type="button" data-create-kind="meeting"><strong>会议任务</strong><small>安排会议时间、议程、负责人和参与人</small></button>' +
+        '<button type="button" data-create-kind="visit"><strong>拜访计划</strong><small>进入正式拜访流程，创建独立拜访记录</small></button>' +
+        '<button type="button" data-create-kind="other"><strong>其他任务</strong><small>创建客户跟进等普通任务</small></button>' +
+        '</div>',
+      onOpen: function (host) {
+        host.addEventListener('click', function (e) {
+          var choice = e.target.closest('[data-create-kind]');
+          if (!choice) return;
+          var kind = choice.getAttribute('data-create-kind');
+          if (kind === 'visit') {
+            RY.nav.go('h5/visit/list.html?create=1');
+          } else {
+            if (!P.can('task.create')) { ui.toast('当前身份不能新建任务', 'warn'); return; }
+            RY.nav.go('h5/task/create.html?type=' + kind);
+          }
+        });
+      }
+    });
+  });
+
+  ui.qs('#tl-scope-note').textContent =
+    '当前数据范围：' + P.dataScope(S.currentUser()).label +
+    '　任务分派后由负责人执行，H5 不提供代他人执行，也不做批量操作。';
+
+  ui.qsa('#tl-scope-seg [data-scope]').forEach(function (b) {
+    b.classList.toggle('is-on', b.getAttribute('data-scope') === state.scope);
+  });
+  render();
+  if (ui.q('create') === '1') ui.qs('#tl-create').click();
+})();
+</script>
+</body>
+</html>

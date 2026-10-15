@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=1280"><title>拜访规则详情 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css"><link rel="stylesheet" href="../../assets/css/pc-common.css"><link rel="stylesheet" href="../../assets/css/config-rule-ui.css">
+<style>.vr-scope{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0 20px}.vr-scope>div{border:1px solid var(--line);border-radius:8px;padding:10px}.vr-scope b,.vr-check{display:block;margin-bottom:8px}.vr-check{font-size:12px}.vr-params{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}@media(max-width:1100px){.vr-scope{grid-template-columns:repeat(2,1fr)}}</style></head>
+<body data-root="../../"><div class="ry-app"><aside class="ry-side" id="ry-side"></aside><div class="ry-main"><header class="ry-top" id="ry-top"></header><div class="ry-head" id="ry-head"></div><main class="ry-page" id="ry-page"><div id="vr-host"></div></main></div></div>
+<script src="../../assets/js/demo-data.js"></script><script src="../../assets/js/prototype-store.js"></script><script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script><script src="../../assets/js/common-actions.js"></script><script src="../../assets/js/navigation.js"></script><script src="../../assets/js/page-manifest.js"></script><script src="../../assets/js/visit-rule-form.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, id = ui.q('id'), edit = ui.q('mode') === 'edit';
+  var canEdit = RY.perm.can('visitRule.edit'), canPublish = RY.perm.can('config.publish'), canToggle = RY.perm.can('config.toggle');
+  var r = S.configBList('visitRules').filter(function (x) { return x.id === id; })[0];
+  RY.nav.shell({ nav: 'cfg.visit', title: r ? r.name : '拜访规则详情',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '拜访规则', href: 'pc/config/visit-rule.html' }, { label: '规则详情' }] });
+  var g = RY.perm.guard('cfg.visit', null, null);
+  if (!g.ok || !r || !RY.visitRuleForm.viewerCanRead(r, S.currentUser())) { ui.qs('#vr-host').innerHTML = ui.stateCard(g.ok ? 'unavailable' : g.kind, { title: '规则不可查看', body: g.ok ? '未找到当前身份可查看的生效版本。' : ui.esc(g.reason) }); return; }
+  function versions() { return S.configBList('visitRules').filter(function (x) { return x.familyCode === r.familyCode && RY.visitRuleForm.viewerCanRead(x, S.currentUser()); }).sort(function (a, b) { return b.version.localeCompare(a.version); }); }
+  function view() {
+    return '<div class="cr-grid cr-grid--wide">' +
+      ui.section('适用范围', ui.kv([
+        ['匹配对象', ui.esc(RY.visitRuleForm.scopeText(r))],
+        ['校验说明', ui.esc(r.checkRule || '—')]
+      ]), '<button type="button" data-pcn-rule="cfgVisitScope"></button>') +
+      ui.section('异常提示参数', ui.kv([
+        ['签到半径', r.radius + ' 米'], ['定位精度阈值', '≤ ' + r.accuracy + ' 米'],
+        ['签到签退间隔', r.duration + ' 分钟'],
+        ['现场图片', r.imageRequired ? '缺少时提示异常' : '不检查缺少图片'],
+        ['异常处理说明', ui.esc(r.exceptionRule || '—')]
+      ]), '<button type="button" data-pcn-rule="cfgVisitAnomaly"></button>') + '</div>';
+  }
+  function render() {
+    r = S.configBList('visitRules').filter(function (x) { return x.id === id; })[0];
+    var acts = '<a class="ry-btn" href="visit-rule.html">返回规则列表</a><span class="cr-toolbar__note"></span>';
+    if (canEdit && r.status === '草稿') acts += '<button class="ry-btn" id="vr-edit">' + (edit ? '取消编辑' : '编辑草稿') + '</button><button class="ry-btn" id="vr-validate">校验</button>';
+    if (canPublish && r.status === '草稿') acts += '<button class="ry-btn ry-btn--primary" id="vr-publish">立即发布</button>';
+    if (canEdit && r.status !== '草稿') acts += '<button class="ry-btn" id="vr-copy">' + (r.status === '生效' ? '生成新草稿' : '从此版本复制草稿') + '</button>';
+    if (canToggle && r.status === '生效') acts += '<button class="ry-btn" id="vr-disable">停用</button>';
+    var history = versions().map(function (x) {
+      return '<li><a href="visit-rule-detail.html?id=' + encodeURIComponent(x.id) + '">' + ui.esc(x.code) + '</a>　' + ui.statusTag(x.status) + '　' + ui.esc(x.publishedAt || '未发布') + '</li>';
+    }).join('');
+    ui.qs('#vr-host').innerHTML = '<div class="cr-hero"><div><div class="cr-hero__eyebrow">拜访规则 · ' + ui.esc(r.code) + '</div><h2>' + ui.esc(r.name) + '　' + ui.statusTag(r.status) + '</h2><p>版本 ' + ui.esc(r.version) + '</p></div><div class="cr-hero__stats"><div><span>发布时间</span><b style="font-size:12px">' + ui.esc(r.publishedAt || '未发布') + '</b></div></div></div>' +
+      '<div class="cr-toolbar">' + acts + '<button type="button" data-pcn-rule="cfgVisitVersion"></button></div>' +
+      (edit && r.status === '草稿' && canEdit ? RY.visitRuleForm.render(r, false) +
+        '<div class="ry-acts-row" style="margin:12px 0"><button class="ry-btn ry-btn--primary" id="vr-save">保存草稿</button></div>' : view()) +
+      '<div id="vr-result"></div>' +
+      ui.section('版本历史', '<ul class="ry-kv ry-kv--tight">' + history + '</ul>', '<button type="button" data-pcn-rule="cfgVisitHistory"></button>');
+    var editBtn = ui.qs('#vr-edit');
+    if (editBtn) editBtn.onclick = function () { edit = !edit; render(); };
+    var save = ui.qs('#vr-save');
+    if (save) save.onclick = function () {
+      var data = RY.visitRuleForm.read(ui.qs('#vr-host'));
+      if (!data.name || !(data.radius > 0) || !(data.accuracy > 0) || !(data.duration > 0)) { ui.toast('名称和三个正数参数均必填。', 'warn'); return; }
+      data.scope = RY.visitRuleForm.scopeText(data);
+      delete data.familyCode;
+      var res = S.configBSaveDraft('visitRules', id, data, '编辑拜访规则草稿');
+      if (!res.ok) { ui.toast(res.msg, 'warn'); return; }
+      edit = false; render(); ui.toast('草稿已保存', 'success');
+    };
+    var validate = ui.qs('#vr-validate');
+    if (validate) validate.onclick = function () { var result = S.configBValidate('visitRules', id); ui.qs('#vr-result').innerHTML = ui.banner(result.ok ? '校验通过，可以发布。' : ui.esc(result.msg), result.ok ? 'brand' : 'danger'); };
+    var publish = ui.qs('#vr-publish');
+    if (publish) publish.onclick = function () { reasonDialog('立即发布', '发布原因', function (reason) { return S.configBPublish('visitRules', id, reason); }); };
+    var copy = ui.qs('#vr-copy');
+    if (copy) copy.onclick = function () {
+      var result = S.visitRuleCloneDraft(id);
+      if (!result.ok) { ui.toast(result.msg, 'warn'); return; }
+      location.href = 'visit-rule-detail.html?id=' + encodeURIComponent(result.item.id) + '&mode=edit';
+    };
+    var disable = ui.qs('#vr-disable');
+    if (disable) disable.onclick = function () { reasonDialog('停用规则', '停用原因', function (reason) { return S.visitRuleDisable(id, reason); }); };
+    ui.bindDenied('#ry-page');
+  }
+  function reasonDialog(title, label, action) {
+    ui.modal({ title: title, size: 'md', body: ui.field(label, ui.textarea('reason', '', '请说明原因', 3), '', true),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="vr-confirm">确认</button>',
+      onOpen: function (el) { ui.qs('#vr-confirm', el).onclick = function () {
+        var reason = (ui.formValues(el).reason || '').trim();
+        if (!reason) { ui.toast(label + '必填', 'warn'); return; }
+        var result = action(reason);
+        if (!result.ok) { ui.toast(result.msg, 'warn'); return; }
+        ui.close(); edit = false; render(); ui.toast(title + '成功', 'success');
+      }; }
+    });
+  }
+  render();
+})();
+</script><script src="../../assets/js/pc-page-notes.js"></script>
+</body></html>

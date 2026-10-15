@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>新建商机 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：新建商机（客户、名称、唯一主业务线、销售场景与模板匹配结果）。 */
+  .oc-pick { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; background: var(--surface); }
+  .oc-pick__m { flex: 1; min-width: 0; }
+  .oc-pick__n { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .oc-pick__s { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.6; }
+  .oc-pick.is-empty .oc-pick__n { color: var(--faint); font-weight: 400; }
+  .oc-match { border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; background: var(--surface); }
+  .oc-match.is-ok { border-color: var(--brand-line); background: var(--brand-soft); }
+  .oc-match.is-bad { border-color: var(--danger-line); background: var(--danger-soft); }
+  .oc-match__h { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; }
+  .oc-issue { border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; margin-bottom: 7px; background: var(--surface); font-size: 12px; line-height: 1.7; }
+  .oc-issue__h { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; font-weight: 600; margin-bottom: 4px; }
+  .oc-issue__r { color: var(--brand-ink); }
+  .oc-issue__r.is-bad { color: var(--danger); font-weight: 600; }
+  .oc-stage { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+  .oc-stage__i { flex: 1 1 0; min-width: 60px; text-align: center; font-size: 10.5px; padding: 5px 3px; border-radius: 7px; border: 1px solid var(--line); color: var(--muted); background: var(--surface); }
+  .oc-stage__i.is-now { border-color: var(--brand); background: var(--brand); color: #fff; font-weight: 600; }
+  .oc-bar { background: var(--surface); padding: 10px 11px 11px; border: 1px solid var(--line); border-radius: 10px; margin-top: 12px; }
+  .oc-bar .ry-btn { width: 100%; }
+  .oc-copy { width: 100%; font-size: 11.5px; line-height: 1.7; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<!-- H5 外壳：顶部条与底部五入口由 navigation.js 渲染，本页不重复实现 -->
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+  <div id="oc-host"></div>
+
+  <div class="oc-bar is-hidden" id="oc-bar" style="display:none">
+    <button class="ry-btn ry-btn--primary" id="oc-submit">创建商机</button>
+    <p class="ry-hint" style="text-align:center;margin:7px 0 0">创建最低条件只有客户、商机名称、恰好一条主业务线和销售场景；预算、预计金额、产品、联系人和预计成交时间都不是创建条件。</p>
+  </div>
+
+  <!-- 本页契约：评审对照用，列出页面契约编号与边界，不承载业务事实 -->
+  <div class="ry-hcard ry-hcard--flat" style="margin-top:14px">
+    <div class="ry-hcard__head"><h3>本页契约</h3><div class="ry-hcard__extra"><span class="h5-sec-note">PG-OPP-CREATE</span></div></div>
+    <div class="ry-hcard__body">
+      <ul class="ry-kv ry-kv--tight">
+        <li><span>页面契约</span><b>PG-OPP-CREATE · H5 · 商机</b></li>
+        <li><span>可进入角色</span><b>R1 销售｜R2 销售主管</b></li>
+        <li><span>依据</span><b>prd/03 §2～§4</b></li>
+        <li><span>覆盖验收</span><b>AC-18 AC-19 AC-17</b></li>
+        <li><span>本页视图</span><b>模板匹配结果｜唯一主业务线与销售场景</b></li>
+        <li><span>创建最低条件</span><b>客户、商机名称、恰好一条主业务线和销售场景</b></li>
+        <li><span>模板匹配</span><b>按「主业务线编码 ＋ 销售场景编码」唯一匹配生效模板；缺失、多匹配、校验服务异常均阻断，不使用通用模板兜底</b></li>
+        <li><span>自动进入阶段</span><b>创建后自动进入模板映射的第一个详细阶段，并按该阶段生成阶段任务</b></li>
+        <li><span>固定门禁</span><b>预计成交时间创建时可为空，但离开「机会确认」前必须补齐，任何角色不能绕过</b></li>
+        <li><span>不展示范围</span><b>产品、金额、竞争信息、模板版本与技术规则：销售只需看到匹配到的模板名称</b></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<!-- 原型说明层：把「业务规则 / 注解 / 待修 / 不做」就地标注在页面上；不含业务逻辑，可整行摘除 -->
+<script src="../../assets/js/prd-notes.js" data-note-page="h5-opp-create"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var u = S.currentUser();
+
+  var PAGE = 'h5.opp.create';
+
+  RY.nav.h5shell({
+    title: '新建商机',
+    sub: '客户、名称、主业务线与销售场景',
+    back: 'h5/opportunity/list.html',
+    nav: 'opp',
+    tabbar: true
+  });
+
+  /* 进入即重新鉴权；无权限时不展示表单、模板名称与任何选项。 */
+  var g = P.guard(PAGE, 'opportunities', null);
+  if (!g.ok) {
+    ui.qs('#oc-host').innerHTML = ui.stateCard(g.kind, {
+      title: g.kind === 'no-permission' ? '没有新建商机的权限' : '当前不可新建商机',
+      body: '<p>' + ui.esc(P.whyNot('opp.create') || g.reason) + '</p>' +
+        '<p class="ry-hint">商机创建仅对销售与销售主管开放；商机团队成员、销售运营、客户数据管理与系统管理员默认没有创建商机的动作权限。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/opportunity/list.html') + '">返回商机列表</a>'
+    });
+    return;
+  }
+
+  ui.qs('#oc-bar').style.display = '';
+
+  /* ---------------------------------------------------------- 页面会话状态 */
+  /* 表单值统一走 vals 缓存：任何重绘后都不依赖 DOM，保证 AC-19「表单内容不丢失」。 */
+  var vals = { customer: '', name: '', line: '', scene: '', close: '', scope: '' };
+  var created = null;                    /* 创建成功后的商机，重复提交不再新建 */
+  var submitting = false;
+  var trace = null;                      /* 匹配异常追踪编号，进入页面后固定 */
+  var IDEM = 'H5-OC-' + u.id + '-' + String(S.all('opportunities').length) + '-' + Math.random().toString(36).slice(2, 6);
+
+  var fromLead = ui.q('leadId') || '';
+  if (fromLead) {
+    var l0 = S.lead(fromLead);
+    if (l0) vals.name = '';
+  }
+
+  function capture() {
+    var host = ui.qs('#oc-host');
+    if (!host || !ui.qs('#oc-name')) return;
+    var v = ui.formValues(host);
+    Object.keys(vals).forEach(function (k) {
+      if (v[k] !== undefined) vals[k] = v[k];
+    });
+  }
+
+  function traceId() {
+    if (!trace) trace = 'TRC-' + S.today().replace(/-/g, '') + '-' + String(Math.abs(hashCode(IDEM)) % 100000).replace(/^(\d{1,4})$/, '0$1');
+    return trace;
+  }
+  function hashCode(s) {
+    var h = 0;
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return h;
+  }
+
+  /* ---------------------------------------------------------- 选项来源 */
+
+  /* 客户候选：只在本人数据范围内。 */
+  function customerOptions() {
+    return S.arr('customers').filter(function (c) { return P.inScope('customer', c); });
+  }
+  function lineOptions() {
+    return S.arr('businessLines');
+  }
+  function pickableLines() {
+    return lineOptions().filter(function (b) { return b.status === '启用'; });
+  }
+  function scenarioOptions(line) {
+    if (!line) return [];
+    return S.enabledScenarioOptions(line);
+  }
+
+  /* 匹配：服务异常为演示开关驱动的真实阻断，其他状态来自数据层真实匹配结果。 */
+  function match() {
+    if (!vals.line || !vals.scene) return null;
+    return S.matchTemplate(vals.line, vals.scene, { forceServiceError: P.flag('serviceError') });
+  }
+  function stateLabel(m) {
+    if (!m) return '待选择';
+    if (m.state === 'ok') return '匹配成功';
+    if (m.state === 'missing') return '无匹配模板';
+    if (m.state === 'multi') return '多匹配模板';
+    return '校验服务异常';
+  }
+
+  /* ---------------------------------------------------------- 视图 */
+  function pickCustomerHtml() {
+    var c = vals.customer ? S.customer(vals.customer) : null;
+    if (!c) {
+      return '<div class="oc-pick is-empty"><div class="oc-pick__m">' +
+        '<div class="oc-pick__n">未选择客户</div>' +
+        '<div class="oc-pick__s">正式商机必须关联有效客户；仅有潜在客户信息或模糊机会时应继续作为线索。</div>' +
+        '</div><button class="ry-btn ry-btn--sm" id="oc-pick-cus">选择客户</button></div>';
+    }
+    var dq = S.qualityPending(c.id);
+    var activeRel = S.activeRelationsOf(c.id)[0];
+    return '<div class="oc-pick"><div class="oc-pick__m">' +
+      '<div class="oc-pick__n">' + ui.esc(c.name) + '</div>' +
+      '<div class="oc-pick__s">' + ui.esc(c.type) + '　' + ui.statusTag(c.status) +
+        (dq ? ' ' + ui.tag('待治理', 'warn') : '') +
+        '<br>' + ui.esc(activeRel ? S.regionName(activeRel.region) : '全国公海') + '　负责人：' + ui.esc(activeRel ? S.userName(activeRel.owner) : '无有效经营关系') +
+      '</div></div><button class="ry-btn ry-btn--sm" id="oc-pick-cus">更换</button></div>' +
+      (dq ? ui.banner('该客户带「待治理」数据质量标签，是一个数据质量标签而非生命周期状态，<b>不阻断正常销售活动</b>，可以创建商机。', 'warn') : '');
+  }
+
+  function matchPanel() {
+    if (!vals.line || !vals.scene) {
+      return '<div class="oc-match"><div class="oc-match__h"><span>模板匹配结果</span>' + ui.tag('待选择', 'muted') + '</div>' +
+        '<div class="oc-pick__s" style="margin-top:6px">先选择主业务线，系统仅展示该业务线已启用场景；销售不直接选择模板。</div></div>';
+    }
+    var m = match();
+    var lineName = S.businessLineName(vals.line);
+    if (m.state !== 'ok') {
+      return '<div class="oc-match is-bad"><div class="oc-match__h"><span>模板匹配结果</span>' + ui.tag(stateLabel(m), 'bad') + '</div>' +
+        '<div class="oc-pick__s" style="margin-top:6px">' + ui.esc(S.matchReason(m, { businessLine: vals.line, scene: sceneName(vals.scene) })) + '</div>' +
+        '<div class="oc-issue" style="margin-top:8px">' +
+          '<div class="oc-issue__h"><span>阻断信息</span><span class="h5-sec-note">可复制给销售运营</span></div>' +
+          '<div class="oc-issue__r">主业务线：' + ui.esc(lineName) + '（' + ui.esc(vals.line) + '）</div>' +
+          '<div class="oc-issue__r">销售场景：' + ui.esc(sceneName(vals.scene)) + '（' + ui.esc(vals.scene) + '）</div>' +
+          '<div class="oc-issue__r is-bad">异常类型：' + ui.esc(stateLabel(m)) + '</div>' +
+          '<div class="oc-issue__r">发生时间：' + ui.esc(S.now()) + '</div>' +
+          '<div class="oc-issue__r">追踪编号：' + ui.esc(traceId()) + '</div>' +
+        '</div>' +
+        '<textarea class="ry-input oc-copy" id="oc-copy" readonly rows="5">' + ui.esc(
+          '【商机创建-模板匹配异常】\n主业务线：' + lineName + '（' + vals.line + '）\n销售场景：' + sceneName(vals.scene) + '（' + vals.scene + '）\n' +
+          '异常类型：' + stateLabel(m) + '\n发生时间：' + S.now() + '\n追踪编号：' + traceId() + '\n页面：企微 H5 新建商机'
+        ) + '</textarea>' +
+        '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">' +
+          '<button class="ry-btn ry-btn--sm" id="oc-copy-btn">复制问题信息</button>' +
+          '<button class="ry-btn ry-btn--sm" id="oc-retry-match">按原组合重试</button>' +
+        '</div>' +
+        '<p class="ry-hint">异常时保留当前页面会话内的输入；修复后按原组合重试即可成功。' +
+        '0.1 不自动套用通用模板，不生成异常工单，也不生成「待配置商机」；可改选组合，或把上面的信息发到现有线下群由销售运营补齐模板配置。</p>' +
+      '</div>';
+    }
+    var t = m.template;
+    var first = t.stages[0];
+    var firstTasks = (first.tasks || []);
+    return '<div class="oc-match is-ok"><div class="oc-match__h"><span>模板匹配结果</span>' + ui.tag('匹配成功', 'ok') + '</div>' +
+      '<div class="oc-pick__s" style="margin-top:6px">' +
+        '匹配到模板：<b>' + ui.esc(t.name) + '</b>（销售只需看到模板名称，不需要理解模板版本与技术规则）<br>' +
+        '匹配键：主业务线 ' + ui.esc(lineName) + ' ＋ 销售场景 ' + ui.esc(sceneName(vals.scene)) + '，唯一匹配 1 条生效模板<br>' +
+        '创建后自动进入首个详细阶段：<b>' + ui.esc(first.name) + '</b>（统一阶段 ' + ui.esc(first.unified) + '）<br>' +
+        '详细阶段数：' + t.stages.length + '　停滞阈值：' + (t.stagnantDays || 14) + ' 个自然日' +
+        (firstTasks.length ? '<br>进入该阶段将生成阶段任务：' + ui.esc(firstTasks.map(function (x) {
+          return x.title + (x.must ? '（必须完成）' : '');
+        }).join('、')) : '<br>进入该阶段不生成阶段任务') +
+      '</div>' +
+      '<div class="oc-stage">' + t.stages.map(function (s, i) {
+        return '<span class="oc-stage__i' + (i === 0 ? ' is-now' : '') + '">' + ui.esc(s.name) + '</span>';
+      }).join('') + '</div>' +
+      '<p class="ry-hint">只能按模板顺序推进，不支持跳级；预计成交时间创建时可以为空，但离开「机会确认」前必须补齐。' +
+      '主业务线或销售场景变化导致命中不同模板时，进入显式模板迁移，不伪造历史、不主动升级最新版本。</p>' +
+    '</div>';
+  }
+
+  function sceneName(code) {
+    var s = S.all('scenarios').filter(function (x) { return x.code === code; })[0];
+    return s ? s.name : (code || '');
+  }
+
+  function formHtml() {
+    var lines = lineOptions(), picks = pickableLines();
+    var scenes = scenarioOptions(vals.line);
+    if (scenes.length === 1 && !vals.scene) vals.scene = scenes[0].code;
+
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>商机基本信息</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">创建最低条件</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+
+      ui.field('客户', pickCustomerHtml(), '正常客户与带「待治理」标签的客户均可创建商机。', true) +
+
+      ui.field('商机名称', ui.input('name', vals.name, '如：远驰科技 2026 年度车电框架采购'), '允许重名；名称是后续识别与检索的主要依据。', true) +
+
+      ui.field('主业务线（恰好一条）', ui.select('line', [{ value: '', label: '请选择' }].concat(lines.map(function (b) {
+        return { value: b.code, label: b.name + (b.status === '启用' ? '' : '（' + b.status + '，不可选择）') };
+      })), vals.line),
+      caseHint(lines, picks), true) +
+
+      ui.field('销售场景', ui.select('scene', [{ value: '', label: vals.line ? '请选择' : '请先选择主业务线' }].concat(scenes.map(function (s) {
+        return { value: s.code, label: s.name };
+      })), vals.scene),
+      '只展示该业务线已启用场景；主业务线表示「卖什么」，销售场景表示「怎么卖」。客户行业、规模、地区、来源和金额等级不作为销售场景。' +
+      (scenes.length === 1 ? '<br>该主业务线下只有一个可用场景，已默认选中并允许查看。' : ''), true) +
+
+      ui.field('预计成交时间', ui.input('close', vals.close, 'YYYY-MM-DD'),
+        '创建时可以为空。<b>离开「机会确认」前必须补齐，这是系统级固定门禁，所有业务线、场景、模板和角色都不能关闭或绕过。</b>') +
+
+      ui.field('业务线范围说明', ui.textarea('scope', vals.scope, '如：车电零部件年度框架供货（选填）', 2),
+        '协同业务线不选择销售场景、不拥有独立流程与阶段，范围以文字说明记录；0.1 创建时不增加协同业务线，需在商机详情维护。') +
+
+      (fromLead ? ui.banner('本商机由线索 <a href="' + RY.nav.href('h5/lead/detail.html?id=' + encodeURIComponent(fromLead)) + '">' +
+        ui.esc(fromLead) + '</a> 转入创建，创建后保留来源关系。' +
+        '<b>仅关联已有客户不构成线索转换</b>；线索转换必须在一次整体事务中新建客户／联系人／商机。', 'info') : '') +
+
+      ui.banner('0.1 商机不建设产品、数量、单价、折扣、预计金额、报价、合同金额与多币种，也不建设竞争信息与部分赢单；' +
+        '自定义字段在商机创建后于详情页按主／协同业务线并集维护，字段本身不配置全局必填或创建必填。', 'info') +
+      '</div></div>' +
+
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>模板匹配结果</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">' + ui.esc(vals.line && vals.scene ? stateLabel(match()) : '待选择') + '</span></div></div>' +
+      '<div class="ry-hcard__body">' + matchPanel() + '</div></div>' +
+
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>提交与幂等</h3></div><div class="ry-hcard__body">' +
+        '<ul class="ry-kv ry-kv--tight">' +
+        '<li><span>提交方式</span><b>单条创建，不提供批量导入入口</b></li>' +
+        '<li><span>弱网处理</span><b>表单内容不丢失；重试和重复点击不生成重复记录</b></li>' +
+        '<li><span>幂等标识</span><b>' + ui.esc(IDEM) + '</b></li>' +
+        '<li><span>并发保护</span><b>提交校验数据版本；已被他人更新时明确提示刷新后重试，不静默覆盖</b></li>' +
+        '<li><span>成功反馈</span><b>成功后展示新建商机编号与首个详细阶段，并可进入详情继续维护</b></li>' +
+        '</ul></div></div>';
+  }
+
+  function caseHint(lines, picks) {
+    var off = lines.filter(function (b) { return b.status !== '启用'; });
+    return '主业务线表示主要销售内容，与销售场景共同确定流程模板。' +
+      (off.length ? '<br>失效或未知业务线不能用于新建：' + ui.esc(off.map(function (b) {
+        return b.name + '（' + b.status + '）';
+      }).join('、')) + '，选择后不可提交。' : '');
+  }
+
+  function successHtml(r) {
+    var o = r.opportunity, t = r.match.template;
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>商机已创建</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">' + ui.esc(o.id) + '</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        ui.banner('商机已创建并自动进入首个详细阶段，阶段任务已按模板生成。', 'brand') +
+        kv([
+          ['商机名称', ui.esc(o.name)],
+          ['客户', ui.esc((S.customer(o.customerId) || {}).name || o.customerId)],
+          ['主业务线', ui.esc(S.businessLineName(vals.line))],
+          ['销售场景', ui.esc(sceneName(o.lines[0].scene))],
+          ['流程模板', ui.esc(t.name)],
+          ['当前详细阶段', ui.esc(t.stages[0].name) + '（统一阶段 ' + ui.esc(t.stages[0].unified) + '）'],
+          ['主负责人', ui.esc(S.userName(o.owner))],
+          ['预计成交时间', o.predictedClose ? ui.esc(o.predictedClose) :
+            ui.tag('待补充', 'warn') + '　离开「机会确认」前必须补齐，否则不能推进阶段'],
+          ['过程状态', ui.statusTag(o.processStatus)],
+          ['创建时间', ui.esc(o.createdAt)],
+          ['幂等标识', ui.esc(IDEM) + '　重复提交不会再次创建']
+        ]) +
+        '<div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">' +
+          '<a class="ry-btn ry-btn--primary" href="' + RY.nav.href('h5/opportunity/detail.html?id=' + encodeURIComponent(o.id)) + '">进入商机详情</a>' +
+          '<a class="ry-btn" href="' + RY.nav.href('h5/opportunity/list.html') + '">返回商机列表</a>' +
+        '</div>' +
+      '</div></div>';
+  }
+
+  function kv(list) {
+    return '<ul class="ry-kv ry-kv--tight">' + list.map(function (r) {
+      return '<li><span>' + ui.esc(r[0]) + '</span><b>' + (r[1] == null || r[1] === '' ? '—' : r[1]) + '</b></li>';
+    }).join('') + '</ul>';
+  }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function render() {
+    ui.qs('#oc-host').innerHTML = created ? successHtml(created) : formHtml();
+    ui.qs('#oc-bar').style.display = created ? 'none' : '';
+    bind();
+  }
+
+  function bind() {
+    var host = ui.qs('#oc-host');
+    var pc = ui.qs('#oc-pick-cus', host);
+    if (pc) pc.addEventListener('click', pickCustomer);
+
+    var line = ui.qs('[name=line]', host);
+    if (line) line.addEventListener('change', function () {
+      capture();
+      vals.line = line.value;
+      /* 主业务线变化：先判断原场景是否仍适用，适用则保留并提示确认，不适用则清空重选（prd/03 §10）。 */
+      var still = scenarioOptions(vals.line).some(function (s) { return s.code === vals.scene; });
+      if (!still) vals.scene = '';
+      render();
+      if (still && vals.scene) ui.toast('主业务线已变更，原销售场景在该业务线下仍适用，已保留。', 'info');
+    });
+
+    var scene = ui.qs('[name=scene]', host);
+    if (scene) scene.addEventListener('change', function () { capture(); vals.scene = scene.value; render(); });
+
+    ['name', 'close', 'scope'].forEach(function (n) {
+      var el = ui.qs('[name=' + n + ']', host);
+      if (el) el.addEventListener('input', function () { vals[n] = el.value; });
+    });
+
+    var cb = ui.qs('#oc-copy-btn', host);
+    if (cb) cb.addEventListener('click', function () {
+      var ta = ui.qs('#oc-copy', host);
+      ta.focus();
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand && document.execCommand('copy'); } catch (e) { ok = false; }
+      ui.toast(ok ? '问题信息已复制，可发给销售运营补齐模板配置。' : '已选中问题信息，请手动复制后发给销售运营。', ok ? 'ok' : 'info');
+    });
+
+    var rm = ui.qs('#oc-retry-match', host);
+    if (rm) rm.addEventListener('click', function () {
+      var m = match();
+      if (m && m.state === 'ok') { render(); ui.toast('已按原组合重试，模板匹配成功。', 'ok'); }
+      else { render(); ui.toast('仍为「' + stateLabel(m) + '」：' + (m ? S.matchReason(m, { businessLine: vals.line, scene: sceneName(vals.scene) }) : ''), 'warn'); }
+    });
+
+    var sb = ui.qs('#oc-submit');
+    if (sb) sb.addEventListener('click', submit);
+    ui.bindDenied(host);
+  }
+
+  /* ---------------------------------------------------------- 客户选择 */
+
+  function pickCustomer() {
+    var list = customerOptions();
+    if (!list.length) {
+      ui.modal({
+        title: '没有可选客户', size: 'sm',
+        body: '<p>当前数据范围内没有客户，暂时无法创建正式商机。</p>' +
+          '<p class="ry-hint">仅有潜在客户信息、联系方式或模糊机会时应继续作为线索。可先在客户模块建档，或联系客户数据管理角色处理。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+      });
+      return;
+    }
+    RY.nav.sheet({
+      title: '选择客户', sub: '只在你的数据范围内检索',
+      body: '<input class="ry-input" id="oc-cq" placeholder="搜客户名称或统一社会信用代码">' +
+        '<div id="oc-clist" style="margin-top:8px">' + custListHtml(list) + '</div>' +
+        ui.banner('一条商机只关联一个当前客户，0.1 不建设参与客户。', 'info'),
+      footer: '<button class="ry-btn" data-close>取消</button>',
+      onOpen: function (host) {
+        var q = ui.qs('#oc-cq', host);
+        q.addEventListener('input', function () {
+          var s = q.value.trim().toLowerCase();
+          var f = list.filter(function (c) {
+            return !s || (c.name + (c.alias || '') + (c.creditCode || '')).toLowerCase().indexOf(s) >= 0;
+          });
+          ui.qs('#oc-clist', host).innerHTML = f.length ? custListHtml(f) : '<p class="ry-hint">没有匹配的客户。</p>';
+          bindCustList(host, list);
+        });
+        bindCustList(host, list);
+      }
+    });
+  }
+
+  function custListHtml(list) {
+    return list.map(function (c) {
+      return '<div class="ry-hcard" style="margin-bottom:7px"><div class="ry-hcard__body">' +
+        '<div class="oc-pick__n">' + ui.esc(c.name) + (c.alias ? '（' + ui.esc(c.alias) + '）' : '') + '</div>' +
+        '<div class="oc-pick__s">' + ui.esc(c.type) + '　' + ui.statusTag(c.status) +
+          (S.qualityPending(c.id) ? ' ' + ui.tag('待治理', 'warn') : '') +
+          '　' + ui.esc(S.regionName(c.region) || '未维护区域') +
+          '<br>' + ui.esc(c.id) + '　' + ui.esc(c.creditCode || '信用代码暂缺') + '</div>' +
+        '<div style="margin-top:7px"><button class="ry-btn ry-btn--sm" data-cus="' + ui.esc(c.id) + '">选择</button></div>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  function bindCustList(host, list) {
+    ui.qsa('[data-cus]', host).forEach(function (b) {
+      b.addEventListener('click', function () {
+        var c = S.customer(b.getAttribute('data-cus'));
+        if (!c) return;
+        vals.customer = c.id;
+        render();
+        ui.toast('已选择客户。', 'ok');
+      });
+    });
+  }
+
+  /* ---------------------------------------------------------- 提交 */
+
+  function submit() {
+    capture();
+    if (created) {
+      /* 重复提交：不再新建，直接回到已创建结果（同一幂等标识）。 */
+      ui.toast('本页已创建商机 ' + created.opportunity.id + '，重复提交不会再次创建。', 'info');
+      render();
+      return;
+    }
+    if (submitting) { ui.toast('正在提交，请勿重复点击。', 'info'); return; }
+
+    var problems = validate();
+    if (problems.length) {
+      ui.modal({
+        title: '还不能创建商机', size: 'sm',
+        subtitle: '一次校验给出全部问题；已保留当前页面填写内容。',
+        body: '<ul class="ry-kv ry-kv--tight">' + problems.map(function (p) {
+            return '<li><span>缺失／阻断</span><b>' + ui.esc(p) + '</b></li>';
+          }).join('') + '</ul>' +
+          '<p class="ry-hint">创建最低条件只有客户、商机名称、恰好一条主业务线和销售场景；' +
+          '缺失、多匹配或校验服务异常均阻断创建，不使用通用模板兜底。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>返回修改</button>'
+      });
+      return;
+    }
+
+    var t = match().template;
+    submitting = true;
+    ui.submitWithRecovery({
+      _retried: false,
+      onSubmit: function () {
+        var r = S.createOpportunity({
+          name: vals.name.trim(),
+          customerId: vals.customer,
+          businessLine: vals.line,
+          scene: vals.scene,
+          predictedClose: vals.close,
+          scope: vals.scope,
+          source: 'H5 新建商机',
+          sourceLead: fromLead
+        });
+        submitting = false;
+        if (!r.ok) {
+          /* 数据层再次校验失败：展示同一个阻断面板，绝不呈现「已成功」。 */
+          ui.modal({
+            title: '创建未成功', size: 'sm',
+            body: '<p>' + ui.esc(r.reason) + '</p>' +
+              '<p class="ry-hint">页面已保留你填写的内容。模板匹配异常时页面展示主业务线、销售场景、异常类型、时间和追踪编号，' +
+              '修复后按原组合重试即可，不会生成「待配置商机」。</p>',
+            footer: '<button class="ry-btn ry-btn--primary" data-close>返回修改</button>'
+          });
+          render();
+          return;
+        }
+        created = r;
+        render();
+        ui.toast('商机已创建并进入首个详细阶段「' + t.stages[0].name + '」。', 'ok');
+      }
+    });
+  }
+
+  function validate() {
+    var out = [];
+    var c = vals.customer ? S.customer(vals.customer) : null;
+    if (!c) out.push('未选择客户：正式商机必须关联有效客户。');
+    if (!String(vals.name || '').trim()) out.push('商机名称必填。');
+
+    if (!vals.line) out.push('未选择主业务线：恰好一条主业务线是创建最低条件。');
+    else {
+      var b = lineOptions().filter(function (x) { return x.code === vals.line; })[0];
+      if (!b) out.push('主业务线 ' + vals.line + ' 未知，不能用于新建。');
+      else if (b.status !== '启用') out.push('主业务线「' + b.name + '」当前为「' + b.status + '」，失效或未知项不能用于新建（已有记录按快照查看）。');
+    }
+    if (!vals.scene) out.push('未选择销售场景。');
+
+    if (vals.line && vals.scene) {
+      var m = match();
+      if (m.state !== 'ok') out.push(S.matchReason(m, { businessLine: vals.line, scene: sceneName(vals.scene) }));
+    }
+    return out;
+  }
+
+  render();
+  ui.bindMasked(document.body);
+})();
+</script>
+</body>
+</html>

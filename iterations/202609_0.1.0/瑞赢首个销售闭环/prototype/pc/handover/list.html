@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>待移交 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：人员待移交（先停用再移交，支持部分成功与失败重试） */
+  .ho-cols { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 14px; align-items: start; }
+  .ho-list { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); overflow: hidden; }
+  .ho-it { display: block; padding: 10px 12px; border-bottom: 1px solid var(--line-soft); cursor: pointer; }
+  .ho-it:last-child { border-bottom: none; }
+  .ho-it:hover { background: var(--line-soft); }
+  .ho-it.is-on { background: var(--brand-soft); }
+  .ho-it__n { font-size: 13px; font-weight: 600; }
+  .ho-it.is-on .ho-it__n { color: var(--brand-ink); }
+  .ho-it__m { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .ho-step { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 12px; }
+  .ho-step__i { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--muted); }
+  .ho-step__i.is-on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+  .ho-step__i.is-done { border-color: var(--ok); color: var(--ok); }
+  .ho-pick { width: 100%; }
+  @media (max-width: 1180px) { .ho-cols { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="ho-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'handover';
+  var canPrecheck = P.can('handover.precheck');
+  var canRun = P.can('handover.execute');
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '待移交',
+    subtitle: '<b>先立即停用，再处理移交</b>。执行支持<b>部分成功与失败重试</b>，成功项不重复；' +
+      '未指定接收人的项<b>保持待移交，不自动进入全国公海</b>。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '人员与权限' }, { label: '待移交' }],
+    actions: '<a class="ry-btn" href="../permission/pending.html">权限待处理</a><a class="ry-btn" href="../people/list.html">人员管理</a>'
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#ho-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入待移交',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示人员姓名、工号、待移交对象与接收人。</p>'
+    });
+    return;
+  }
+
+  var curId = ui.q('id') || '';
+  var STEPS = ['待预检', '待确认', '处理中', '已完成'];
+
+  function all() { return S.handoverList(); }
+  function cur() { return S.handover(curId); }
+  function receiverOptions() {
+    /* 接收人必须是有相应数据范围的自然人；这里只列出人工角色。 */
+    return S.all('users').filter(function (x) { return ['R1', 'R2'].indexOf(x.role) >= 0; })
+      .map(function (x) { return { value: x.id, label: x.name + '　' + x.dept }; });
+  }
+  function lineOk(it, rid) {
+    var u = S.user(rid);
+    if (!u) return '接收人不可用';
+    if (it.type.indexOf('线索') >= 0 && !(u.businessLine || []).length) return '接收人缺业务线数据范围';
+    return '';
+  }
+
+  function render() {
+    var list = all();
+    if (!list.length) { ui.qs('#ho-host').innerHTML = ui.stateCard('empty', { title: '当前没有移交作业' }); return; }
+    if (!curId || !cur()) curId = list[0].id;
+    var h = cur(), done = STEPS.indexOf(h.status === '部分成功' ? '处理中' : (h.status === '已取消' ? '待预检' : h.status));
+
+    ui.qs('#ho-host').innerHTML =
+      ui.banner('人员离岗或资格失效时，<b>先立即停用</b>（登录与数据访问同时终止），' +
+        '<b>再处理业务移交</b>。不能等待移交完成而暂缓停用，也<b>不能为移交重新启用账号</b>。' +
+        '移交作业按对象类型逐项处理：<b>成功项不重复执行</b>，失败项可以重试；' +
+        '没有合适接收人的对象<b>保持待移交</b>，既不自动分配也不自动进入全国公海。' +
+        '历史责任记录保留原人员与工号，<b>不回填、不迁移</b>。', 'info') +
+
+      '<div class="ho-cols" style="margin-top:12px">' +
+        '<div>' +
+          '<div class="ho-list">' + list.map(function (x) {
+            return '<span class="ho-it' + (x.id === curId ? ' is-on' : '') + '" data-ho-pick="' + x.id + '">' +
+              '<div class="ho-it__n">' + ui.esc(x.userName) + '　<span class="ry-code">' + ui.esc(x.empNo) + '</span></div>' +
+              '<div class="ho-it__m">' + ui.esc(x.reason) + '　' + ui.esc(x.at) + '</div>' +
+              '<div style="margin-top:4px">' + ui.statusTag(x.status) + '　<span class="ry-hint">' + x.items.length + ' 项</span></div>' +
+            '</span>';
+          }).join('') + '</div>' +
+          '<div class="ry-card ry-card--flat" style="margin-top:12px"><div class="ry-card__body">' +
+            ui.kv([
+              ['停用与移交顺序', '先停用，再移交'],
+              ['成功项', '不重复执行'],
+              ['失败项', '可重试'],
+              ['无接收人', '保持待移交，不自动进公海'],
+              ['历史责任', '保留原人员与工号']
+            ]) +
+          '</div></div>' +
+        '</div>' +
+
+        '<div>' +
+          '<div class="ho-step">' + STEPS.map(function (s, i) {
+            return '<span class="ho-step__i' + (i === done ? ' is-on' : (i < done ? ' is-done' : '')) + '">' +
+              (i < done ? '✓ ' : '') + s + '</span>';
+          }).join('') + (h.status === '部分成功' ? '<span class="ho-step__i" style="border-color:var(--warn);color:var(--warn);font-weight:600">部分成功</span>' : '') +
+            (h.status === '已取消' ? '<span class="ho-step__i">已取消</span>' : '') + '</div>' +
+
+          ui.section('移交作业　' + h.userName,
+            ui.kv([
+              ['作业编号', h.id], ['人员', h.userName + '　' + h.empNo], ['移交原因', h.reason],
+              ['发起时间', h.at], ['预检时间', h.precheckAt || '未执行'],
+              ['执行时间', h.executedAt || '未执行'], ['当前状态', h.status]
+            ]) +
+            '<p class="ry-hint" style="margin-top:8px">' + ui.esc(h.note) + '</p>') +
+
+          ui.section('待移交对象（' + h.items.length + ' 项）',
+            '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+              '<th style="width:130px">类型</th><th>对象</th><th style="width:200px">接收人</th>' +
+              '<th style="width:150px">预检</th><th style="width:110px">执行结果</th><th>说明</th>' +
+            '</tr></thead><tbody>' + h.items.map(function (it, idx) {
+              return '<tr>' +
+                '<td>' + ui.tag(it.type, it.type.indexOf('客户') >= 0 ? 'brand' : 'info') + '</td>' +
+                '<td><span class="ry-cellname">' + ui.esc(it.name) + '</span><div class="ry-hint ry-code">' + ui.esc(it.id) + '</div></td>' +
+                '<td>' + (h.status === '已完成'
+                  ? ui.esc(S.userName(it.receiver) || '未指定')
+                  : '<select class="ry-input ho-pick" data-ho-recv="' + idx + '">' +
+                    '<option value="">— 未指定接收人 —</option>' + receiverOptions().map(function (o) {
+                      return '<option value="' + o.value + '"' + (it.receiver === o.value ? ' selected' : '') + '>' + ui.esc(o.label) + '</option>';
+                    }).join('') + '</select>') +
+                  (it.receiver && lineOk(it, it.receiver) ? '<div class="ry-hint" style="color:var(--danger)">' + ui.esc(lineOk(it, it.receiver)) + '</div>' : '') +
+                '</td>' +
+                '<td class="ry-hint">' + ui.esc(it.precheck || '未预检') + '</td>' +
+                '<td>' + (it.result === '成功' ? ui.tag('成功', 'ok') : it.result === '失败' ? ui.tag('失败', 'bad') : '<span class="ry-faint">—</span>') + '</td>' +
+                '<td class="ry-hint">' + ui.esc(it.note || '—') + '</td></tr>';
+            }).join('') + '</tbody></table></div>' +
+            '<div class="ry-acts-row" style="margin-top:10px">' +
+              (canPrecheck ? '<button class="ry-btn" id="ho-pre">执行预检</button>' : '') +
+              (canRun ? '<button class="ry-btn ry-btn--primary" id="ho-run">执行移交</button>' : '') +
+              '<span class="ry-hint">预检校验接收人资格与源对象可用性；执行按项处理，不整体回滚</span>' +
+            '</div>' +
+            '<div id="ho-out" style="margin-top:10px"></div>') +
+
+          ui.section('执行口径',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>整体回滚</span><b>不支持：逐项处理，成功项保留</b></li>' +
+              '<li><span>重复执行</span><b>已成功项跳过，不重复迁移</b></li>' +
+              '<li><span>无接收人</span><b>结果记为失败并保留待移交，不自动进公海</b></li>' +
+              '<li><span>源对象已失效／已转化</span><b>不再需要移交，结果记为失败并说明原因</b></li>' +
+              '<li><span>统计口径</span><b>已拒绝的任务不计入待办，也不计入待移交</b></li>' +
+            '</ul>') +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-HANDOVER</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-HANDOVER · PC · 人员与权限</b></li>' +
+        '<li><span>依据</span><b>prd/07 §5</b></li>' +
+        '<li><span>可进入角色</span><b>销售主管/经理｜管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-68</b></li>' +
+        '<li><span>状态集合</span><b>待预检｜待确认｜处理中｜部分成功｜已完成｜已取消</b></li>' +
+        '<li><span>顺序约束</span><b>先停用再移交；不能为移交重新启用账号</b></li>' +
+        '<li><span>明确不做</span><b>不做自动分配、不自动回收至全国公海、不做按比例分摊移交</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    ui.qsa('[data-ho-pick]').forEach(function (b) {
+      b.addEventListener('click', function () { curId = b.getAttribute('data-ho-pick'); window.location.hash = ''; render(); });
+    });
+    ui.qsa('[data-ho-recv]').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        var h = cur(), idx = parseInt(sel.getAttribute('data-ho-recv'), 10);
+        h.items[idx].receiver = sel.value;
+        h.items[idx].result = ''; h.items[idx].note = sel.value ? '' : '未指定接收人，保持待移交';
+        S.save(); render();
+      });
+    });
+    var pb = ui.qs('#ho-pre');
+    if (pb) pb.addEventListener('click', function () {
+      var r = S.handoverPrecheck(curId);
+      if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+      var need = r.handover.items.filter(function (it) { return !it.receiver; }).length;
+      out(need
+        ? ui.banner('预检完成：<b>' + (r.handover.items.length - need) + ' 项可接收</b>，' +
+            '<b>' + need + ' 项未指定接收人</b>。未指定接收人的项在执行时会记为失败并保持待移交，' +
+            '不会自动进入全国公海。', 'warn')
+        : ui.banner('预检完成：全部 ' + r.handover.items.length + ' 项接收人资格校验通过，可以执行移交。', 'brand'));
+      render();
+    });
+    var rb = ui.qs('#ho-run');
+    if (rb) rb.addEventListener('click', function () {
+      var h = cur();
+      var noRecv = h.items.filter(function (it) { return !it.receiver && it.result !== '成功'; }).length;
+      var badRecv = h.items.filter(function (it) { return it.receiver && lineOk(it, it.receiver); }).length;
+      ui.confirm({
+        title: '执行移交　' + h.userName,
+        message: '<p>将按项执行 ' + h.items.length + ' 项移交。<b>逐项处理，不整体回滚</b>：' +
+          '成功项不会重复执行，失败项保留并可在修正后重试。</p>' +
+          (noRecv ? '<p class="ry-hint">其中 <b>' + noRecv + ' 项未指定接收人</b>：执行后记为失败并保持待移交，' +
+            '<b>不会自动进入全国公海</b>。</p>' : '') +
+          (badRecv ? '<p class="ry-hint">其中 <b>' + badRecv + ' 项接收人资格不满足</b>：建议先修正接收人再执行。</p>' : '') +
+          '<p class="ry-hint">历史责任记录保留原人员与工号。</p>',
+        confirmText: '确认执行',
+        onConfirm: function () {
+          var r = S.handoverRun(curId);
+          out(ui.banner('执行完成：<b>成功 ' + r.okc + ' 项</b>，<b>失败 ' + r.fail + ' 项</b>。作业状态：<b>' + r.handover.status + '</b>。' +
+            '<ul class="ry-kv ry-kv--tight" style="margin-top:8px">' + r.results.map(function (x) {
+              return '<li><span>' + (x.ok ? '成功' : '失败') + '</span><b>' + ui.esc(x.id) + '　' + ui.esc(x.msg) + '</b></li>';
+            }).join('') + '</ul>', r.fail ? 'warn' : 'brand'));
+          ui.toast('移交执行完成：成功 ' + r.okc + '，失败 ' + r.fail + '。', r.fail ? 'warn' : 'success');
+          render();
+        }
+      });
+    });
+  }
+
+  function out(html) { var el = ui.qs('#ho-out'); if (el) el.innerHTML = html; }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

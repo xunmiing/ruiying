@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>投递记录 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：消息投递记录（投递状态与阅读状态完全独立） */
+  .md-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+  .md-k { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 6px; font-size: 12.5px; line-height: 1.85; }
+  .md-k > span { color: var(--muted); }
+  @media (max-width: 1180px) { .md-cols { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="mgd-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'msg.delivery';
+  var canRetry = P.can('msg.retry');
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '投递记录',
+    subtitle: '投递状态与阅读状态<b>完全独立</b>；接收人取<b>快照</b>。记录<b>保留 365 天</b>，<b>不允许物理删除</b>。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '消息投递' }, { label: '投递记录' }],
+    actions: '<a class="ry-btn" href="template.html">消息模板</a><a class="ry-btn" href="whitelist.html">企微事件白名单</a>'
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#mgd-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入投递记录',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示接收人、消息事件与失败原因。</p>'
+    });
+    return;
+  }
+
+  var dlF = '', rdF = '', chF = '';
+
+  function all() { return S.deliveryList(); }
+  function filtered() {
+    return all().filter(function (m) {
+      if (dlF && m.deliveryStatus !== dlF) return false;
+      if (rdF && m.readStatus !== rdF) return false;
+      if (chF && m.channel !== chF) return false;
+      return true;
+    });
+  }
+
+  function render() {
+    var list = all(), rows = filtered();
+    var bad = list.filter(function (m) { return m.deliveryStatus === '失败'; }).length;
+    var unread = list.filter(function (m) { return m.readStatus === '未读'; }).length;
+
+    ui.qs('#mgd-host').innerHTML =
+      ui.banner('<b>投递状态</b>（成功／失败／待发送）与<b>阅读状态</b>（已读／未读）是<b>两条独立的事实</b>，' +
+        '因此页面上分成两列，不做合并统计，也不存在「已读才算投递成功」这类隐含口径。' +
+        '接收人取<b>快照</b>：记录里保存的是发送当时的接收人姓名，' +
+        '即使该人员后来改名或离岗，记录仍显示当时是谁收的——' +
+        '消息记录回答「当时发生了什么」，不是「现在这个人叫什么」。' +
+        '记录<b>保留 365 天</b>后由系统清理，<b>不提供物理删除</b>，也没有「清空记录」入口：' +
+        '投递记录是通知行为的证据，能删就等于没有。' +
+        '投递失败<b>不回滚来源业务</b>：任务、拜访、异常事项都不会因为消息没发出去而撤销。', 'info') +
+
+      '<div class="ry-card" style="margin:12px 0"><div class="ry-card__body">' +
+        '<div class="ry-filter__row">' +
+          ui.field('投递状态', ui.select('mgd-dl', [{ value: '', label: '全部' }, { value: '成功', label: '成功' },
+            { value: '失败', label: '失败' }, { value: '待发送', label: '待发送' }], dlF), '', false) +
+          ui.field('阅读状态', ui.select('mgd-rd', [{ value: '', label: '全部' }, { value: '已读', label: '已读' },
+            { value: '未读', label: '未读' }], rdF), '', false) +
+          ui.field('渠道', ui.select('mgd-ch', [{ value: '', label: '全部渠道' }, { value: '站内', label: '站内' },
+            { value: '企业微信', label: '企业微信' }], chF), '', false) +
+        '</div>' +
+        '<div class="ry-filter__act"><button class="ry-btn" id="mgd-reset">重置</button>' +
+          '<button class="ry-btn ry-btn--primary" id="mgd-apply">查询</button></div>' +
+      '</div></div>' +
+
+      '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px">' +
+        [
+          ['投递记录', list.length, ''],
+          ['投递失败', bad, bad ? 'color:var(--danger)' : ''],
+          ['未读', unread, ''],
+          ['企微渠道', list.filter(function (m) { return m.channel === '企业微信'; }).length, '']
+        ].map(function (k) {
+          return '<div class="ry-card ry-card--flat"><div class="ry-card__body"><div class="ry-hint">' + k[0] + '</div>' +
+            '<div style="font-size:22px;font-weight:600;' + k[2] + '">' + k[1] + '</div></div></div>';
+        }).join('') + '</div>' +
+
+      '<div class="md-cols">' +
+        '<div>' +
+          (rows.length
+            ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+              '<th style="width:150px">消息编号</th><th style="width:150px">事件</th><th>接收人</th>' +
+              '<th style="width:110px">渠道</th><th>目标对象</th>' +
+              '<th style="width:110px">投递状态</th><th style="width:100px">阅读状态</th><th style="width:100px">操作</th>' +
+              '</tr></thead><tbody>' + rows.map(function (m) {
+                return '<tr>' +
+                  '<td><span class="ry-code">' + ui.esc(m.msgId) + '</span>' +
+                    '<div class="ry-hint">' + ui.esc(m.at) + '</div></td>' +
+                  '<td>' + ui.esc(m.event) + '<div class="ry-hint">模板 <span class="ry-code">' + ui.esc(m.template) + '</span></div></td>' +
+                  '<td><span class="ry-cellname">' + ui.esc(m.receiverSnapshot) + '</span>' +
+                    '<div class="ry-hint">快照姓名　当前：' + ui.esc(S.userName(m.receiver) || '已不在人员列表') + '</div></td>' +
+                  '<td>' + ui.tag(m.channel, m.channel === '企业微信' ? 'brand' : 'info') + '</td>' +
+                  '<td>' + ui.esc(m.target.type) + '<div class="ry-hint ry-code">' + ui.esc(m.target.id) + '</div></td>' +
+                  '<td>' + ui.statusTag(m.deliveryStatus) +
+                    (m.retryCount ? '<div class="ry-hint">已重试 ' + m.retryCount + ' 次</div>' : '') +
+                    (m.failReason ? '<div class="ry-hint" style="color:var(--danger)">' + ui.esc(m.failReason) + '</div>' : '') + '</td>' +
+                  '<td>' + ui.tag(m.readStatus, m.readStatus === '已读' ? 'ok' : 'muted') +
+                    (m.readAt ? '<div class="ry-hint">' + ui.esc(m.readAt) + '</div>' : '') + '</td>' +
+                  '<td class="ry-tbl-act">' +
+                    (m.deliveryStatus !== '成功' && m.deliveryStatus !== '待发送' && canRetry
+                      ? '<button class="ry-btn ry-btn--sm ry-btn--primary" data-mgd-retry="' + m.id + '">重试投递</button>'
+                      : '<span class="ry-faint">—</span>') +
+                  '</td></tr>';
+              }).join('') + '</tbody></table></div>' +
+              '<p class="ry-hint" style="margin-top:8px">投递记录<b>只增不改</b>：重试成功会在记录上留下重试次数，' +
+                '但不会抹掉曾经失败的事实。超过自动重试上限时会创建「消息投递失败」统一异常事项。</p>'
+            : ui.stateCard('empty', { title: '当前没有匹配的投递记录' })) +
+        '</div>' +
+
+        '<div>' +
+          ui.section('两个状态的独立含义',
+            '<div class="md-k">' +
+              '<span>投递状态</span><b>消息有没有送达渠道</b>' +
+              '<span>阅读状态</span><b>接收人有没有打开</b>' +
+              '<span>两者关系</span><b>完全独立，不做合并</b>' +
+              '<span>投递成功＋未读</span><b>正常情况，不催办、不重发</b>' +
+              '<span>投递失败</span><b>可重试；超限转异常事项</b>' +
+              '<span>回滚来源业务</span><b>不回滚</b>' +
+            '</div>') +
+
+          ui.section('记录保留策略',
+            ui.kv([
+              ['保留期', '365 天'],
+              ['到期处理', '系统清理'],
+              ['物理删除', '不允许'],
+              ['清空入口', '不提供'],
+              ['接收人信息', '取发送当时快照'],
+              ['幂等键', '同一次业务事件不重复投递']
+            ]) +
+            ui.banner('「已读」<b>不等于</b>「处理了」。系统不把阅读状态当作业务完成的依据：' +
+              '任务是否完成看任务状态，拜访是否完成看拜访门槛，日报是否提交看提交版本。' +
+              '这也是页面不提供「按未读催办」的原因——催办应由业务规则决定，而不是由阅读状态决定。', 'warn')) +
+
+          ui.section('相关页面',
+            ui.kv([
+              ['消息模板', '<a href="template.html">事件、标题、正文与变量</a>'],
+              ['企微事件白名单', '<a href="whitelist.html">哪些事件额外推送企微</a>'],
+              ['异常事项', '<a href="../exception/list.html">投递失败超过上限后的事项</a>'],
+              ['H5 站内消息', '<a href="../../h5/message/list.html">销售侧消息列表（重新鉴权）</a>']
+            ])) +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-MSGDELIVERY</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-MSGDELIVERY · PC · 消息投递</b></li>' +
+        '<li><span>依据</span><b>prd/08 §16</b></li>' +
+        '<li><span>可进入角色</span><b>管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-76</b></li>' +
+        '<li><span>状态口径</span><b>投递状态与阅读状态完全独立；接收人快照</b></li>' +
+        '<li><span>保留策略</span><b>保留 365 天；不允许物理删除</b></li>' +
+        '<li><span>明确不做</span><b>不做按未读催办、不合并投递与阅读口径、不提供删除与清空、不因投递失败回滚来源业务</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    ui.qs('#mgd-apply').addEventListener('click', function () {
+      var v = ui.formValues(ui.qs('#mgd-host'));
+      dlF = v['mgd-dl'] || ''; rdF = v['mgd-rd'] || ''; chF = v['mgd-ch'] || ''; render();
+    });
+    ui.qs('#mgd-reset').addEventListener('click', function () { dlF = ''; rdF = ''; chF = ''; render(); });
+    ui.qsa('[data-mgd-retry]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]')) return;
+        var r = S.retryDelivery(b.getAttribute('data-mgd-retry'));
+        ui.toast(r.msg, r.ok ? 'success' : 'warn');
+        render();
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

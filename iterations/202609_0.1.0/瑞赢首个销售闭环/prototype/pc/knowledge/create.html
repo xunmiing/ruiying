@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=1280">
+<title>新建知识文档 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css"><link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>.kc-form{max-width:980px}.kc-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.kc-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.kc-grid .ry-field{margin:0}@media(max-width:900px){.kc-grid{grid-template-columns:1fr}}</style>
+</head>
+<body data-root="../../"><div class="ry-app"><aside class="ry-side" id="ry-side"></aside><div class="ry-main"><header class="ry-top" id="ry-top"></header><div class="ry-head" id="ry-head"></div><main class="ry-page" id="ry-page"><div id="kc-host"></div></main></div></div>
+<script src="../../assets/js/demo-data.js"></script><script src="../../assets/js/prototype-store.js"></script><script src="../../assets/js/knowledge-attachments.js"></script><script src="../../assets/js/permissions.js"></script><script src="../../assets/js/pc-permissions-0-1.js"></script><script src="../../assets/js/common-actions.js"></script><script src="../../assets/js/navigation.js"></script><script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function(){
+  'use strict';
+  var ui=RY.ui,S=RY.store,P=RY.perm;
+  RY.nav.shell({nav:'knowledge.manage',title:'新建知识文档',subtitle:'填写文档内容并保存草稿。',crumbs:[{label:'首页',href:'pc.html'},{label:'知识管理',href:'pc/knowledge/list.html'},{label:'新建知识文档'}],actions:'<a class="ry-btn" href="list.html">返回列表</a>'});
+  var g=P.guard('knowledge.manage',null,null);
+  if(!g.ok||!P.can('knowledge.create')){ui.qs('#kc-host').innerHTML=ui.stateCard('no-permission',{title:'无新建权限',body:'当前账号不能新建知识文档。',extra:'<a class="ry-btn" href="list.html">返回列表</a>'});return;}
+  ui.qs('#kc-host').innerHTML='<div class="ry-card kc-form"><div class="ry-card__body">'+
+    '<div class="kc-grid">'+
+      ui.field('文档编码',ui.input('kc-code','','如：KB-SALES-GUIDE'),'保存后用于稳定识别文档',true)+
+      ui.field('标题',ui.input('kc-title','','请输入知识标题'),'',true)+
+    '</div>'+ui.field('摘要',ui.textarea('kc-summary','','一句话说明适用内容',2),'',false)+
+    ui.field('正文',ui.textarea('kc-body','','输入知识正文；也可只上传附件',14),'',false)+
+    '<label class="ry-field"><span class="ry-field__label">附件（可选）</span><input class="ry-input" type="file" id="kc-file" multiple><span class="ry-hint">可选择多个附件，保存草稿后可在详情查看和下载。</span></label><button type="button" data-pcn-rule="knowledgeFile"></button>'+ 
+    '<div class="kc-grid">'+
+      ui.field('发布范围',ui.select('kc-scope',[{value:'全员',label:'全员'},{value:'指定角色：R1、R2、R5',label:'指定角色：销售、销售主管/经理、管理员（运营）'},{value:'指定业务线：车电业务线',label:'指定业务线：车电业务线'},{value:'指定业务线：车电业务线、新能源业务线',label:'指定业务线：车电业务线、新能源业务线'}],'全员'),'')+
+      ui.grid2(ui.field('允许下载',ui.select('kc-download',[{value:'0',label:'不允许'},{value:'1',label:'允许'}],'0')),
+        ui.field('允许分享',ui.select('kc-share',[{value:'0',label:'不允许'},{value:'1',label:'允许'}],'0')))+
+    '</div><button type="button" data-pcn-rule="knowledgeScope"></button>'+
+    '<div class="kc-actions"><a class="ry-btn" href="list.html">取消</a><button class="ry-btn ry-btn--primary" id="kc-save">保存草稿</button></div>'+
+  '</div></div>';
+  ui.qs('#kc-save').addEventListener('click',function(){
+    var v=ui.formValues(ui.qs('#kc-host'));
+    var files=ui.qs('#kc-file').files;
+    var input={code:v['kc-code'],title:v['kc-title'],summary:v['kc-summary'],body:v['kc-body'],hasFiles:files.length>0,scope:v['kc-scope'],allowDownload:v['kc-download']==='1',allowShare:v['kc-share']==='1'};
+    var r=S.knowledgeCreate(input);
+    if(!r.ok){ui.toast(r.msg,'warn');return;}
+    ui.qs('#kc-save').disabled=true;
+    RYKnowledgeFiles.saveFiles(r.doc.id,files).then(function(attachments){
+      if(attachments.length){
+        var saved=S.knowledgeSaveDraft(r.doc.id,{title:input.title,summary:input.summary,body:input.body,scope:input.scope,allowDownload:input.allowDownload,allowShare:input.allowShare,attachments:attachments});
+        if(!saved.ok) throw new Error(saved.msg);
+      }
+      ui.toast('草稿和附件已保存。','success');location.href='detail.html?id='+encodeURIComponent(r.doc.id);
+    }).catch(function(error){ui.toast('草稿已创建，但附件保存失败：'+error.message,'warn');location.href='detail.html?id='+encodeURIComponent(r.doc.id);});
+  });
+})();
+</script><script src="../../assets/js/pc-page-notes.js"></script></body></html>

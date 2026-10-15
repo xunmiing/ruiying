@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>联系人列表 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  .cl-colset { display:grid; grid-template-columns:1fr; gap:4px; max-height:55vh; overflow-y:auto; }
+  .cl-colset label { display:flex; align-items:center; gap:6px; padding:4px 0; }
+  .cl-table-wrap { overflow-x:auto; max-width:100%; }
+  .cl-table-wrap .ry-table { width:max-content; min-width:100%; }
+  .cl-table-wrap th,.cl-table-wrap td { white-space:nowrap; min-width:108px; }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="cl-filter"></div>
+      <div class="ry-resultbar" id="cl-resultbar"></div>
+      <div id="cl-selbar"></div>
+      <div class="ry-actions-row" style="justify-content:flex-end;margin:8px 0"><button type="button" data-pcn-rule="contactColumns">◆ 列显示</button><button class="ry-btn ry-btn--sm" id="cl-left" type="button" aria-label="向左查看列">←</button><button class="ry-btn ry-btn--sm" id="cl-right" type="button" aria-label="向右查看列">→</button></div>
+      <div class="ry-card"><div class="ry-card__body ry-card__body--flush">
+        <div class="ry-table__wrap cl-table-wrap ry-standard-list-wrap ry-standard-list-wrap--select ry-standard-list-wrap--actions" id="cl-table-wrap" role="region" aria-label="联系人列表，可左右滚动" tabindex="0"><table class="ry-table ry-table--tight">
+          <thead><tr id="cl-thead"></tr></thead>
+          <tbody id="cl-rows"></tbody>
+        </table></div>
+      </div></div>
+      <div id="cl-pager"></div>
+    
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/contact-review-mode.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/contact-channels.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, C = RY.contactChannels;
+  ['left', 'right'].forEach(function (direction) { ui.qs('#cl-' + direction).addEventListener('click', function () { ui.qs('#cl-table-wrap').scrollBy({ left: direction === 'left' ? -520 : 520, behavior: 'smooth' }); }); });
+  function can(a, o) { return RY.perm.can(a, o); }
+  function deny(a) { return RY.perm.whyNot(a); }
+
+  RY.nav.shell({
+    nav: 'contact.list',
+    title: '联系人',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '客户管理' }, { label: '联系人' }],
+    actions: '<a class="ry-btn" href="../customer/import.html?kind=contact">固定模板导入</a>' +
+      (can('contact.export') ? '<button class="ry-btn" id="cl-exp">导出</button>'
+        : '<button class="ry-btn" data-denied="1" data-action="contact.export">导出<i class="ry-btn__lock">无权限</i></button>') +
+      ui.actionBtn('contact.create', '新增联系人', ' id="cl-new"', 'ry-btn--primary')
+  });
+
+  var st = S.listState('contact.list');
+  var flt = st.flt || (st.flt = { kw: '', role: '', customer: '', rel: '', hasPhone: '' });
+  var page = st.page || 1, size = 10;
+  var COLS = [
+    { key: 'name', name: '姓名', on: true }, { key: 'id', name: '联系人编号', on: true }, { key: 'org', name: '所在组织', on: true },
+    { key: 'title', name: '职务', on: true }, { key: 'phone', name: '手机号', on: true }, { key: 'wechat', name: '微信号', on: true },
+    { key: 'relCount', name: '关联客户数', on: true }, { key: 'roles', name: '客户角色', on: true },
+    { key: 'primaryOf', name: '主要联系人于', on: true }, { key: 'lastContactAt', name: '最近联系时间', on: true }
+  ];
+  var colCfg = st.columns || COLS.map(function (c) { return c.key; });
+  var custName = function (id) { var c = S.customer(id); return c ? c.name : id; };
+
+  /* ---------------------------------------------------------------- 筛选 */
+
+  ui.qs('#cl-filter').className = 'ry-filter';
+  ui.qs('#cl-filter').innerHTML =
+    '<div class="ry-filter__row">' +
+      ui.field('关键词', ui.input('kw', flt.kw, '姓名／手机号／组织／职务'), '', false) +
+      ui.field('客户角色', ui.select('role', [{ value: '', label: '全部' }].concat(S.all('dicts').contactRole), flt.role), '', false) +
+      ui.field('关联客户', ui.select('customer', [{ value: '', label: '全部' }].concat(S.all('customers').filter(function (c) { return RY.perm.contactCustomerInScope(c.id); }).map(function (c) { return { value: c.id, label: c.name }; })), flt.customer), '', false) +
+      ui.field('关系状态', ui.select('rel', [{ value: '', label: '全部' }, { value: '有效', label: '有效' }, { value: '失效', label: '失效' }], flt.rel), '', false) +
+    '</div>' +
+    '<div class="ry-filter__more" id="cl-more"><div class="ry-filter__row">' +
+      ui.field('手机号', ui.select('hasPhone', [{ value: '', label: '全部' }, { value: '1', label: '已登记' }, { value: '0', label: '未登记' }], flt.hasPhone), '', false) +
+    '</div></div>' +
+    '<div class="ry-filter__foot">' +
+      '<div class="ry-resultbar__tools"><button class="ry-btn" id="cl-toggle-more">更多筛选</button>' +
+      '<button class="ry-btn ry-btn--primary" id="cl-apply">查询</button>' +
+      '<button class="ry-btn" id="cl-reset">重置条件</button></div>' +
+      '<div class="ry-resultbar__tools">' +
+      '<button class="ry-btn" id="cl-cols">列显示设置</button>' +
+      '<button type="button" data-pcn-rule="contactFilter">◆ 联系人筛选</button>' +
+    '</div></div>';
+  RY.nav.bindFilterToggle('#cl-toggle-more', '#cl-more');
+
+  /* ---------------------------------------------------------------- 数据 */
+
+  function relationsOf(contactId) {
+    return S.all('contactRelations').filter(function (r) {
+      var customer = S.customer(r.customerId);
+      return r.contactId === contactId && customer && RY.perm.contactCustomerInScope(customer.id);
+    });
+  }
+
+  function filtered() {
+    var k = flt.kw.trim();
+    return S.all('contacts').filter(function (c) {
+      var rels = relationsOf(c.id);
+      if (!rels.length) return false;
+      if (k && c.name.indexOf(k) < 0 && (c.org || '').indexOf(k) < 0 && (c.title || '').indexOf(k) < 0 && C.values(c, 'phone').join(' ').indexOf(k) < 0 && C.values(c, 'wechat').join(' ').indexOf(k) < 0 && c.id.indexOf(k) < 0) return false;
+      if (flt.role && !rels.some(function (r) { return r.roles.indexOf(flt.role) >= 0; })) return false;
+      if (flt.customer && !rels.some(function (r) { return r.customerId === flt.customer; })) return false;
+      if (flt.rel === '有效' && !rels.some(function (r) { return r.status === '有效'; })) return false;
+      if (flt.rel === '失效' && !rels.some(function (r) { return r.status === '失效'; })) return false;
+      if (flt.hasPhone === '1' && !C.values(c, 'phone').length) return false;
+      if (flt.hasPhone === '0' && C.values(c, 'phone').length) return false;
+      return true;
+    });
+  }
+
+  function cfg(key) { return colCfg.indexOf(key) >= 0; }
+
+  var bar = document.createElement('div');
+  bar.className = 'ry-selbar';
+  bar.id = 'cl-batchbar';
+  bar.style.display = 'none';
+  bar.innerHTML = '<span>已选 <b id="cl-bn">0</b> 条</span>' +
+    '<button class="ry-btn ry-btn--sm" data-cl-batch="rel">批量建立客户关系</button>' +
+    '<button class="ry-btn ry-btn--sm" data-cl-batch="disable">批量置关系失效</button>' +
+    '<button type="button" data-pcn-rule="contactBatch">◆ 关系批量</button>';
+
+  /* ---------------------------------------------------------------- 渲染 */
+
+  function render() {
+    var list = filtered();
+    var total = list.length;
+    var pages = Math.max(1, Math.ceil(total / size));
+    if (page > pages) page = pages;
+    var rows = list.slice((page - 1) * size, page * size);
+
+    ui.qs('#cl-thead').innerHTML = '<th style="width:34px"><input type="checkbox" id="cl-all"></th>' +
+      COLS.filter(function (c) { return cfg(c.key); }).map(function (c) { return '<th>' + c.name + '</th>'; }).join('') +
+      '<th style="width:150px">操作</th>';
+
+    ui.qs('#cl-rows').innerHTML = rows.length ? rows.map(function (c) {
+      var rels = relationsOf(c.id);
+      var act = rels.filter(function (r) { return r.status === '有效'; });
+      var prim = rels.filter(function (r) { return r.primary && r.status === '有效'; });
+      var roles = [];
+      act.forEach(function (r) { r.roles.forEach(function (x) { if (roles.indexOf(x) < 0) roles.push(x); }); });
+      var cells = {
+        name: '<a class="ry-cellname" href="detail.html?id=' + c.id + '&from=list">' + ui.esc(c.name) + '</a>',
+        id: ui.esc(c.id),
+        org: ui.esc(c.org || '—'),
+        title: ui.esc(c.title || '—'),
+        phone: C.values(c, 'phone').length ? ui.masked(C.values(c, 'phone')[0], c.id) + (C.values(c, 'phone').length > 1 ? ' <span class="ry-mini">等 ' + C.values(c, 'phone').length + ' 个</span>' : '') : '—',
+        wechat: C.values(c, 'wechat').length ? ui.esc(C.values(c, 'wechat')[0]) + (C.values(c, 'wechat').length > 1 ? ' <span class="ry-mini">等 ' + C.values(c, 'wechat').length + ' 个</span>' : '') : '—',
+        relCount: act.length + ' 家' + (rels.length !== act.length ? '<div class="ry-mini">另有失效 ' + (rels.length - act.length) + ' 条</div>' : ''),
+        roles: roles.length ? roles.map(function (r) { return ui.tag(r, 'muted'); }).join(' ') : '<span class="ry-faint">—</span>',
+        primaryOf: prim.length ? prim.map(function (r) { return ui.esc(custName(r.customerId)); }).join('、') : '<span class="ry-faint">—</span>',
+        lastContactAt: '<span class="ry-mono">' + ui.esc((c.lastContactAt || '—').slice(0, 10)) + '</span>'
+      };
+      return '<tr><td><input type="checkbox" data-cl-sel="' + c.id + '"></td>' +
+        COLS.filter(function (x) { return cfg(x.key); }).map(function (x) { return '<td>' + cells[x.key] + '</td>'; }).join('') +
+        '<td class="ry-tbl-act">' +
+          ui.actionBtn('contact.edit', '编辑', ' data-cl-op="edit" data-id="' + c.id + '"', 'ry-btn--sm') +
+          ui.actionBtn('contact.relation', '客户关系', ' data-cl-op="rel" data-id="' + c.id + '"', 'ry-btn--sm') +
+        '</td></tr>';
+    }).join('') : '<tr><td colspan="' + (COLS.filter(function (c) { return cfg(c.key); }).length + 2) + '" class="ry-hint">当前筛选条件下没有联系人。</td></tr>';
+
+    ui.qs('#cl-resultbar').innerHTML = '<span>共 ' + total + ' 位联系人</span><button type="button" data-pcn-rule="contactResult">◆ 结果口径</button><button type="button" data-pcn-rule="contactListChannels">◆ 完整联系方式</button>';
+    ui.qs('#cl-pager').innerHTML = ui.pager(total, page, size, 'contact.list');
+
+    ui.qs('#cl-selbar').innerHTML = '<div id="cl-selhost"></div>';
+    var host = ui.qs('#cl-selhost');
+    host.innerHTML = ui.selectionBar({ id: 'cl-sel', filteredTotal: total, crossPageCount: 0 });
+    host.appendChild(bar);
+
+    ui.bindPager('#cl-pager', function (p) { page = p; st.page = p; S.save(); render(); });
+    ui.bindSelection({
+      id: 'cl-sel', key: 'contact.list', pageIds: rows.map(function (r) { return r.id; }),
+      filteredIds: list.map(function (r) { return r.id; }), filteredTotal: total,
+      onChange: function (ids) {
+        bar.style.display = ids.length ? 'flex' : 'none';
+        var bn = ui.qs('#cl-bn'); if (bn) bn.textContent = ids.length;
+        ui.qsa('[data-cl-sel]').forEach(function (x) { x.checked = ids.indexOf(x.getAttribute('data-cl-sel')) >= 0; });
+        ui.qs('#cl-all').checked = rows.length > 0 && rows.every(function (row) { return ids.indexOf(row.id) >= 0; });
+      }
+    });
+    ui.qsa('[data-cl-sel]').forEach(function (x) {
+      x.addEventListener('change', function () {
+        var cur = ui.selected('contact.list').slice(), v = x.getAttribute('data-cl-sel');
+        if (x.checked) { if (cur.indexOf(v) < 0) cur.push(v); } else cur = cur.filter(function (y) { return y !== v; });
+        if (cur.length > 100) { ui.toast('已选 ' + cur.length + ' 条，超过单次上限 100 条。请先收窄筛选条件，系统不会自动截断。', 'warn'); x.checked = false; return; }
+        ui.syncSel('contact.list', cur);
+      });
+    });
+    ui.qs('#cl-all').addEventListener('change', function (e) {
+      var checked = e.target.checked;
+      ui.qsa('[data-cl-sel]').forEach(function (x) { x.checked = checked; x.dispatchEvent(new Event('change')); });
+    });
+    ui.qsa('[data-cl-op]').forEach(function (b) {
+      b.addEventListener('click', function () { op(b.getAttribute('data-cl-op'), b.getAttribute('data-id')); });
+    });
+    ui.bindMasked('#cl-rows');
+    ui.bindDenied('#ry-page');
+  }
+
+  /* ---------------------------------------------------------------- 动作 */
+
+  function op(kind, id) {
+    var c = S.contact(id);
+    if (!c) { ui.toast('该联系人已不可用。', 'warn'); return; }
+    if (kind === 'edit') {
+      if (!can('contact.edit')) { ui.modal({ title: '该动作当前不可执行', size: 'sm', body: '<p>' + ui.esc(deny('contact.edit')) + '</p>', footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>' }); return; }
+      ui.drawer({
+        title: '编辑联系人基础资料', subtitle: '基础资料跨客户共享，修改会影响所有关联客户。',
+        body: ui.grid2(ui.field('姓名', ui.input('name', c.name, ''), '', true), ui.field('职务', ui.input('title', c.title, ''))) +
+          ui.grid2(ui.field('所在组织', ui.input('org', c.org, '')), ui.field('邮箱', ui.input('email', c.email, ''))) +
+          C.fields(c),
+        footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ct2-save">保存</button>',
+        onOpen: function (el) {
+          ui.qs('#ct2-save', el).addEventListener('click', function () {
+            var v = ui.formValues(el);
+            if (!v.name) { ui.toast('姓名不能为空。', 'warn'); return; }
+            var channels = C.read(el); if (!channels.ok) { ui.toast(channels.reason, 'warn'); return; }
+            c.name = v.name; c.title = v.title; c.org = v.org; c.email = v.email; C.save(c, channels);
+            S.audit('联系人', c.id, '编辑基础资料', '—', '姓名/职务/组织/手机号/微信号');
+            S.save(); ui.close(); ui.toast('已保存。', 'success'); render();
+          });
+        }
+      });
+      return;
+    }
+    /* 客户关系维护 */
+    var rels = relationsOf(id);
+    ui.drawer({
+      title: '维护客户关系', subtitle: ui.esc(c.name) + '（' + c.id + '）',
+      size: 'lg',
+      body: '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr><th>客户</th><th>客户角色</th><th>部门</th><th>职务</th><th>主要</th><th>状态</th><th>有效期</th></tr></thead><tbody>' +
+        (rels.length ? rels.map(function (r) {
+          return '<tr><td><a href="../customer/detail.html?id=' + r.customerId + '&from=contact">' + ui.esc(custName(r.customerId)) + '</a></td>' +
+            '<td>' + r.roles.map(function (x) { return ui.tag(x, 'muted'); }).join(' ') + '</td>' +
+            '<td>' + ui.esc(r.dept || '—') + '</td><td>' + ui.esc(r.title || '—') + '</td>' +
+            '<td>' + (r.primary ? ui.tag('主要', 'brand') : '—') + '</td>' +
+            '<td>' + ui.statusTag(r.status) + '</td>' +
+            '<td class="ry-mini">' + ui.esc(r.from) + (r.to ? ' ~ ' + ui.esc(r.to) : '') + '</td></tr>';
+        }).join('') : '<tr><td colspan="7" class="ry-hint">该联系人尚未关联任何客户。</td></tr>') + '</tbody></table></div>' +
+        '<hr class="ry-hr">' +
+        '<h4>新增客户关系</h4>' +
+        ui.grid2(
+          ui.field('客户', ui.select('customer', S.all('customers').filter(function (x) { return x.status === '正常' && RY.perm.contactCustomerInScope(x.id); }).map(function (x) { return { value: x.id, label: x.name }; })), '', true),
+          ui.field('客户角色', '<div style="display:flex;gap:12px;flex-wrap:wrap">' + S.all('dicts').contactRole.map(function (r) {
+            return '<label class="ry-check"><input type="checkbox" name="role" value="' + r + '"> ' + r + '</label>';
+          }).join('') + '</div>', '可多选', true)
+        ) +
+        ui.grid2(
+          ui.field('部门', ui.input('dept', '', '')), ui.field('职务', ui.input('relTitle', '', ''))
+        ) +
+        ui.field('主要联系人', '<label class="ry-check"><input type="checkbox" name="primary"> 设为该客户的主要联系人</label>') +
+        ui.banner('失效关系不会被删除，会保留有效期；重新有效需新建一条关系并记录起始日期。', 'info'),
+      footer: '<button class="ry-btn" data-close>关闭</button><button class="ry-btn ry-btn--primary" id="cr-save">新增关系</button>',
+      onOpen: function (el) {
+        ui.qs('#cr-save', el).addEventListener('click', function () {
+          if (!can('contact.relation')) { ui.toast(deny('contact.relation'), 'warn'); return; }
+          var v = ui.formValues(el);
+          var roles = ui.qsa('input[name=role]', el).filter(function (x) { return x.checked; }).map(function (x) { return x.value; });
+          if (!v.customer) { ui.toast('请选择客户。', 'warn'); return; }
+          if (!roles.length) { ui.toast('请至少选择一个客户角色。', 'warn'); return; }
+          if (rels.some(function (r) { return r.customerId === v.customer && r.status === '有效'; })) { ui.toast('该联系人与该客户已有有效关系，请直接维护而非新建。', 'warn'); return; }
+          S.addContactRelation(id, v.customer, roles, v.dept, v.relTitle, ui.qsa('input[name=primary]', el)[0].checked);
+          ui.close(); ui.toast('客户关系已新增。', 'success'); render();
+        });
+      }
+    });
+  }
+
+  /* 批量 */
+  bar.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-cl-batch]');
+    if (!b) return;
+    var ids = ui.selected('contact.list');
+    if (!ids.length) { ui.toast('请先选择联系人。', 'warn'); return; }
+    var kind2 = b.getAttribute('data-cl-batch');
+    if (!can('contact.relation')) { ui.modal({ title: '该动作当前不可执行', size: 'sm', body: '<p>' + ui.esc(deny('contact.relation')) + '</p>', footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>' }); return; }
+    if (kind2 === 'rel') {
+      ui.drawer({
+        title: '批量建立客户关系',
+        subtitle: '共 ' + ids.length + ' 位联系人。逐条预检：已有有效关系的联系人会被跳过且不计为失败。',
+        body: ui.field('目标客户', ui.select('customer', S.all('customers').filter(function (x) { return x.status === '正常' && RY.perm.contactCustomerInScope(x.id); }).map(function (x) { return { value: x.id, label: x.name }; })), '', true) +
+          ui.field('客户角色', '<div style="display:flex;gap:12px;flex-wrap:wrap">' + S.all('dicts').contactRole.map(function (r, i) {
+            return '<label class="ry-check"><input type="checkbox" name="role" value="' + r + '"' + (i === 0 ? ' checked' : '') + '> ' + r + '</label>';
+          }).join('') + '</div>', '可多选', true) +
+          '<div class="ry-table__wrap" style="margin-top:10px"><table class="ry-table ry-table--tight"><thead><tr><th>对象</th><th>预检</th><th>说明</th></tr></thead><tbody>' +
+          ids.map(function (cid) {
+            var cx = S.contact(cid);
+            var has = relationsOf(cid).filter(function (r) { return r.status === '有效'; });
+            return '<tr><td>' + ui.esc(cx ? cx.name : cid) + '<div class="ry-mini">' + cid + '</div></td>' +
+              '<td>' + ui.tag('可执行', 'ok') + '</td>' +
+              '<td class="ry-hint">已有有效关系 ' + has.length + ' 条，新增一条到目标客户</td></tr>';
+          }).join('') + '</tbody></table></div>',
+        footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="clb-ok">确认执行</button>',
+        onOpen: function (el) {
+          ui.qs('#clb-ok', el).addEventListener('click', function () {
+            var v = ui.formValues(el);
+            var roles = ui.qsa('input[name=role]', el).filter(function (x) { return x.checked; }).map(function (x) { return x.value; });
+            if (!v.customer || !roles.length) { ui.toast('请选择目标客户与至少一个客户角色。', 'warn'); return; }
+            var job = S.addJob({ type: '批量', action: '批量建立联系人客户关系', object: '联系人', status: '处理中', total: ids.length });
+            ui.asyncRun({ title: '正在批量建立关系', total: ids.length, processId: job.processId, onDone: function () {
+              var okn = 0, bad = [];
+              ids.forEach(function (cid) {
+                var cx = S.contact(cid);
+                if (!cx) { bad.push({ key: cid, name: cid, result: '失败', reason: '对象不可用' }); return; }
+                if (relationsOf(cid).some(function (r) { return r.customerId === v.customer && r.status === '有效'; })) {
+                  bad.push({ key: cid, name: cx.name, result: '失败', reason: '与该客户已有有效关系，按规则不重复创建' }); return;
+                }
+                S.addContactRelation(cid, v.customer, roles, '', '', false);
+                okn++;
+                bad.push({ key: cid, name: cx.name, result: '成功', reason: '' });
+              });
+              var fails = bad.filter(function (x) { return x.result === '失败'; });
+              S.updateJob(job.id, { status: fails.length ? (okn ? '部分成功' : '失败') : '已完成', success: okn, failed: fails.length, items: bad });
+              ui.closeAll(); ui.syncSel('contact.list', []);
+              fails.length ? ui.jobResult(S.job(job.id)) : ui.toast('批量建立关系完成，共 ' + okn + ' 条。', 'success');
+              render();
+            } });
+          });
+        }
+      });
+      return;
+    }
+    /* 批量置关系失效 */
+    ui.confirm({
+      title: '批量置客户关系失效',
+      message: '<p>共 ' + ids.length + ' 位联系人。该动作只把其<b>全部有效客户关系</b>置为失效并记录结束日期。</p>' +
+        '<p>联系人记录本身不会被删除；失效关系可在联系人详情中查看历史有效期。</p>',
+      confirmText: '确认执行', danger: true, requireReason: true, reasonLabel: '失效原因',
+      onConfirm: function (reason) {
+        var job = S.addJob({ type: '批量', action: '批量置联系人客户关系失效', object: '联系人', status: '处理中', total: ids.length });
+        ui.asyncRun({ title: '正在批量置失效', total: ids.length, processId: job.processId, onDone: function () {
+          var okn = 0, items = [];
+          ids.forEach(function (cid) {
+            var cx = S.contact(cid);
+            var act = relationsOf(cid).filter(function (r) { return r.status === '有效'; });
+            if (cx && act.length) { act.forEach(function (r) { r.status = '失效'; r.to = S.today(); }); S.save(); okn++; items.push({ key: cid, name: cx.name, result: '成功', reason: reason }); }
+            else items.push({ key: cid, name: cx ? cx.name : cid, result: '失败', reason: '没有可置失效的有效关系' });
+          });
+          var fails = items.filter(function (x) { return x.result === '失败'; }).length;
+          S.updateJob(job.id, { status: fails ? (okn ? '部分成功' : '失败') : '已完成', success: okn, failed: fails, items: items });
+          ui.closeAll(); ui.syncSel('contact.list', []);
+          fails ? ui.jobResult(S.job(job.id)) : ui.toast('批量置失效完成，共 ' + okn + ' 条。', 'success');
+          render();
+        } });
+      }
+    });
+  });
+
+  /* 列显示设置 */
+  ui.qs('#cl-cols').addEventListener('click', function () {
+    ui.modal({
+      title: '列显示设置', size: 'sm',
+      body: '<p class="ry-hint">选择要显示的字段。</p><div class="cl-colset">' +
+        COLS.map(function (c) {
+          return '<label class="ry-check"><input type="checkbox" name="col" value="' + c.key + '"' + (cfg(c.key) ? ' checked' : '') + '> ' + c.name + '</label>';
+        }).join('') + '</div>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="cl-cols-ok">保存</button>',
+      onOpen: function (el) {
+        ui.qs('#cl-cols-ok', el).addEventListener('click', function () {
+          var keys = ui.qsa('input[name=col]', el).filter(function (x) { return x.checked; }).map(function (x) { return x.value; });
+          if (!keys.length) { ui.toast('至少保留一列。', 'warn'); return; }
+          colCfg = keys; st.columns = keys; S.save(); ui.close(); render();
+        });
+      }
+    });
+  });
+
+  /* 新增联系人（列表页直接建档） */
+  var cn = ui.qs('#cl-new');
+  if (cn) cn.addEventListener('click', function (e) {
+    if (e.target.closest('[data-denied]')) return;
+    if (!can('contact.create')) { ui.modal({ title: '该动作当前不可执行', size: 'sm', body: '<p>' + ui.esc(deny('contact.create')) + '</p>', footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>' }); return; }
+    ui.drawer({
+      title: '新增联系人', subtitle: '正式联系人必须关联一个真实客户：联系人与客户关系在同一事务里创建，任一步失败都不生效。',
+      body: ui.field('姓名', ui.input('name', '', ''), '', true) + C.fields({}) +
+        ui.grid2(ui.field('所在组织', ui.input('org', '', '')), ui.field('职务', ui.input('title', '', ''))) +
+        ui.field('关联客户', ui.select('customer', [{ value: '', label: '请选择客户' }].concat(S.all('customers').filter(function (x) { return x.status === '正常' && RY.perm.contactCustomerInScope(x.id); }).map(function (x) { return { value: x.id, label: x.name }; }))), '请选择一位要关联的客户', true) +
+        '<button type="button" data-pcn-rule="contactCreate">◆ 建档关联</button>' +
+        '<p class="ry-hint">保存前会检查已登记的手机号是否与已有联系人重复。</p>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="cln-ok">保存</button>',
+      onOpen: function (el) {
+        ui.qs('#cln-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!v.name) { ui.toast('请填写姓名。', 'warn'); return; }
+          if (!v.customer) { ui.toast('请选择要关联的客户：正式联系人不开放孤立创建。', 'warn'); return; }
+          var channels = C.read(el); if (!channels.ok) { ui.toast(channels.reason, 'warn'); return; }
+          v.phones = channels.phones; v.wechats = channels.wechats;
+          var dup = S.all('contacts').filter(function (x) { return x.name === v.name && v.phones.some(function (p) { return C.values(x, 'phone').indexOf(p) >= 0; }); })[0];
+          if (dup) {
+            ui.confirm({
+              title: '检测到疑似重复联系人',
+              message: '<p>已存在联系人「' + ui.esc(dup.name) + '」（' + dup.id + '），手机号一致。</p><p>联系人重复属于<b>提示性</b>判断，不阻断保存，但建议复用已有记录以免产生两条并行档案。</p>',
+              confirmText: '仍然新建', danger: true,
+              onConfirm: function () { createIt(v, el); }
+            });
+            return;
+          }
+          createIt(v, el);
+        });
+        function createIt(v, el) {
+          var res = S.createContactWithRelation(
+            { name: v.name, phones: v.phones, wechats: v.wechats, org: v.org, title: v.title },
+            { customerId: v.customer, roles: ['使用'], title: v.title },
+            'contact-create:' + v.name + ':' + v.phones.join('|')
+          );
+          if (!res.ok) { ui.toast(res.reason, 'warn'); return; }
+          ui.close(); ui.toast('联系人已创建：' + res.contact.id + '（已关联 ' + res.customer.name + '）', 'success'); render();
+        }
+      }
+    });
+  });
+
+  /* 导出 */
+  var ex = ui.qs('#cl-exp');
+  if (ex) ex.addEventListener('click', function (e) {
+    if (e.target.closest('[data-denied]')) return;
+    ui.modal({
+      title: '导出联系人', size: 'sm',
+      body: '<p>将导出当前筛选结果 <b>' + filtered().length + '</b> 条。</p>' +
+        '<div class="ry-actions-row" style="margin-top:0">' +
+        '<label class="ry-check"><input type="checkbox" name="f" value="name" checked> 姓名</label>' +
+        '<label class="ry-check"><input type="checkbox" name="f" value="org" checked> 所在组织</label>' +
+        '<label class="ry-check"><input type="checkbox" name="f" value="title" checked> 职务</label>' +
+        '<label class="ry-check"><input type="checkbox" name="f" value="phone" checked> 手机号</label>' +
+        '<label class="ry-check"><input type="checkbox" name="f" value="wechat" checked> 微信号</label>' +
+        '<label class="ry-check"><input type="checkbox" name="f" value="email"> 邮箱</label>' +
+        '</div>' +
+        ui.banner('导出按按钮权限与对象数据范围执行；有权查看的联系方式以完整值导出。', 'info'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="cle-ok">提交导出</button>',
+      onOpen: function (el) {
+        ui.qs('#cle-ok', el).addEventListener('click', function () {
+          var fs = ui.qsa('input[name=f]', el).filter(function (x) { return x.checked; }).map(function (x) { return x.value; });
+          if (!fs.length) { ui.toast('请至少选择一个导出字段。', 'warn'); return; }
+          ui.close();
+          var n = filtered().length;
+          var job = S.addJob({ type: '导出', action: '联系人导出', object: '联系人', status: '处理中', total: n, fields: fs, fileName: '联系人_' + S.today().replace(/-/g, '') + '.xlsx' });
+          ui.asyncRun({ title: '正在生成导出文件', total: n, processId: job.processId, onDone: function () {
+            S.updateJob(job.id, { status: '已完成', success: n, failed: 0 });
+            ui.closeAll(); ui.toast('导出已完成，可在处理记录下载。', 'success');
+          } });
+        });
+      }
+    });
+  });
+
+  ui.qs('#cl-apply').addEventListener('click', function () {
+    var v = ui.formValues(ui.qs('#cl-filter'));
+    flt.kw = v.kw; flt.role = v.role; flt.customer = v.customer; flt.rel = v.rel; flt.hasPhone = v.hasPhone;
+    ui.syncSel('contact.list', []); page = 1; st.page = 1; S.save(); render();
+  });
+  ui.qs('#cl-reset').addEventListener('click', function () {
+    flt.kw = flt.role = flt.customer = flt.rel = flt.hasPhone = '';
+    ui.syncSel('contact.list', []); page = 1; st.page = 1; S.save();
+    ui.qs('#cl-filter').querySelectorAll('input,select').forEach(function (x) { if (x.tagName === 'SELECT') x.selectedIndex = 0; else x.value = ''; });
+    render();
+  });
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

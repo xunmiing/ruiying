@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>统一状态表达 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../assets/css/common.css">
+<link rel="stylesheet" href="../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：统一状态表达 */
+  .ss-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .ss-item { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); padding: 14px; }
+  .ss-item h4 { margin: 0 0 6px; font-size: 13.5px; }
+  .ss-item p { margin: 0 0 10px; font-size: 12px; color: var(--muted); line-height: 1.8; }
+  .ss-where { font-size: 11.5px; color: var(--faint); line-height: 1.8; margin-top: 9px; }
+  .ss-where code { font-size: 11px; }
+  .ss-demo { border: 1px dashed var(--line); border-radius: var(--r-btn); padding: 10px; background: var(--bg); }
+</style>
+</head>
+<body data-root="../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="ss-body"></div>
+    
+      <!-- 本页契约：评审对照用，列出页面契约编号与边界，不承载业务事实 -->
+      <section class="ry-card ry-card--flat">
+        <header class="ry-card__head">
+          <h3>本页契约</h3>
+          <div class="ry-card__extra"><span class="ry-hint">PG-GLOBAL-STATE</span></div>
+        </header>
+        <div class="ry-card__body">
+          <ul class="ry-kv ry-kv--tight">
+            <li><span>页面契约</span><b>PG-GLOBAL-STATE · PC · 首页与全局能力</b></li>
+            <li><span>依据</span><b>prd/00 §4／§7／§9</b></li>
+            <li><span>可进入角色</span><b>管理员（运营）</b></li>
+            <li><span>覆盖验收</span><b>AC-63 AC-64</b></li>
+            <li><span>本页视图</span><b>无权限页不展示标题摘要与数量、对象不可用页、版本冲突提示、异步处理中状态、部分成功结果</b></li>
+          </ul>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script src="../assets/js/demo-data.js"></script>
+<script src="../assets/js/prototype-store.js"></script>
+<script src="../assets/js/permissions.js"></script>
+<script src="../assets/js/pc-permissions-0-1.js"></script>
+<script src="../assets/js/common-actions.js"></script>
+<script src="../assets/js/navigation.js"></script>
+<script src="../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+
+  RY.nav.shell({
+    nav: '',
+    title: '统一状态表达',
+    subtitle: '无权限、对象不可用、版本冲突、异步处理、部分成功、弱网与外部服务失败，全部使用<b>同一套状态表达</b>，所有页面一致。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '统一状态表达' }],
+    actions: '<a class="ry-btn" href="../pc.html">返回工作台首页</a>'
+  });
+
+  var STATES = [
+    {
+      key: 'no-permission', name: '无权限',
+      desc: '角色页面权限 ∩ 动作权限 ∩ 数据范围任一不通过即无权限。入口<b>保留并说明原因</b>，不用隐藏代替权限表达；失去权限后不再展示对象标题、摘要、数量与未授权关系。',
+      where: ['对象或动作无权限时的统一反馈', '各列表页被拒绝的动作按钮'],
+      demo: function () {
+        ui.modal({
+          title: '无权限的统一表达', size: 'md',
+          body: ui.stateCard('no-permission', {
+            title: '没有访问该对象的权限',
+            body: '<p>当前账号无权查看该对象。</p>' +
+              '<p class="ry-hint">本页不展示对象名称、编号、客户、数量与关联关系。</p>',
+            actions: '<button class="ry-btn" data-close>返回</button>'
+          }),
+          footer: ''
+        });
+      }
+    },
+    {
+      key: 'unavailable', name: '对象不可用',
+      desc: '对象不存在、已删除，或因权限收敛不再可见时，统一表达为「对象不可用」，不显示空白页，也不猜测原因。',
+      where: ['pc/customer/detail.html?id=CUS-9999-0001', 'pc/lead/detail.html?id=LED-9999-0001', 'pc/opportunity/detail.html?id=OPP-9999-0001'],
+      demo: function () { window.location.href = 'opportunity/detail.html?id=OPP-9999-0001&from=state'; }
+    },
+    {
+      key: 'version-conflict', name: '版本冲突',
+      desc: '并发修改时，后提交者的修改被拒绝，避免覆盖他人修改。系统<b>不自动合并</b>，给出读取版本、当前版本与最近修改人，可选择保留输入或加载最新。',
+      where: ['各详情页普通编辑与高影响变更提交', '阶段推进与关闭提交'],
+      demo: function () {
+        ui.versionConflict({ objectLabel: '商机 OPP-202609-0042　远驰科技 2026 年度车电框架采购' });
+      }
+    },
+    {
+      key: 'processing', name: '异步处理中',
+      desc: '批量、导入、导出全部异步执行：提交后立即可离开页面，处理不中断；完成后通过消息提醒，结果在处理记录中查看。',
+      where: ['pc/customer/list.html 批量操作', 'pc/customer/import.html?kind=customer', 'pc/opportunity/list.html 批量转派'],
+      demo: function () {
+        ui.asyncRun({
+          title: '异步处理演示', total: 12, processId: 'BATCH-202609-21-0003',
+          onDone: function () { ui.toast('处理已完成，可在处理记录查看逐项结果。', 'success'); }
+        });
+      }
+    },
+    {
+      key: 'partial-success', name: '部分成功',
+      desc: '单项失败不影响其他项：展示总数、成功、失败与<b>逐项失败原因</b>，并可<b>只重试失败项</b>；已成功项不会重复执行。',
+      where: ['pc/processing/list.html', 'pc/processing/detail.html?id=JOB-202609-0001', '各导入页的预检结果'],
+      demo: function () { window.location.href = 'processing/detail.html?id=JOB-202609-0001&from=state'; }
+    },
+    {
+      key: 'weak-network', name: '弱网与失败恢复',
+      desc: '提交失败时<b>保留页面输入</b>，可原样重试；重试具备幂等保护，不会重复创建对象。任何失败都不改变对象状态。',
+      where: ['新建客户、新建线索、线索转换、新建商机的提交动作', '「模拟身份与演示开关」中的弱网开关'],
+      demo: function () {
+        alertFreeDemo();
+      }
+    },
+    {
+      key: 'service-error', name: '外部服务失败与降级',
+      desc: '工商查询失败时<b>可降级为手工填写</b>并标注来源；流程模板校验服务失败时<b>不允许降级</b>：商机创建被阻断并保留输入，可复制问题信息后重试。',
+      where: ['pc/customer/create.html 工商查询', 'pc/opportunity/create.html 模板校验服务不可用'],
+      demo: function () { window.location.href = 'opportunity/create.html?state=service-error'; }
+    },
+    {
+      key: 'empty', name: '空数据',
+      desc: '筛选无结果、列表为空时给出空状态与下一步动作，不用空白页或伪造数据填充。',
+      where: ['全部列表页', 'pc/search.html 无关键词与未命中'],
+      demo: function () {
+        ui.modal({
+          title: '空数据表达', size: 'sm', footer: '',
+          body: ui.empty('当前筛选条件下没有数据。', '<button class="ry-btn" data-close>调整筛选</button>')
+        });
+      }
+    }
+  ];
+
+  function alertFreeDemo() {
+    var on = RY.perm.flag('weakNetwork');
+    RY.perm.flag('weakNetwork', true);
+    ui.modal({
+      title: '弱网恢复演示',
+      size: 'sm',
+      subtitle: '已临时打开「弱网」演示开关',
+      body: '<p>本次演示会把「弱网」开关临时置为开启，然后模拟一次提交：<b>首次提交失败、输入完整保留、重试成功</b>。</p>' +
+        '<p class="ry-hint">开关状态不会持久保存到业务数据；你也可以在「模拟身份与演示开关」中自行控制。</p>',
+      footer: '<button class="ry-btn" data-close>关闭</button><button class="ry-btn ry-btn--primary" id="ss-weak">开始演示</button>',
+      onOpen: function (el) {
+        ui.qs('#ss-weak', el).addEventListener('click', function () {
+          ui.close();
+          ui.submitWithRecovery({
+            onSubmit: function () {
+              RY.perm.flag('weakNetwork', on);
+              ui.toast('重试成功：输入未丢失，且未重复创建对象。', 'success');
+            }
+          });
+        });
+      }
+    });
+  }
+
+  ui.qs('#ss-body').innerHTML =
+    ui.section('统一状态清单',
+      '<div class="ss-grid">' + STATES.map(function (s, i) {
+        return '<div class="ss-item"><h4>' + (i + 1) + '. ' + s.name + '</h4>' +
+          '<p>' + s.desc + '</p>' +
+          '<div class="ss-demo"><button class="ry-btn ry-btn--sm ry-btn--primary" data-ss="' + s.key + '">查看该状态</button>' +
+          (s.key === 'unavailable' || s.key === 'partial-success' || s.key === 'service-error'
+            ? '<span class="ry-hint">将在对应业务页面直接打开</span>' : '<span class="ry-hint">就地弹出演示</span>') + '</div>' +
+          '<div class="ss-where">出现位置：' + s.where.map(function (w) { return '<code>' + ui.esc(w) + '</code>'; }).join('　') + '</div>' +
+          '</div>';
+      }).join('') + '</div>',
+      '<span class="ry-hint">共 ' + STATES.length + ' 类</span>') +
+    ui.section('状态表达的统一口径',
+      ui.kv([
+        ['权限判定', '角色页面权限 ∩ 动作权限 ∩ 数据范围 ∩ 字段规则 ∩ 当前对象状态；多角色为并集，无主角色、无显式拒绝。'],
+        ['入口再鉴权', '列表进详情、深链、搜索结果跳转、消息跳转、模板下载、重试等每个入口都重新鉴权。'],
+        ['无权限时的信息边界', '不展示对象标题、编号、摘要、数量与未授权关系；保留入口并说明原因，不用前端隐藏代替权限表达。'],
+        ['失败时的数据边界', '失败不改变对象状态；已成功项不回滚也不重复执行；重试具备幂等保护。'],
+        ['版本冲突', '拒绝覆盖，给出两个版本与最近修改人，由人决定保留输入或加载最新。'],
+        ['原型声明', '以上均为前端演示表达，不代表生产实现或技术承诺。']
+      ])) +
+    ui.banner('本页只是<b>状态表达的统一说明与演示入口</b>；同一套状态在各业务页面内联表达（组件 / 抽屉 / 弹窗 / 横幅），' +
+      '没有为状态单独建立业务页面。', 'info');
+
+  ui.qsa('[data-ss]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var k = b.getAttribute('data-ss');
+      var s = STATES.filter(function (x) { return x.key === k; })[0];
+      if (s && s.demo) s.demo();
+    });
+  });
+})();
+</script>
+<script src="../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

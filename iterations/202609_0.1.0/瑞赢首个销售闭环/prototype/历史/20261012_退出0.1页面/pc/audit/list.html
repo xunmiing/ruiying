@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>审计 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：审计（append-only；业务侧不可删除） */
+  .au-cols { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 14px; align-items: start; }
+  .au-k { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 6px; font-size: 12.5px; line-height: 1.85; }
+  .au-k > span { color: var(--muted); }
+  .au-from { color: var(--muted); }
+  .au-to { color: var(--ink); font-weight: 600; }
+  @media (max-width: 1180px) { .au-cols { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="au-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'audit.list';
+  var SIZE = 10;
+  var canView = P.can('audit.view');
+  var page = 1;
+  var kw = '', objF = '', srcF = '', actorF = '', fromD = '', toD = '';
+
+  /* 来源分组：PC / H5 / R6（Agent 服务身份）/ 系统任务 */
+  var SRC_GROUP = [
+    { value: 'PC', label: 'PC' },
+    { value: 'H5', label: 'H5' },
+    { value: 'R6', label: 'R6（Agent 服务身份）' },
+    { value: '系统任务', label: '系统任务' }
+  ];
+  function srcGroup(s) {
+    s = String(s || '');
+    if (s.indexOf('H5') >= 0) return 'H5';
+    if (s.indexOf('R6') >= 0 || s.indexOf('Agent') >= 0) return 'R6';
+    if (s.indexOf('系统') >= 0 || s.indexOf('任务') >= 0) return '系统任务';
+    if (s.indexOf('PC') >= 0) return 'PC';
+    return '系统任务';
+  }
+  function srcTone(g) {
+    return g === 'H5' ? 'info' : g === 'R6' ? 'brand' : g === '系统任务' ? 'muted' : '';
+  }
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '审计',
+    subtitle: '<b>append-only</b>：业务侧不可删除，<b>不受 7 天清理影响</b>，<b>不提供审计导出</b>。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '审计' }],
+    actions: ''
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#au-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入审计',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示操作人、对象标识与关键前后值。</p>'
+    });
+    return;
+  }
+
+  function all() { return S.auditList({}); }
+  function filtered() {
+    return S.auditList({ q: kw, objectType: objF, actor: actorF }).filter(function (a) {
+      if (srcF && srcGroup(a.source) !== srcF) return false;
+      if (fromD && a.at.slice(0, 10) < fromD) return false;
+      if (toD && a.at.slice(0, 10) > toD) return false;
+      return true;
+    });
+  }
+  function objTypes() {
+    var seen = [];
+    all().forEach(function (a) { if (seen.indexOf(a.objectType) < 0) seen.push(a.objectType); });
+    return seen;
+  }
+  function actors() {
+    var seen = [];
+    all().forEach(function (a) { if (seen.indexOf(a.actor) < 0) seen.push(a.actor); });
+    return seen;
+  }
+
+  function render() {
+    var list = all(), rows = filtered();
+    var pages = Math.max(1, Math.ceil(rows.length / SIZE));
+    if (page > pages) page = pages;
+    var view = rows.slice((page - 1) * SIZE, page * SIZE);
+
+    ui.qs('#au-host').innerHTML =
+      ui.banner('审计记录是<b>追加写入</b>的事实：一条记录一旦产生就不会被修改，' +
+        '也<b>不提供业务侧删除入口</b>。这里没有「删除记录」按钮，也没有「清空审计」按钮——' +
+        '能被删除的审计等于没有审计，它存在的意义正是「事后还能证明当时发生了什么」。' +
+        '审计记录<b>不受 7 天清理影响</b>：处理记录、导出文件这类<b>可再生的中间产物</b>保留 7 天，' +
+        '到期由系统清理；审计不是中间产物，而是行为的证据，因此长期保留。' +
+        '本页<b>不提供审计导出</b>：审计只支持在权限内在线查阅与逐条查看。' +
+        '导出一旦开放，审计数据就会脱离本系统的数据范围与字段权限，' +
+        '变成一份可以任意传播的离线名单——这与「谁在什么范围内能看什么」直接冲突。', 'info') +
+
+      '<div class="ry-card" style="margin:12px 0"><div class="ry-card__body">' +
+        '<div class="ry-filter__row">' +
+          ui.field('关键词', ui.input('au-kw', kw, '动作／对象类型／对象标识／前后值'), '', false) +
+          ui.field('对象类型', ui.select('au-obj', [{ value: '', label: '全部对象类型' }].concat(objTypes()), objF), '', false) +
+          ui.field('来源', ui.select('au-src', [{ value: '', label: '全部来源' }].concat(SRC_GROUP), srcF), '', false) +
+          ui.field('操作人', ui.select('au-actor', [{ value: '', label: '全部操作人' }].concat(actors()), actorF), '', false) +
+          ui.field('起始日期', ui.input('au-from', fromD, '', 'date'), '', false) +
+          ui.field('截止日期', ui.input('au-to', toD, '', 'date'), '', false) +
+        '</div>' +
+        '<div class="ry-filter__act"><button class="ry-btn" id="au-reset">重置</button>' +
+          '<button class="ry-btn ry-btn--primary" id="au-apply">查询</button>' +
+          '<span class="ry-hint" style="margin-left:6px">不提供导出</span></div>' +
+      '</div></div>' +
+
+      '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px">' +
+        [
+          ['审计记录', list.length, ''],
+          ['当前筛选结果', rows.length, ''],
+          ['PC 来源', list.filter(function (a) { return srcGroup(a.source) === 'PC'; }).length, ''],
+          ['H5／R6 来源', list.filter(function (a) { return srcGroup(a.source) === 'H5' || srcGroup(a.source) === 'R6'; }).length, '']
+        ].map(function (k) {
+          return '<div class="ry-card ry-card--flat"><div class="ry-card__body"><div class="ry-hint">' + k[0] + '</div>' +
+            '<div style="font-size:22px;font-weight:600;' + k[2] + '">' + k[1] + '</div></div></div>';
+        }).join('') + '</div>' +
+
+      '<div class="au-cols">' +
+        '<div>' +
+          ui.section('审计记录（' + rows.length + ' 条）',
+            view.length
+              ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+                '<th style="width:140px">操作时间</th><th style="width:90px">操作人</th>' +
+                '<th style="width:110px">来源</th><th>对象与动作</th>' +
+                '<th style="width:260px">关键前后值</th><th style="width:80px">结果</th>' +
+                '<th style="width:80px">操作</th>' +
+                '</tr></thead><tbody>' + view.map(function (a) {
+                  return '<tr>' +
+                    '<td class="ry-hint">' + ui.esc(a.at) + '</td>' +
+                    '<td>' + ui.esc(a.actor || '系统') + '</td>' +
+                    '<td>' + ui.tag(srcGroup(a.source), srcTone(srcGroup(a.source))) +
+                      '<div class="ry-hint">' + ui.esc(a.source) + '</div></td>' +
+                    '<td><span class="ry-cellname">' + ui.esc(a.action) + '</span>' +
+                      '<div class="ry-hint">' + ui.esc(a.objectType) + '　<span class="ry-code">' + ui.esc(a.objectId) + '</span></div></td>' +
+                    '<td class="ry-hint">' + (a.from || a.to
+                      ? '<span class="au-from">' + ui.esc(a.from || '—') + '</span> → <span class="au-to">' + ui.esc(a.to || '—') + '</span>'
+                      : '—') + '</td>' +
+                    '<td>' + ui.statusTag(a.result) + '</td>' +
+                    '<td class="ry-tbl-act"><a class="ry-btn ry-btn--sm" href="detail.html?id=' + encodeURIComponent(a.id) + '">详情</a></td>' +
+                  '</tr>';
+                }).join('') + '</tbody></table></div>' +
+              ui.pager(rows.length, page, SIZE) +
+              '<p class="ry-hint" style="margin-top:6px">「关键前后值」只记录<b>与治理判断相关</b>的字段变化，' +
+                '不是全字段快照。它回答的是「这次改动改变了什么」，' +
+                '而不是「当时的完整数据长什么样」——后者会把审计变成一份历史数据副本。' +
+                '涉及敏感字段时，前后值按<b>当前身份明文字段权限</b>展示，无权时以掩码呈现。</p>'
+              : ui.stateCard('empty', { title: '当前没有匹配的审计记录' })) +
+        '</div>' +
+
+        '<div>' +
+          ui.section('审计口径',
+            '<div class="au-k">' +
+              '<span>写入方式</span><b>append-only 追加写入</b>' +
+              '<span>修改</span><b>不允许</b>' +
+              '<span>业务侧删除</span><b>不提供入口</b>' +
+              '<span>保留期</span><b>长期保留</b>' +
+              '<span>7 天清理</span><b>不适用（清理只针对可再生的中间产物）</b>' +
+              '<span>导出</span><b>不提供</b>' +
+              '<span>可见性</span><b>仍受页面权限与数据范围约束</b>' +
+            '</div>') +
+
+          ui.section('必须记录的内容',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>操作时间</span><b>记录时间</b></li>' +
+              '<li><span>操作人</span><b>姓名或系统</b></li>' +
+              '<li><span>来源</span><b>PC／H5／R6／系统任务</b></li>' +
+              '<li><span>对象</span><b>类型与标识</b></li>' +
+              '<li><span>动作</span><b>做了什么</b></li>' +
+              '<li><span>结果</span><b>成功或失败</b></li>' +
+              '<li><span>关键前后值</span><b>改变了什么</b></li>' +
+              '<li><span>失败原因</span><b>失败时说明</b></li>' +
+              '<li><span>关联记录</span><b>异常事项／同步任务／投递等</b></li>' +
+            '</ul>' +
+            ui.banner('审计<b>不等于</b>日志。日志是给运维看的技术流水，审计是给治理看的<b>业务事实</b>：' +
+              '它必须能回答「谁、在什么范围内、对哪个对象、做了什么、结果如何」。' +
+              '因此审计不记录与治理判断无关的请求细节，也不为了「全」而无差别地掏空业务数据。', 'warn')) +
+
+          ui.section('不受 7 天清理影响',
+            '<p class="ry-hint">0.1 中保留 7 天的是<b>可再生的中间产物</b>：' +
+              '处理记录、异步导出产生的文件、导入失败的临时明细。它们到期清理不影响任何事实。' +
+              '审计不是中间产物：它是「当时发生了什么」的唯一证据，' +
+              '一旦清理，历史就无法还原，因此长期保留。</p>') +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-AUDIT</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-AUDIT · PC · 审计</b></li>' +
+        '<li><span>依据</span><b>prd/00 §6；prd/08 §17</b></li>' +
+        '<li><span>可进入角色</span><b>销售主管/经理｜管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-78</b></li>' +
+        '<li><span>状态口径</span><b>append-only；业务侧不可删除；不受 7 天清理影响</b></li>' +
+        '<li><span>明确不做</span><b>不提供审计导出、不提供删除与清空、不做全字段快照、不做请求级技术日志</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    ui.qs('#au-apply').addEventListener('click', function () {
+      var v = ui.formValues(ui.qs('#au-host'));
+      kw = v['au-kw'] || ''; objF = v['au-obj'] || ''; srcF = v['au-src'] || '';
+      actorF = v['au-actor'] || ''; fromD = v['au-from'] || ''; toD = v['au-to'] || '';
+      page = 1; render();
+    });
+    ui.qs('#au-reset').addEventListener('click', function () {
+      kw = ''; objF = ''; srcF = ''; actorF = ''; fromD = ''; toD = ''; page = 1; render();
+    });
+    ui.bindPager('#au-host', function (p) { page = p; render(); });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

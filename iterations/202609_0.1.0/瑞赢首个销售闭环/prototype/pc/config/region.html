@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>区域与业务线规则 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：A 类区域与业务线规则（外部稳定标识映射） */
+  .rg-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .rg-tab { padding: 8px 14px; border: none; border-bottom: 2px solid transparent; background: none;
+    font: inherit; font-size: 13px; color: var(--muted); cursor: pointer; }
+  .rg-tab.is-on { color: var(--brand-ink); border-bottom-color: var(--brand); font-weight: 600; }
+  .rg-warn { font-size: 11.5px; color: var(--danger); }
+  .rg-map { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="rg-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var PAGE = 'cfg.region';
+  var canEdit = RY.perm.can('config.editA');
+  var tab = ui.hash() || 'region';
+
+  RY.nav.shell({
+    nav: 'cfg.region',
+    title: '区域与业务线规则',
+    subtitle: '<b>A 类配置</b>：保存即生效并留历史。核心是<b>外部稳定标识映射</b>，不做组织架构维护。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '配置中心' }, { label: '区域与业务线规则' }]
+  });
+
+  var g = RY.perm.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#rg-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入区域与业务线规则',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示区域清单、业务线与外部映射关系。</p>'
+    });
+    return;
+  }
+
+  function regions() { return S.configA('regions') || []; }
+  function lines() { return S.all('businessLines'); }
+  function lineUsers(code) {
+    /* users[].businessLine 存的是业务线编码数组（注意是单数键名） */
+    return S.arr('users').filter(function (x) { return (x.businessLine || []).indexOf(code) >= 0; }).length;
+  }
+  function scopesOf(code) {
+    /* 列举场景用列表接口；列表为空时显示「无」，不抛错 */
+    return S.scenarioOptions(code).map(function (s) { return s.name; }).join('、') || '无';
+  }
+  /* 区域直接挂在人员的授权范围上（users[].region 存编码），客户本身不带区域字段，
+     这里统计覆盖人员数，用来表达「停用区域会影响谁的默认数据范围」。 */
+  function regionUsers(code) {
+    return S.arr('users').filter(function (x) { return (x.region || []).indexOf(code) >= 0; }).length;
+  }
+
+  function render() {
+    if (['region', 'line', 'scenario'].indexOf(tab) < 0) tab = 'region';
+    ui.qs('#rg-host').innerHTML =
+      ui.banner('区域与业务线是<b>数据范围</b>与<b>模板匹配</b>的基础维度。' +
+        '本页的关键不是改名字，而是维护<b>外部稳定标识映射</b>：内部编码与外部系统编码一一对应，' +
+        '改名不改变编码，编码不可复用于其他对象。' +
+        '业务线「停用」只影响新商机创建与模板匹配，<b>不追溯改写历史对象</b>；' +
+        '区域停用后仍保留在历史对象的归属里。', 'info') +
+
+      '<div class="rg-tabs" id="rg-tabs" style="margin-top:12px">' +
+        '<button class="rg-tab' + (tab === 'region' ? ' is-on' : '') + '" data-t="region">区域规则（' + regions().length + '）</button>' +
+        '<button class="rg-tab' + (tab === 'line' ? ' is-on' : '') + '" data-t="line">业务线（' + lines().length + '）</button>' +
+        '<button class="rg-tab' + (tab === 'scenario' ? ' is-on' : '') + '" data-t="scenario">销售场景（' + S.all('scenarios').length + '）</button>' +
+      '</div>' +
+
+      (tab === 'region'
+        ? ui.section('区域规则',
+            '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+              '<th>区域名称</th><th>内部编码</th><th>外部稳定标识</th><th>外部系统映射</th>' +
+              '<th>业务线范围</th><th>覆盖人员</th><th>状态</th><th style="width:150px">操作</th></tr></thead><tbody>' +
+              (regions().length ? regions().map(function (r) {
+                return '<tr>' +
+                  '<td><span class="ry-cellname">' + ui.esc(r.name) + '</span>' +
+                    (r.history && r.history.length ? '<div class="ry-hint">最近修改 ' + ui.esc(r.history[r.history.length - 1].at) + '</div>' : '') + '</td>' +
+                  '<td><span class="rg-map">' + ui.esc(r.code) + '</span></td>' +
+                  '<td><span class="rg-map">' + ui.esc(r.externalCode) + '</span></td>' +
+                  '<td><span class="rg-map">' + ui.esc(r.crmMapping || '—') + '</span></td>' +
+                  '<td>' + ui.esc(r.scope || '—') + '</td>' +
+                  '<td>' + regionUsers(r.code) + ' 人</td>' +
+                  '<td>' + ui.statusTag(r.status) + '</td>' +
+                  '<td class="ry-tbl-act">' +
+                    (canEdit ? ui.actionBtn('config.editA', '编辑', ' data-rg-edit="' + r.code + '"', 'ry-btn--sm') : '') +
+                    (canEdit ? '<button class="ry-btn ry-btn--sm" data-rg-tog="' + r.code + '">' + (r.status === '启用' ? '停用' : '启用') + '</button>' : '') +
+                  '</td></tr>';
+              }).join('') : '<tr><td colspan="8" class="ry-hint">尚未配置区域。</td></tr>') +
+            '</tbody></table></div>' +
+            (canEdit ? '<div class="ry-acts-row" style="margin-top:10px"><button class="ry-btn ry-btn--primary" id="rg-new">新增区域</button></div>' : '') +
+            '<p class="ry-hint" style="margin-top:8px">编码一旦被历史对象引用就<b>不可修改、不可复用</b>；名称可改。停用区域不删除任何历史归属。</p>',
+            regions().length + ' 个区域')
+        : tab === 'line' ? ui.section('业务线',
+            '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+              '<th>业务线名称</th><th>编码</th><th>销售场景</th><th>配置人员</th><th>状态</th><th>影响说明</th></tr></thead><tbody>' +
+              lines().map(function (l) {
+                var off = l.status !== '启用';
+                return '<tr>' +
+                  '<td><span class="ry-cellname">' + ui.esc(l.name) + '</span></td>' +
+                  '<td><span class="rg-map">' + ui.esc(l.code) + '</span></td>' +
+                  '<td>' + ui.esc(scopesOf(l.code)) + '</td>' +
+                  '<td>' + lineUsers(l.code) + ' 人</td>' +
+                  '<td>' + ui.statusTag(l.status) + '</td>' +
+                  '<td class="ry-hint">' + (off
+                    ? '<span class="rg-warn">已停用</span>：新建商机不可选该业务线，模板匹配跳过；历史商机继续按原业务线解释。'
+                    : '新建商机可选，参与模板匹配。') + '</td></tr>';
+              }).join('') +
+            '</tbody></table></div>' +
+            '<p class="ry-hint" style="margin-top:8px">业务线的启用／停用属于配置；销售场景在「销售场景」页签单独维护并用于模板匹配。</p>',
+            lines().length + ' 条业务线') : ui.section('销售场景',
+            '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr><th>场景名称</th><th>场景编码</th><th>所属业务线</th><th>状态</th><th>引用模板／商机</th><th>操作</th></tr></thead><tbody>' +
+              S.all('scenarios').map(function (s) {
+                var refs = S.flowTemplates().filter(function (t) { return t.businessLine === s.businessLine && t.scene === s.code; }).length;
+                var opps = S.all('opportunities').filter(function (o) { return (o.lines || []).some(function (l) { return l.scene === s.code && l.businessLine === s.businessLine; }); }).length;
+                return '<tr><td>' + ui.esc(s.name) + '</td><td><code>' + ui.esc(s.code) + '</code></td><td>' + ui.esc(S.businessLineName(s.businessLine)) + '</td><td>' + ui.statusTag(s.status || '启用') + '</td><td>' + refs + ' 个模板／' + opps + ' 条商机</td><td>' +
+                  (canEdit ? '<button class="ry-btn ry-btn--sm" data-sc-edit="' + ui.esc(s.code) + '">编辑</button> <button class="ry-btn ry-btn--sm" data-sc-toggle="' + ui.esc(s.code) + '">' + (s.status === '停用' ? '启用' : '停用') + '</button>' : '') + '</td></tr>';
+              }).join('') +
+            '</tbody></table></div>' +
+            (canEdit ? '<div class="ry-acts-row" style="margin-top:10px"><button class="ry-btn ry-btn--primary" id="sc-new">新增销售场景</button></div>' : '') +
+            '<p class="ry-hint">编码全局唯一且创建后不可修改；停用后不可新建匹配，已存在商机继续显示其历史场景。</p>',
+            S.all('scenarios').length + ' 个销售场景')) +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-REGION</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-REGION · PC · 业务配置</b></li>' +
+        '<li><span>配置分类</span><b>A 类：保存即生效并留历史</b></li>' +
+        '<li><span>依据</span><b>prd/00 §5.5；prd/06 §9</b></li>' +
+        '<li><span>可进入角色</span><b>管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-55</b></li>' +
+        '<li><span>可配范围</span><b>区域名称／编码／外部稳定标识／外部系统映射／业务线范围／启用状态</b></li>' +
+        '<li><span>标识不可变</span><b>编码与外部稳定标识一经引用不可修改、不可复用；改名不改码</b></li>' +
+        '<li><span>明确不做</span><b>不做组织架构维护、不做人员归属调整、不做区域公海</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function editor(code) {
+    var r = code ? regions().filter(function (x) { return x.code === code; })[0] : null;
+    var used = r ? regionUsers(r.code) : 0;
+    ui.drawer({
+      title: r ? ('编辑区域 ' + r.code) : '新增区域',
+      subtitle: 'A 类：保存即生效并写入历史。编码与外部稳定标识一经引用不可修改。',
+      size: 'md',
+      body:
+        ui.grid2(
+          ui.field('区域名称', ui.input('name', r ? r.name : '', '如：华东区域'), '名称可改，不影响映射', true),
+          ui.field('内部编码', ui.input('code', r ? r.code : '', 'RG-XXXX'), r ? '当前覆盖 ' + used + ' 人，编码不可修改' : '保存后不可修改', !r)
+        ) +
+        ui.grid2(
+          ui.field('外部稳定标识', ui.input('externalCode', r ? r.externalCode : '', 'EXT-RG-XXXX'), '与用户中心／CRM 对齐的稳定标识', true),
+          ui.field('外部系统映射', ui.input('crmMapping', r ? r.crmMapping : '', '外部系统的区域编码'))
+        ) +
+        ui.grid2(
+          ui.field('业务线范围', ui.input('scope', r ? r.scope : '全部业务线', '如：全部业务线')),
+          ui.field('状态', ui.select('status', ['启用', '停用'], r ? r.status : '启用'))
+        ) +
+        ui.field('变更原因', ui.textarea('reason', '', '写入历史与审计', 3), '', true) +
+        ui.banner('外部稳定标识是跨系统对账与集成匹配的依据：<b>改名不改码</b>，编码不复用。' +
+          '修改映射只影响之后的同步匹配，<b>不重算</b>历史已同步的归属。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="rg-ok">保存生效</button>',
+      onOpen: function (el) {
+        ui.qs('#rg-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!v.name || !v.name.trim()) { ui.toast('区域名称必填。', 'warn'); return; }
+          if (!v.externalCode || !v.externalCode.trim()) { ui.toast('外部稳定标识必填。', 'warn'); return; }
+          if (!v.reason || !v.reason.trim()) { ui.toast('变更原因必填。', 'warn'); return; }
+          var code2 = r ? r.code : (v.code || '').trim().toUpperCase();
+          if (!code2) { ui.toast('内部编码必填。', 'warn'); return; }
+          if (!r && regions().some(function (x) { return x.code === code2; })) { ui.toast('内部编码已存在。', 'warn'); return; }
+          var res = S.configAItem('regions', r ? r.code : null, {
+            code: code2, name: v.name.trim(), externalCode: v.externalCode.trim(),
+            crmMapping: (v.crmMapping || '').trim(), scope: v.scope || '全部业务线', status: v.status || '启用'
+          }, v.reason.trim());
+          if (!res.ok) { ui.toast(res.msg, 'warn'); return; }
+          ui.close(); ui.toast('区域规则已保存生效。', 'success'); render();
+        });
+      }
+    });
+  }
+
+  function bind() {
+    ui.qsa('.rg-tab').forEach(function (b) {
+      b.addEventListener('click', function () {
+        tab = b.getAttribute('data-t'); window.location.hash = tab; render();
+      });
+    });
+    ui.qsa('[data-rg-edit]').forEach(function (b) {
+      b.addEventListener('click', function (e) { if (e.target.closest('[data-denied]')) return; editor(b.getAttribute('data-rg-edit')); });
+    });
+    ui.qsa('[data-rg-tog]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var code = b.getAttribute('data-rg-tog');
+        var r = regions().filter(function (x) { return x.code === code; })[0];
+        var off = r.status !== '启用';
+        ui.confirm({
+          title: off ? '启用区域' : '停用区域',
+          message: '<p>将把「' + ui.esc(r.name) + '」置为 <b>' + (off ? '启用' : '停用') + '</b>。</p>' +
+            '<p class="ry-hint">' + (off ? '启用后新建对象可以选择该区域。'
+              : '停用后新建对象不再可选；<b>覆盖的 ' + regionUsers(r.code) + ' 名人员的既有数据范围结论不受影响</b>，历史记录继续保留。') + '</p>',
+          requireReason: true,
+          reasonLabel: '变更原因',
+          confirmText: off ? '启用' : '停用',
+          onConfirm: function (reason) {
+            var res = S.configAItem('regions', code, { status: off ? '启用' : '停用' }, reason);
+            if (!res.ok) { ui.toast(res.msg, 'warn'); return; }
+            ui.toast('区域状态已更新。', 'success'); render();
+          }
+        });
+      });
+    });
+    var nb = ui.qs('#rg-new');
+    if (nb) nb.addEventListener('click', function () { editor(null); });
+    var sn = ui.qs('#sc-new'); if (sn) sn.addEventListener('click', function () { scenarioEditor(null); });
+    ui.qsa('[data-sc-edit]').forEach(function (b) { b.addEventListener('click', function () { scenarioEditor(b.getAttribute('data-sc-edit')); }); });
+    ui.qsa('[data-sc-toggle]').forEach(function (b) { b.addEventListener('click', function () {
+      var code = b.getAttribute('data-sc-toggle'), sc = S.all('scenarios').filter(function (x) { return x.code === code; })[0];
+      var next = sc.status === '停用' ? '启用' : '停用';
+      ui.confirm({ title: next + '销售场景', message: '<p>将「' + ui.esc(sc.name) + '」设为' + next + '。</p><p class="ry-hint">已有商机与历史模板版本保留原解释；停用后不再供新商机匹配。</p>', requireReason: true, reasonLabel: '变更原因', confirmText: next, onConfirm: function (reason) {
+        var r = S.scenarioToggle(code, next, reason); if (!r.ok) { ui.toast(r.msg, 'warn'); return; } render();
+      } });
+    }); });
+  }
+
+  function scenarioEditor(code) {
+    var sc = code ? S.all('scenarios').filter(function (x) { return x.code === code; })[0] : null;
+    ui.drawer({ title: sc ? '编辑销售场景' : '新增销售场景', subtitle: '保存即生效并记录修改历史。', size: 'md',
+      body: ui.field('所属业务线', ui.select('businessLine', [{ value: '', label: '请选择' }].concat(lines().map(function (l) { return { value: l.code, label: l.name + (l.status === '启用' ? '' : '（已停用）') }; })), sc ? sc.businessLine : ''), '', true) +
+        ui.field('场景名称', ui.input('name', sc ? sc.name : '', '如：标准销售'), '', true) +
+        ui.field('场景编码', ui.input('code', sc ? sc.code : '', 'SC-XXXX'), sc ? '编码不可修改；如需替换，请停用后新建。' : '编码需唯一，保存后不可修改。', !sc) +
+        ui.field('变更原因', ui.textarea('reason', '', '记录新增或修改原因', 3), '', true),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="sc-save">保存场景</button>',
+      onOpen: function (el) { ui.qs('#sc-save', el).addEventListener('click', function () {
+        var v = ui.formValues(el); if (!v.reason || !v.reason.trim()) { ui.toast('请填写变更原因。', 'warn'); return; }
+        var r = S.scenarioSave(sc && sc.code, { code: sc ? sc.code : String(v.code || '').trim().toUpperCase(), name: v.name, businessLine: v.businessLine }, v.reason.trim());
+        if (!r.ok) { ui.toast(r.msg, 'warn'); return; } ui.close(); render();
+      }); }
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>工作台 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="assets/css/common.css">
+<link rel="stylesheet" href="assets/css/h5-common.css">
+<style>
+  /* 首页专属：今日工作概览与快捷入口，均为本页视图，不跨页复用。 */
+  .h5-hello { padding: 4px 2px 10px; }
+  .h5-hello__t { font-size: 19px; font-weight: 600; letter-spacing: .01em; }
+  .h5-hello__s { font-size: 12.5px; color: var(--muted); margin-top: 5px; line-height: 1.7; }
+  .h5-hello__summary { margin:9px 0 0;padding:9px 10px;border-radius:9px;background:var(--brand-soft);color:var(--brand-ink);font-size:12px;line-height:1.6; }
+  .h5-today { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 4px 0 2px; }
+  .h5-today__it { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 8px; text-align: center; cursor: pointer; }
+  .h5-today__it b { display: block; font-size: 19px; line-height: 1.3; }
+  .h5-today__it b.is-warn { color: var(--warn); }
+  .h5-today__it b.is-bad { color: var(--danger); }
+  .h5-today__it span { font-size: 11px; color: var(--muted); }
+  .h5-today__it.is-off { opacity: .5; cursor: not-allowed; }
+  .h5-msg { display: flex; align-items: center; gap: 10px; }
+  .h5-msg__ico { width: 34px; height: 34px; border-radius: 9px; background: var(--brand-soft); color: var(--brand-ink); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; flex: none; }
+  .h5-msg__t { flex: 1; min-width: 0; }
+  .h5-msg__t b { display: block; font-size: 14px; }
+  .h5-msg__t span { font-size: 11.5px; color: var(--muted); }
+  .h5-flow { display: flex; flex-direction: column; gap: 6px; }
+  .h5-flow__it { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px dashed var(--line-soft); }
+  .h5-flow__it:last-child { border-bottom: 0; }
+  .h5-flow__it a { color: var(--ink); text-decoration: none; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .h5-flow__it a:hover { color: var(--brand-ink); }
+  .h5-flow__k { flex: none; font-size: 11px; color: var(--faint); width: 62px; }
+  .h5-mgr { border-left: 3px solid var(--brand); }
+  .h5-mgr-grid { grid-template-columns: 1fr; }
+  .h5-mgr-grid .ry-grid__it { padding: 11px 13px; flex-direction: row; justify-content: flex-start; gap: 10px; min-width: 0; }
+  .h5-mgr-grid .ry-grid__ico { width: 32px; height: 32px; border-radius: 9px; font-size: 12px; }
+  .h5-mgr-grid .ry-grid__tx { font-size: 13px; }
+  .h5-quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+  .h5-quick__it { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 64px; padding: 7px 3px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); color: var(--ink); text-decoration: none; font-size: 11px; font-weight: 600; text-align: center; }
+  .h5-quick__it b { color: var(--brand-ink); font-size: 18px; line-height: 1; }
+  .h5-quick__it:active { background: var(--brand-soft); }
+</style>
+</head>
+<body class="ry-app" data-root="" data-end="h5">
+
+<!-- H5 外壳：顶部条与底部五入口由 navigation.js 渲染，本页不重复实现 -->
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+
+  <!-- 概览：今日工作。全部数字按当前评审身份、数据范围与对象状态实时计算。 -->
+  <div class="ry-hcard">
+    <div class="ry-hcard__body">
+      <div class="h5-hello">
+        <div class="h5-hello__t" id="h5-hello-t">—</div>
+        <div class="h5-hello__s" id="h5-hello-s">—</div>
+        <p class="h5-hello__summary" id="h5-task-summary">—</p>
+      </div>
+      <div class="h5-today" id="h5-today"></div>
+    </div>
+  </div>
+
+  <div class="ry-sec-title">快捷操作</div>
+  <div class="h5-quick" id="h5-quick"></div>
+
+  <!-- 消息入口：打开目标时重新鉴权 -->
+  <div class="ry-hcard" id="h5-msg-card">
+    <div class="ry-hcard__body">
+      <div class="h5-msg">
+        <span class="h5-msg__ico">消息</span>
+        <span class="h5-msg__t"><b id="h5-msg-t">消息</b><span id="h5-msg-s">—</span></span>
+        <span id="h5-msg-b"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主管业务处理：H5 只做源业务处理，不建设管理看板、趋势或指标下钻 -->
+  <div id="h5-mgr-sec" style="display:none">
+    <div class="ry-sec-title">团队处理 <span class="h5-sec-note">进入源业务页面</span></div>
+    <div class="ry-grid h5-mgr-grid" id="h5-mgr-entries"></div>
+  </div>
+
+  <!-- 今日待办：任务、日程与正式拜访按时间聚合 -->
+  <div class="ry-sec-title">今日待办</div>
+  <div class="ry-hcard">
+    <div class="ry-hcard__body">
+      <div class="h5-flow" id="h5-todo"></div>
+    </div>
+  </div>
+
+  <!-- Agent 现状：候选与写入失败，按当前待确认／历史待处理分区 -->
+  <div class="ry-sec-title">瑞赢 AI</div>
+  <div class="ry-hcard">
+    <div class="ry-hcard__body">
+      <div class="h5-flow" id="h5-agent"></div>
+    </div>
+  </div>
+
+  <div class="ry-sec-title">日报</div>
+  <div class="ry-hcard"><div class="ry-hcard__body">
+    <a class="ry-btn" href="h5/activity/list.html?tab=report">打开每日报告</a>
+  </div></div>
+
+  <div class="ry-sec-title">业务快捷入口 <span class="h5-sec-note">按当前身份与页面权限过滤</span></div>
+  <div class="ry-grid ry-grid--3" id="h5-entries"></div>
+
+  <!-- 本页契约：评审对照用，列出页面契约编号与边界，不承载业务事实 -->
+  <div class="ry-hcard ry-hcard--flat">
+    <div class="ry-hcard__head"><h3>本页契约</h3><div class="ry-hcard__extra"><span class="h5-sec-note">PG-HOME-TODAY</span></div></div>
+    <div class="ry-hcard__body">
+      <ul class="ry-kv ry-kv--tight">
+        <li><span>页面契约</span><b>PG-HOME-TODAY · H5 · 首页和工作入口</b></li>
+        <li><span>依据</span><b>prd/00 §1.1／§2；prd/05 §3.1</b></li>
+        <li><span>可进入角色</span><b>ALL5</b></li>
+        <li><span>覆盖验收</span><b>AC-01</b></li>
+        <li><span>本页视图</span><b>六类必办、今日任务总结、日报与消息入口；快捷操作提供签到、沟通整理、日报、任务；业务入口提供客户／联系人／线索／商机</b></li>
+        <li><span>总结口径</span><b>顶部纯文本仅归纳当前账号可见的确定性底单，不生成新任务或第二套优先级；今日到期、已逾期与待处理任务可能重叠，不应相加。今日日程仅计独立日程，任务和正式拜访投影已在各自类别计数。</b></li>
+        <li><span>投影只读</span><b>日程与待办是源对象的只读投影；点开回到源对象所在页面，不在本页直接修改</b></li>
+        <li><span>入口与权限</span><b>快捷入口按当前页面权限过滤；无权限时保留位置并显式标注原因，不以隐藏代替权限表达</b></li>
+        <li><span>H5 边界</span><b>不提供导出；不建设管理看板、趋势或指标下钻；主管区只做源业务处理</b></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="ry-hcard ry-hcard--flat">
+    <div class="ry-hcard__body">
+      <p class="ry-note">
+        本页是企微 H5 统一入口。H5 与 PC 共用同一业务对象 ID、状态、权限、数据范围和正式业务事实；
+        H5 刷新或重新进入时读取最新事实，不要求 PC 实时推送。H5 不提供导出，不建设管理看板、趋势或指标下钻。
+      </p>
+      <p class="ry-note" id="h5-datarange">—</p>
+    </div>
+  </div>
+
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="assets/js/demo-data.js"></script>
+<script src="assets/js/prototype-store.js"></script>
+<script src="assets/js/permissions.js"></script>
+<script src="assets/js/common-actions.js"></script>
+<script src="assets/js/navigation.js"></script>
+<script src="assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var S = RY.store, P = RY.perm, ui = RY.ui;
+
+  /* 快捷入口与目标页面契约一一对应；不新建未登记入口。 */
+  var ENTRIES = [
+    { name: '客户', key: 'h5.customer.list', href: 'h5/customer/list.html', ico: '客户' },
+    { name: '联系人', key: 'h5.contact.list', href: 'h5/contact/list.html', ico: '联系' },
+    { name: '线索', key: 'h5.lead.list', href: 'h5/lead/list.html', ico: '线索' },
+    { name: '商机', key: 'h5.opp.list', href: 'h5/opportunity/list.html', ico: '商机' },
+  ];
+
+  /* 工作台保留一个团队处理入口；二级页分别进入四类源业务。 */
+  var MGR_ENTRIES = [
+    { name: '团队处理 · 线索／任务／日报／拜访', key: 'h5.team.index', href: 'h5/team/index.html', ico: '团队' }
+  ];
+
+  var QUICK = [
+    { name: '一键签到', ico: '✓', key: 'h5.visit.detail', action: 'checkin' },
+    { name: '资料上传', ico: '↑', key: 'h5.activity.create', permission: 'activity.create', href: 'h5/activity/create.html' },
+    { name: '写日报', ico: '日', key: 'h5.report.daily', permission: 'report.edit', href: 'h5/report/daily.html' },
+    { name: '新建任务', ico: '＋', key: 'h5.task.create', href: 'h5/task/list.html?create=1' }
+  ];
+
+  function tile(e) {
+    var allowed = P.page(e.key) && (!e.action || P.can(e.action));
+    if (!allowed) {
+      return '<span class="ry-grid__it is-off" title="当前身份无该页面权限">' +
+        '<span class="ry-grid__ico">' + ui.esc(e.ico) + '</span>' +
+        '<span class="ry-grid__tx">' + ui.esc(e.name) + '<i class="ry-grid__no">无权限</i></span></span>';
+    }
+    return '<a class="ry-grid__it" href="' + RY.nav.href(e.href) + '">' +
+      '<span class="ry-grid__ico">' + ui.esc(e.ico) + '</span>' +
+      '<span class="ry-grid__tx">' + ui.esc(e.name) + '</span></a>';
+  }
+
+  function flowRow(k, label, href) {
+    return '<div class="h5-flow__it"><span class="h5-flow__k">' + ui.esc(k) + '</span>' +
+      (href ? '<a href="' + RY.nav.href(href) + '">' + ui.esc(label) + '</a>' : '<span style="flex:1">' + ui.esc(label) + '</span>') +
+      '</div>';
+  }
+
+  function render() {
+    var u = S.currentUser();
+    var month = S.today().slice(0, 7);
+    var tasks = S.tasks('mine').filter(function (t) { return t.status === '待处理'; });
+    var overdue = tasks.filter(S.taskOverdue);
+    var todayDue = tasks.filter(function (t) { return (t.dueAt || '').slice(0, 10) === S.today(); });
+    var visits = S.visitList('mine').filter(function (v) { return ['计划中', '进行中'].indexOf(v.status) >= 0; });
+    var events = S.calendarEvents(month);
+    var todayEvents = events.filter(function (e) { return e.date === S.today(); });
+    var todaySchedules = todayEvents.filter(function (e) { return e.kind === 'schedule'; });
+    var candidates = S.candidateList({ age: '当前', status: '待确认' });
+    var taskCandidates = S.candidateList({ status: '待确认' }).filter(function (c) { return c.kind === '候选任务'; });
+    var failWrite = S.candidateList({ writeFail: true });
+    var draft = S.reportDraftOf(u.id, S.today());
+
+    /* ---- 欢迎信息与数据范围 ---- */
+    ui.qs('#h5-hello-t').textContent = u.name + '，' + (new Date().getHours() < 12 ? '上午好' : (new Date().getHours() < 18 ? '下午好' : '晚上好'));
+    ui.qs('#h5-hello-s').textContent = S.today() + ' · ' + P.ROLES[u.role].name + ' · ' + u.dept +
+      '　数据截止 ' + S.today() + ' ' + S.now().slice(11, 16);
+    ui.qs('#h5-datarange').textContent = '当前数据范围：' + P.dataScope(u).label;
+
+    /* ---- 今日工作概览 ---- */
+    var todayVisits = visits.filter(function (v) { return (v.planAt || v.startAt || v.date || '').slice(0, 10) === S.today(); });
+    var visitBrief = todayVisits.length ? '（' + todayVisits.slice(0, 2).map(function (v) {
+      var customer = S.customer(v.customerId);
+      return (customer ? customer.name : '客户待核对') + '，计划 ' + (v.planAt || '时间待补齐').slice(11, 16);
+    }).join('；') + (todayVisits.length > 2 ? '等' : '') + '）' : '';
+    ui.qs('#h5-task-summary').textContent = '🤖 今日任务总结：今日到期任务 ' + todayDue.length +
+      ' 项、已逾期任务 ' + overdue.length + ' 项、今日正式拜访 ' + todayVisits.length + ' 场' + visitBrief +
+      '、待确认任务候选 ' + taskCandidates.length + ' 条、今日日程 ' + todaySchedules.length +
+      ' 项。以上按当前可见的确定性数据归纳，供你掌握全局。';
+    var cards = [
+      { v: tasks.length, k: '待处理任务', cls: '', href: 'h5/task/list.html?filter=all&status=待处理' },
+      { v: todayDue.length, k: '今日到期', cls: '', href: 'h5/task/list.html?filter=today' },
+      { v: overdue.length, k: '已逾期', cls: overdue.length ? 'is-bad' : '', href: 'h5/task/list.html?filter=overdue' },
+      { v: todayVisits.length, k: '今日正式拜访', cls: '', href: 'h5/activity/list.html?tab=visit' },
+      { v: todaySchedules.length, k: '今日日程', cls: '', href: 'h5/calendar/index.html' },
+      { v: taskCandidates.length, k: '任务候选', cls: taskCandidates.length ? 'is-warn' : '', href: 'h5/task/list.html?scope=candidate' }
+    ];
+    ui.qs('#h5-today').innerHTML = cards.map(function (c) {
+      return '<a class="h5-today__it" href="' + RY.nav.href(c.href) + '"><b class="' + c.cls + '">' + c.v + '</b><span>' + c.k + '</span></a>';
+    }).join('');
+
+    /* ---- 消息入口 ---- */
+    var msgs = S.arr('messages').filter(function (m) { return !m.receiver || m.receiver === u.id; });
+    var unread = msgs.filter(function (m) { return !m.read; }).length;
+    ui.qs('#h5-msg-t').textContent = '消息与待办提醒';
+    ui.qs('#h5-msg-s').textContent = unread
+      ? unread + ' 条未读；打开目标时重新鉴权，失权后不再展示标题与摘要'
+      : '全部已读；打开目标时重新鉴权';
+    ui.qs('#h5-msg-b').innerHTML = unread ? '<span class="ry-badge">' + unread + '</span>' : '';
+    ui.qs('#h5-msg-card').setAttribute('data-href', RY.nav.href('h5/message/list.html'));
+    ui.qs('#h5-msg-card').style.cursor = 'pointer';
+    ui.qs('#h5-msg-card').onclick = function () { RY.nav.go('h5/message/list.html'); };
+
+    /* ---- 快捷入口 ---- */
+    ui.qs('#h5-entries').innerHTML = ENTRIES.map(tile).join('');
+    ui.qs('#h5-quick').innerHTML = QUICK.map(function (e) {
+      var allowed = P.page(e.key) && (!e.permission || P.can(e.permission));
+      return allowed ? '<a class="h5-quick__it" href="' + (e.href ? RY.nav.href(e.href) : '#') + '"' +
+        (!e.href && e.action ? ' data-quick="' + e.action + '"' : '') + '><b>' + ui.esc(e.ico) + '</b>' + ui.esc(e.name) + '</a>' :
+        '<span class="h5-quick__it is-off" title="当前账号无该页面权限"><b>' + ui.esc(e.ico) + '</b>' + ui.esc(e.name) + '</span>';
+    }).join('');
+    var checkin = ui.qs('[data-quick="checkin"]');
+    if (checkin) checkin.addEventListener('click', function (e) {
+      e.preventDefault();
+      var own = S.visitList('mine').filter(function (v) { return v.owner === u.id && v.status === '计划中' && P.inScope('visit', v); })
+        .sort(function (a, b) { return (a.planAt || '').localeCompare(b.planAt || ''); });
+      if (!own.length) { RY.nav.go('h5/activity/list.html?tab=visit'); return; }
+      RY.nav.go('h5/visit/detail.html?id=' + encodeURIComponent(own[0].id) + '&action=checkin');
+    });
+
+    /* ---- 主管业务处理 ---- */
+    var showMgr = u.role === 'R2' || u.role === 'R5';
+    ui.qs('#h5-mgr-sec').style.display = showMgr ? '' : 'none';
+    if (showMgr) ui.qs('#h5-mgr-entries').innerHTML = MGR_ENTRIES.map(tile).join('');
+
+    /* ---- 今日待办 ---- */
+    var rows = [];
+    if (overdue.length) rows.push(flowRow('已逾期', overdue.length + ' 项任务已逾期：' + overdue.map(function (t) { return t.name; }).slice(0, 1).join('') + (overdue.length > 1 ? ' 等' : ''), 'h5/task/list.html?filter=overdue'));
+    if (todayDue.length) rows.push(flowRow('今日到期', todayDue.length + ' 项任务今日到期', 'h5/task/list.html?filter=today'));
+    todayEvents.slice(0, 4).forEach(function (e) {
+      var src = e.project ? '（' + e.srcType + '投影·只读）' : '';
+      rows.push(flowRow(e.time || '全天', e.title + src, e.path ? h5Path(e) : ''));
+    });
+    if (visits.length) rows.push(flowRow('正式拜访', visits.length + ' 场待执行拜访', 'h5/activity/list.html?tab=visit'));
+    var pendingVisit = S.arr('visits').filter(function (v) {
+      return ['待复核', '待补充'].indexOf(v.reviewStatus) >= 0 && P.inScope('visit', v);
+    });
+    if (pendingVisit.length) rows.push(flowRow('拜访异常', pendingVisit.length + ' 条待复核异常', 'h5/visit/list.html?exception=1'));
+    if (draft && draft.status === '草稿') rows.push(flowRow('日报', '今日日报草稿待提交（AI 底稿已生成）', 'h5/activity/list.html?tab=report'));
+    if (!rows.length) rows.push(flowRow('', '当前没有待处理的任务、日程与拜访。', ''));
+    ui.qs('#h5-todo').innerHTML = rows.join('');
+
+    /* ---- Agent ---- */
+    var aiRows = [];
+    aiRows.push(flowRow('待确认', candidates.length + ' 条候选等待人工确认' + (candidates.length ? '：' + candidates[0].kind : ''), 'h5/agent/confirm.html'));
+    if (failWrite.length) aiRows.push(flowRow('写入失败', failWrite.length + ' 条候选已确认但写入失败，可按原参数重试', 'h5/agent/pending.html'));
+    aiRows.push(flowRow('能力', 'AI 新增线索试点 · 客户与其他信息查询 · 沟通整理', 'h5/agent/index.html'));
+    aiRows.push(flowRow('创建', '人工核对候选后按正式创建流程落库；0.1 先试点线索', 'h5/agent/index.html'));
+    ui.qs('#h5-agent').innerHTML = aiRows.join('');
+  }
+
+  /* 投影事件回到源对象所在页面；投影本身只读，不能在日历上直接修改。 */
+  function h5Path(e) {
+    if (e.kind === 'task') return 'h5/task/detail.html?id=' + e.srcId;
+    if (e.kind === 'visit') return 'h5/visit/detail.html?id=' + e.srcId;
+    if (e.kind === 'lead') return 'h5/lead/detail.html?id=' + e.srcId;
+    if (e.kind === 'opp') return 'h5/opportunity/detail.html?id=' + e.srcId;
+    if (e.kind === 'schedule') return 'h5/calendar/index.html?date=' + e.date;
+    return '';
+  }
+
+  RY.nav.h5shell({
+    title: '工作台',
+    sub: '今日工作与快捷入口',
+    back: false,
+    nav: 'home',
+    tabbar: true,
+    actions: ''
+  });
+  render();
+})();
+</script>
+</body>
+</html>

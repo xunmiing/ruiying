@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>商机 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：商机列表（进行中／已结束／团队 + 筛选，无批量业务操作）。 */
+  .ol-search { position: sticky; top: 0; z-index: 6; background: var(--bg); padding: 10px 0 8px; }
+  .ol-search__box { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; }
+  .ol-search__box input { flex: 1; border: 0; outline: 0; font-size: 14px; background: transparent; color: var(--ink); }
+  .ol-search__box input::placeholder { color: var(--faint); }
+  .ol-hint { font-size: 11px; color: var(--faint); margin: 7px 2px 0; line-height: 1.65; }
+  .ol-scopes { display: flex; gap: 0; margin-top: 8px; }
+  .ol-scopes button { flex: 1; }
+  .ol-more { text-align: center; padding: 14px 0 4px; }
+  .ol-more.is-hidden { display: none; }
+  .ol-stall { color: var(--danger, #C0392B); font-weight: 600; }
+  .ol-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px; background: var(--surface); }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<!-- H5 外壳：顶部条与底部五入口由 navigation.js 渲染，本页不重复实现 -->
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+
+  <!-- 搜索与范围：搜索只在当前用户有权数据范围内执行；无权商机不返回标题、摘要与数量 -->
+  <div class="ol-search">
+    <div class="ol-search__box">
+      <input id="ol-q" type="search" placeholder="搜商机名称、编号、客户" autocomplete="off">
+    </div>
+    <div class="ry-fbar__seg ol-scopes" id="ol-scopes"></div>
+    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+      <button class="ry-chip" id="ol-filter">筛选</button>
+      <button class="ry-chip" id="ol-scope">数据范围</button>
+      <button class="ry-chip" id="ol-batch">批量能力</button>
+    </div>
+    <p class="ol-hint" id="ol-hint">—</p>
+  </div>
+
+  <!-- 列表本体 -->
+  <div id="ol-host"></div>
+
+  <div class="ol-more is-hidden" id="ol-more">
+    <button class="ry-btn" id="ol-more-btn">加载更多</button>
+  </div>
+
+  <!-- 本页契约：评审对照用，列出页面契约编号与边界，不承载业务事实 -->
+  <div class="ry-hcard ry-hcard--flat" style="margin-top:14px">
+    <div class="ry-hcard__head"><h3>本页契约</h3><div class="ry-hcard__extra"><span class="h5-sec-note">PG-OPP-LIST</span></div></div>
+    <div class="ry-hcard__body">
+      <ul class="ry-kv ry-kv--tight">
+        <li><span>页面契约</span><b>PG-OPP-LIST · H5 · 商机</b></li>
+        <li><span>可进入角色</span><b>R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员</b></li>
+        <li><span>依据</span><b>prd/03 §14；prd/03 §2</b></li>
+        <li><span>覆盖验收</span><b>AC-21</b></li>
+        <li><span>本页视图</span><b>列表｜筛选｜无批量业务操作</b></li>
+        <li><span>列表列</span><b>名称、客户、主业务线、当前详细阶段、预计成交时间、过程／停滞状态；默认进行中</b></li>
+        <li><span>阶段口径</span><b>H5 列表只展示当前详细阶段；统一阶段只在详情展示</b></li>
+        <li><span>空值口径</span><b>预计成交时间为空显示「待补充」（系统固定门禁项，离开机会确认前必须补齐）</b></li>
+        <li><span>批量边界</span><b>H5 不提供任何批量业务操作；PC 批量只允许转派主负责人、增加／移除团队成员</b></li>
+        <li><span>不展示</span><b>产品、金额、部分赢单、竞争信息与 AI 摘要</b></li>
+      </ul>
+      <p class="ry-hint" id="ol-scope-note">—</p>
+    </div>
+  </div>
+
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<!-- 原型说明层：把「业务规则 / 注解 / 待修 / 不做」就地标注在页面上；不含业务逻辑，可整行摘除 -->
+<script src="../../assets/js/prd-notes.js" data-note-page="h5-opp-list"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var u = S.currentUser(), D = S.all('dicts');
+
+  var PAGE = 'h5.opp.list';
+  var SIZE = 20;
+  var st = S.uiState('h5.opp.list');
+  var scope = ui.q('scope') || ui.hash() || st.scope || 'mine';
+  if (scope === 'dormant') scope = 'mine';
+  var flt = st.flt || (st.flt = { line: '', stage: '', close: '', status: '' });
+  var state = { q: '', page: st.page || 1 };
+
+  RY.nav.h5shell({
+    title: '商机',
+    sub: '默认进行中；H5 只做单条推进，不提供批量',
+    back: false,
+    nav: 'opp',
+    tabbar: true
+  });
+
+  /* ---------------------------------------------------------- 鉴权 */
+  /* 进入页面即重新鉴权；无权限时不展示任何标题、摘要与数量。 */
+  if (!P.page(PAGE)) {
+    ui.qs('#ol-host').innerHTML = ui.stateCard('no-permission', {
+      title: '没有商机页面的访问权限',
+      body: '<p>' + ui.esc(P.whyNot('opp.list') || '当前身份没有「商机」页面权限。') + '</p>' +
+            '<p class="ry-hint">页面权限、动作权限、数据范围与字段规则相互独立；获得其中一个不等于获得其余。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('index.html') + '">返回工作台</a>'
+    });
+    ui.qs('.ol-search').style.display = 'none';
+    ui.qs('#ol-more').classList.add('is-hidden');
+    ui.qs('#ol-scope-note').textContent = '当前身份无该页面权限，因此不展示任何商机数量与摘要。';
+    return;
+  }
+
+  /* ---------------------------------------------------------- 数据范围 */
+
+  /* 先按数据范围过滤，再渲染：绝不「先取全量、前端隐藏」。
+     商机的数据范围判定包含主负责人与团队成员两条路径（prd/03 §11）。 */
+  function scoped() {
+    return S.arr('opportunities').filter(function (o) { return P.inScope('opp', o); });
+  }
+
+  function myScoped() {
+    return scoped().filter(function (o) {
+      return o.owner === u.id || (o.team || []).some(function (m) { return m.userId === u.id; });
+    });
+  }
+
+  function scopeRows() {
+    if (scope === 'team') return scoped();
+    if (scope === 'open') {
+      return (P.dataScope(u).scope === 'all' ? scoped() : myScoped()).filter(function (o) { return o.processStatus === '进行中'; });
+    }
+    if (scope === 'closed') {
+      return (P.dataScope(u).scope === 'all' ? scoped() : myScoped()).filter(function (o) { return o.processStatus === '已结束'; });
+    }
+    return (P.dataScope(u).scope === 'all' ? scoped() : myScoped()).filter(function (o) { return o.processStatus === '进行中'; });
+  }
+
+  var SCOPES = [
+    { k: 'mine', n: '我的进行中' },
+
+    { k: 'team', n: '团队' },
+    { k: 'open', n: '全部进行中' },
+    { k: 'closed', n: '已结束' }
+  ];
+
+  /* ---------------------------------------------------------- 取值 */
+
+  function stageName(o) {
+    var s = S.currentStage(o);
+    return s ? s.name : '当前阶段不可用';
+  }
+  function unifiedOf(o) {
+    var s = S.currentStage(o);
+    return s ? s.unified : '—';
+  }
+  function mainLine(o) {
+    var m = (o.lines || []).filter(function (x) { return x.role === '主业务线'; })[0];
+    return m ? m.businessLine : '';
+  }
+  function custOf(o) {
+    var c = S.customer(o.customerId);
+    return c && P.inScope('customer', c) ? c : null;
+  }
+  function closeText(o) {
+    return o.predictedClose ? o.predictedClose : ui.tag('待补充', 'warn');
+  }
+  /* 停滞：最近一次进入当前详细阶段后的有效停留时间，停滞仅作为提醒（prd/03 §12）。 */
+  function stallDays(o) {
+    var result = S.opportunityStagnation(o);
+    return result.on ? result.days : -1;
+  }
+
+  /* ---------------------------------------------------------- 筛选 */
+
+  function filtered() {
+    var q = state.q.trim().toLowerCase();
+    return scopeRows().filter(function (o) {
+      if (q) {
+        var c = custOf(o);
+        var hay = (o.id + ' ' + o.name + ' ' + (c ? c.name : '')).toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
+      if (flt.line && mainLine(o) !== flt.line) return false;
+      if (flt.stage) {
+        var s = S.currentStage(o);
+        if (!s || s.code !== flt.stage) return false;
+      }
+      if (flt.close === 'filled' && !o.predictedClose) return false;
+      if (flt.close === 'empty' && o.predictedClose) return false;
+      if (flt.status && o.processStatus !== flt.status) return false;
+      if (flt.stall === 'on' && stallDays(o) < 0) return false;
+      return true;
+    });
+  }
+
+  /* ---------------------------------------------------------- 行渲染 */
+
+  function rowHtml(o) {
+    var c = custOf(o);
+    var days = stallDays(o);
+    var canOpen = true;
+    return '<li><div class="ry-hrow">' +
+      '<div class="ry-hrow__top">' +
+        '<span class="ry-hrow__t">' + ui.esc(o.name) + '</span>' +
+        '<span class="ry-hrow__tags">' + ui.statusTag(o.processStatus) +
+          (o.closeResult ? ' ' + ui.statusTag(o.closeResult) : '') +
+          (days >= 0 ? ' ' + ui.tag('停滞 ' + days + ' 天', 'bad') : '') + '</span></div>' +
+      '<div class="ry-hrow__meta">' +
+        '<span>客户 <b>' + ui.esc(c ? c.name : '客户不可见') + '</b></span></div>' +
+      '<div class="ry-hrow__meta">' +
+        '<span>主业务线 <b>' + ui.esc(S.businessLineName(mainLine(o)) || '—') + '</b></span>' +
+        '<span>当前详细阶段 <b>' + ui.esc(stageName(o)) + '</b></span></div>' +
+      '<div class="ry-hrow__meta">' +
+        '<span>预计成交时间 <b>' + (o.predictedClose ? ui.esc(o.predictedClose) : closeText(o)) + '</b></span>' +
+        '<span>主负责人 <b>' + ui.esc(S.userName(o.owner)) + '</b></span></div>' +
+      '<div class="ry-hrow__meta"><span>下一步行动 <b>' + ui.esc(o.nextAction || '未设置') + '</b></span></div>' +
+      '<div class="ry-hrow__foot">' +
+        '<a class="ry-btn" href="' + RY.nav.href('h5/opportunity/detail.html?id=' + encodeURIComponent(o.id)) + '">详情</a>' +
+        '<span class="h5-sec-note">H5 列表只展示当前详细阶段</span>' +
+      '</div>' +
+    '</div></li>';
+  }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function renderScopes() {
+    var rows = scopeRows();
+    var counts = {};
+    SCOPES.forEach(function (s) {
+      var keep = scope; scope = s.k;
+      counts[s.k] = scopeRows().length;
+      scope = keep;
+    });
+    ui.qs('#ol-scopes').innerHTML = SCOPES.map(function (s) {
+      return '<button type="button" data-scope="' + s.k + '"' + (s.k === scope ? ' class="is-on"' : '') + '>' +
+        s.n + '<i>' + counts[s.k] + '</i></button>';
+    }).join('');
+    ui.qsa('[data-scope]', ui.qs('#ol-scopes')).forEach(function (b) {
+      b.addEventListener('click', function () {
+        scope = b.getAttribute('data-scope');
+        st.scope = scope;
+        state.page = 1;
+        try { history.replaceState(null, '', '#' + scope); } catch (e) { }
+        render();
+      });
+    });
+  }
+
+  function renderHint() {
+    var total = scopeRows().length;
+    var shown = filtered().length;
+    var scopeDesc = {
+      mine: '我的进行中：由我负责或我在团队中的商机',
+
+      team: '团队：当前数据范围内可见的全部商机',
+      open: '进行中：当前未结束商机',
+      closed: '已结束：结果仅赢单／输单／关闭，一条商机只有一个整体结果'
+    }[scope] || '';
+    ui.qs('#ol-hint').textContent = scopeDesc + '。当前筛选命中 ' + shown + ' / ' + total + ' 条。' +
+      (flt.line || flt.stage || flt.close || flt.status || flt.stall ? '（已应用筛选）' : '');
+    var ds = P.dataScope(u);
+    ui.qs('#ol-scope-note').textContent = '当前身份 ' + u.role + ' ' + (P.ROLES[u.role] ? P.ROLES[u.role].name : '') +
+      '，数据范围：' + ds.label +
+      '。搜索与列表同权：无权商机不返回标题、摘要、数量或可推断信息；筛选只在你可见的数据范围内生效。';
+  }
+
+  function render() {
+    if (SCOPES.every(function (s) { return s.k !== scope; })) scope = 'mine';
+    renderScopes();
+    renderHint();
+    var all = filtered();
+    var page = all.slice(0, state.page * SIZE);
+    ui.qs('#ol-host').innerHTML = page.length
+      ? '<div class="ry-hlist"><ul>' + page.map(rowHtml).join('') + '</ul></div>'
+      : (state.q || flt.line || flt.stage || flt.close || flt.status || flt.stall
+        ? ui.empty('当前筛选条件下没有商机。', '<button class="ry-btn" id="ol-reset-empty">清除筛选</button>')
+        : ui.stateCard('empty', {
+            title: '暂无可查看的商机',
+            body: '<p>该范围下没有商机。商机由线索整条转换或直接创建产生，创建时必须有客户、名称、唯一主业务线和销售场景。</p>',
+            actions: '<a class="ry-btn ry-btn--primary" href="' + RY.nav.href('h5/opportunity/create.html') + '">新建商机</a>'
+          }));
+    var more = ui.qs('#ol-more');
+    more.classList.toggle('is-hidden', page.length >= all.length);
+    ui.qs('#ol-more-btn').textContent = '加载更多（已显示 ' + page.length + ' / ' + all.length + '）';
+    ui.bindDenied(ui.qs('#ol-host'));
+    var re = ui.qs('#ol-reset-empty');
+    if (re) re.addEventListener('click', function () {
+      flt.line = ''; flt.stage = ''; flt.close = ''; flt.status = ''; flt.stall = '';
+      state.q = ''; ui.qs('#ol-q').value = ''; state.page = 1; render();
+    });
+  }
+
+  /* ---------------------------------------------------------- 交互 */
+
+  var t = null;
+  ui.qs('#ol-q').addEventListener('input', function () {
+    clearTimeout(t);
+    t = setTimeout(function () { state.q = ui.qs('#ol-q').value; state.page = 1; render(); }, 220);
+  });
+  ui.qs('#ol-more-btn').addEventListener('click', function () { state.page++; st.page = state.page; render(); });
+
+  /* 筛选抽屉：只筛选「不批量、不导出」的查询条件本身。 */
+  ui.qs('#ol-filter').addEventListener('click', function () {
+    var lines = S.arr('businessLines').filter(function (b) { return b.status === '启用'; });
+    var stages = [];
+    S.arr('templates').forEach(function (tp) {
+      (tp.stages || []).forEach(function (s) {
+        if (!stages.some(function (x) { return x.code === s.code; })) stages.push({ code: s.code, name: s.name });
+      });
+    });
+    RY.nav.sheet({
+      title: '筛选', sub: '查询条件与列表同权，不产生任何数据变更',
+      body:
+        RY.ui.field('主业务线', ui.select('line', [{ value: '', label: '全部' }].concat(lines.map(function (b) {
+          return { value: b.code, label: b.name };
+        })), flt.line)) +
+        RY.ui.field('当前详细阶段', ui.select('stage', [{ value: '', label: '全部' }].concat(stages), flt.stage)) +
+        RY.ui.field('预计成交时间', ui.select('close', [
+          { value: '', label: '全部' }, { value: 'filled', label: '已填写' }, { value: 'empty', label: '待补充' }
+        ], flt.close)) +
+        RY.ui.field('过程状态', ui.select('status', [{ value: '', label: '全部' }].concat(D.oppProcessStatus), flt.status)) +
+        RY.ui.field('停滞', ui.select('stall', [
+          { value: '', label: '全部' }, { value: 'on', label: '仅看停滞提醒（超过模板阈值自然日）' }
+        ], flt.stall || '')) +
+        '<p class="ry-hint">H5 只提供这组基础筛选；完整列、组合筛选、排序与普通业务导出在 PC。' +
+        '0.1 不保存个人筛选视图。</p>',
+      footer: '<button class="ry-btn" id="ol-flt-reset">清空</button>' +
+        '<button class="ry-btn ry-btn--primary" id="ol-flt-ok">应用</button>',
+      onOpen: function (host, close) {
+        ui.qs('#ol-flt-reset', host).addEventListener('click', function () {
+          flt.line = ''; flt.stage = ''; flt.close = ''; flt.status = ''; flt.stall = '';
+          close(); state.page = 1; render();
+        });
+        ui.qs('#ol-flt-ok', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          flt.line = v.line; flt.stage = v.stage; flt.close = v.close; flt.status = v.status; flt.stall = v.stall;
+          st.flt = flt;
+          close(); state.page = 1; render();
+          ui.toast('已应用筛选。', 'ok');
+        });
+      }
+    });
+  });
+
+  /* 数据范围说明：明确「先按范围过滤，再渲染」，不做前端隐藏。 */
+  ui.qs('#ol-scope').addEventListener('click', function () {
+    var ds = P.dataScope(u);
+    ui.modal({
+      title: '数据范围', size: 'sm',
+      body: ui.kv([
+        ['当前身份', ui.esc(u.role) + ' ' + ui.esc(P.ROLES[u.role] ? P.ROLES[u.role].name : '')],
+        ['数据范围', ui.esc(ds.label)],
+        ['团队关系', '加入团队自动获得该商机记录级查看权；移出后仅由团队关系产生的权限立即失效'],
+        ['任务权限', '团队成员的任务查看完全沿用统一任务权限，不因加入团队自动获得全部关联任务'],
+        ['搜索口径', '搜索与列表同权；无权商机不返回标题、摘要、数量或可推断信息']
+      ]) +
+        '<p class="ry-hint">列表在你可见的数据范围内过滤后再渲染，不以「先取全量、前端隐藏」的方式表达权限。</p>',
+      footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+    });
+  });
+
+  /* 批量能力说明：H5 一律不提供批量业务操作。 */
+  ui.qs('#ol-batch').addEventListener('click', function () {
+    ui.modal({
+      title: '批量能力边界', size: 'sm',
+      body: '<p>H5 <b>不提供任何批量业务操作</b>，所有动作都是单条执行。</p>' +
+        ui.kv([
+          ['PC 允许的批量', '仅转派主负责人、增加团队成员、移除团队成员'],
+          ['PC 禁止的批量', '推进／回退、关闭、拆分、改客户、改主业务线、改销售场景、模板迁移'],
+          ['H5', '不提供上述批量入口'],
+          ['导出', '0.1 商机导出是 PC 能力，且不导出完整时间线、全量任务或全量销售活动'],
+          ['本页不展示', '产品、金额、部分赢单、竞争信息、AI 摘要']
+        ]) +
+        '<p class="ry-hint">批量操作也必须逐条通过单条校验，不能绕过权限、状态与门槛规则。</p>',
+      footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+    });
+  });
+
+  render();
+  ui.bindMasked(document.body);
+})();
+</script>
+</body>
+</html>

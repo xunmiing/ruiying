@@ -1,0 +1,391 @@
+/* ==========================================================================
+ * 瑞赢 0.1 · 企业微信 H5 公共样式（h5-common.css）
+ * --------------------------------------------------------------------------
+ * 依据：prd/00 §1.1；prototype/HTML原型设计任务说明.md §6.1、§10.1。
+ *
+ * 职责：只承载 H5 端跨页复用的外壳与组件——430px 主画布、顶部应用栏、
+ *       底部一级入口、卡片式列表、底部抽屉筛选、触达友好的动作区、步骤条、
+ *       时间轴与 H5 专属状态表达。页面专属样式写在各自 HTML 的 <style> 中。
+ *
+ * 原则：不把 PC 表格缩小当作移动方案；详情先给状态、责任、下一动作和风险，
+ *       再给完整字段；弱网与外系统失败时保留手工路径。
+ * ========================================================================== */
+
+/* --------------------------------------------------------------- 主画布 */
+
+body.ry-h5 {
+  background: #E7EBEE;
+  font-size: 14px;
+  line-height: 1.62;
+}
+
+.ry-app {
+  width: 430px;
+  min-height: 100vh;
+  margin: 0 auto;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  box-shadow: 0 0 0 1px rgba(16, 24, 32, .06), 0 18px 48px rgba(16, 24, 32, .10);
+}
+
+/* 评审导航固定在 H5 画布外侧，由公共外壳为每个 H5 页面生成。 */
+.ry-pc-jump { position: absolute; left: calc(100% + 12px); top: 18px; z-index: 70; white-space: nowrap; text-decoration: none; }
+@media (max-width: 720px) { .ry-pc-jump { display: none; } }
+
+@media (max-width: 460px) {
+  body.ry-h5 { background: var(--bg); }
+  .ry-app { width: 100%; box-shadow: none; }
+}
+
+/* ------------------------------------------------------------- 顶部应用栏 */
+
+.ry-bar {
+  position: sticky; top: 0; z-index: 60;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; min-height: 48px;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+}
+.ry-bar--brand { background: var(--brand); border-bottom-color: var(--brand-ink); color: #fff; }
+.ry-bar--brand .ry-bar__title, .ry-bar--brand .ry-bar__sub { color: #fff; }
+.ry-bar--brand .ry-bar__back, .ry-bar--brand .ry-bar__ico { color: rgba(255, 255, 255, .92); border-color: rgba(255, 255, 255, .3); }
+.ry-bar__back, .ry-bar__ico {
+  width: 30px; height: 30px; flex: 0 0 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); border-radius: 9px;
+  background: var(--surface); color: var(--muted); cursor: pointer;
+  font-size: 15px; padding: 0; font-family: inherit;
+}
+.ry-bar__main { flex: 1; min-width: 0; }
+.ry-bar__title { font-size: 15.5px; font-weight: 600; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ry-bar__sub { font-size: 11.5px; color: var(--muted); margin: 1px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ry-bar__acts { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.ry-bar__ico { position: relative; }
+.ry-bar__dot {
+  position: absolute; top: -3px; right: -3px; min-width: 15px; height: 15px; padding: 0 3px;
+  border-radius: 999px; background: var(--danger); color: #fff;
+  font-size: 10px; line-height: 15px; text-align: center; font-style: normal;
+}
+
+/* 身份标注：原型演示，不是生产冒用身份 */
+.ry-demoflag {
+  margin: 0; padding: 6px 14px; font-size: 11.5px;
+  background: var(--warn-soft); border-bottom: 1px solid var(--warn-line); color: var(--warn);
+  display: flex; align-items: center; gap: 6px;
+}
+.ry-demoflag b { font-weight: 600; }
+
+/* ------------------------------------------------------------- 内容滚动区 */
+
+.ry-body { flex: 1; padding: 12px 12px 16px; }
+.ry-body--flush { padding: 0 0 16px; }
+.ry-body--pad-bottom { padding-bottom: 84px; }
+
+/* --------------------------------------------------------------- 卡片 */
+
+.ry-hcard {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  margin-bottom: 12px; overflow: hidden;
+}
+.ry-hcard__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 11px 14px; border-bottom: 1px solid var(--line-soft);
+}
+.ry-hcard__head h3 { font-size: 14px; }
+.ry-hcard__extra { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.ry-hcard__body { padding: 12px 14px; }
+.ry-hcard__body--flush { padding: 0; }
+.ry-hcard--flat { border: 0; background: transparent; margin-bottom: 8px; }
+
+/* 分区标题右侧说明：常驻展示口径、范围或数据截止，不占用正文高度 */
+.h5-sec-note { font-size: 11px; color: var(--faint); font-weight: 400; }
+
+.ry-sec-title {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  font-size: 13px; color: var(--muted); font-weight: 600;
+  margin: 16px 2px 8px;
+}
+.ry-sec-title:first-child { margin-top: 4px; }
+.ry-sec-title em { font-style: normal; font-size: 11.5px; color: var(--faint); font-weight: 400; }
+
+/* ------------------------------------------------------- 列表行（卡片式） */
+
+.ry-hlist { list-style: none; margin: 0; padding: 0; }
+.ry-hrow {
+  display: block; padding: 12px 14px; border-bottom: 1px solid var(--line-soft);
+  color: inherit; background: var(--surface);
+}
+.ry-hlist li:last-child .ry-hrow { border-bottom: 0; }
+a.ry-hrow:active { background: var(--brand-soft); }
+.ry-hrow__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.ry-hrow__t { font-size: 14px; font-weight: 600; margin: 0; min-width: 0; word-break: break-all; }
+.ry-hrow__tags { display: flex; gap: 5px; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; }
+.ry-hrow__meta { margin: 5px 0 0; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.ry-hrow__meta span { display: inline-flex; align-items: center; gap: 4px; }
+.ry-hrow__meta b { font-weight: 500; color: var(--ink); }
+.ry-hrow__foot { margin-top: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ry-hrow__no { font-family: var(--mono); font-size: 11.5px; color: var(--faint); }
+.ry-hrow--sel { background: var(--brand-soft); }
+
+/* 勾选态（批量） */
+.ry-hrow__pick { display: flex; align-items: flex-start; gap: 9px; }
+.ry-hrow__pick input { accent-color: var(--brand); margin-top: 3px; flex: 0 0 auto; width: 16px; height: 16px; }
+
+/* --------------------------------------------------------- 网格快捷入口 */
+
+.ry-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px;
+}
+.ry-grid--3 { grid-template-columns: repeat(3, 1fr); }
+.ry-grid__it {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 12px 4px; border-radius: 12px; color: var(--ink); text-align: center;
+}
+.ry-grid__it:active { background: var(--brand-soft); }
+.ry-grid__ico {
+  width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+  background: var(--brand-soft); color: var(--brand-ink); font-size: 17px; font-weight: 600;
+}
+.ry-grid__tx { font-size: 12px; line-height: 1.3; }
+/* 无权限入口：保留位置并显式标注，不用隐藏代替权限表达，也不侧漏数量 */
+.ry-grid__no { display: block; font-style: normal; font-size: 10px; color: var(--faint); margin-top: 2px; }
+.ry-grid__it.is-off { opacity: .45; cursor: not-allowed; }
+.ry-grid__it.is-off .ry-grid__ico { background: var(--line-soft); color: var(--faint); }
+.ry-grid__badge {
+  position: relative; top: -30px; left: 16px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 999px; background: var(--danger); color: #fff; font-size: 10px; line-height: 16px;
+}
+
+/* ---------------------------------------------------------- 汇总数字块 */
+
+.ry-stats { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line-soft); }
+.ry-stats__it { padding: 10px 6px; text-align: center; border-right: 1px solid var(--line-soft); }
+.ry-stats__it:last-child { border-right: 0; }
+.ry-stats__v { display: block; font-size: 18px; font-weight: 600; font-family: var(--mono); }
+.ry-stats__k { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.ry-stats__v.is-warn { color: var(--warn); }
+.ry-stats__v.is-bad { color: var(--danger); }
+
+/* ------------------------------------------------------------- 动作区 */
+
+.ry-footbar {
+  position: sticky; bottom: 0; z-index: 55;
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; background: rgba(255, 255, 255, .96);
+  border-top: 1px solid var(--line); backdrop-filter: blur(6px);
+}
+.ry-footbar .ry-btn { flex: 1; justify-content: center; min-height: 40px; font-size: 14px; }
+.ry-footbar__more { flex: 0 0 40px; min-height: 40px; padding: 0; }
+.ry-acts-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ry-acts-row .ry-btn { min-height: 34px; justify-content: center; }
+
+/* 底部一级入口 */
+.ry-tabbar {
+  position: sticky; bottom: 0; z-index: 58;
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  background: var(--surface); border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.ry-tabbar__it {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 2px 7px; color: var(--muted); font-size: 11px; position: relative;
+}
+.ry-tabbar__it i { font-size: 17px; font-style: normal; line-height: 1; }
+.ry-tabbar__it.is-on { color: var(--brand); font-weight: 600; }
+.ry-tabbar__it.is-off { color: var(--faint); opacity: .6; }
+.ry-tabbar__it .ry-badge { position: absolute; top: 4px; right: 50%; margin-right: -22px; }
+
+.ry-badge {
+  min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
+  background: var(--danger); color: #fff; font-size: 10px; line-height: 16px;
+  text-align: center; font-style: normal; display: inline-block;
+}
+.ry-badge--muted { background: var(--faint); }
+
+/* --------------------------------------------------- H5 筛选（底部抽屉） */
+
+.ry-fbar {
+  position: sticky; top: 48px; z-index: 50;
+  display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+  background: var(--surface); border-bottom: 1px solid var(--line-soft);
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.ry-fbar__seg { display: flex; background: var(--line-soft); border-radius: 9px; padding: 2px; flex: 0 0 auto; }
+.ry-fbar__seg button {
+  border: 0; background: none; font-family: inherit; font-size: 12.5px; color: var(--muted);
+  padding: 5px 11px; border-radius: 7px; cursor: pointer; white-space: nowrap;
+}
+.ry-fbar__seg button.is-on { background: var(--surface); color: var(--brand-ink); font-weight: 600; box-shadow: var(--sh-sm); }
+.ry-fbar__seg button[disabled] { opacity: .45; cursor: not-allowed; }
+.ry-chip {
+  flex: 0 0 auto; border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  font-family: inherit; font-size: 12.5px; padding: 5px 11px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+}
+.ry-chip.is-on { border-color: var(--brand-line); background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.ry-chip__n { font-family: var(--mono); font-size: 11px; opacity: .8; }
+
+/* H5 版抽屉：从底部升起 */
+.ry-mask--h5 { justify-content: center; align-items: flex-end; }
+.ry-mask--h5 .ry-drawer,
+.ry-sheet {
+  width: 430px; max-width: 100%; max-height: 86vh;
+  background: var(--surface); border-radius: 16px 16px 0 0;
+  display: flex; flex-direction: column; box-shadow: var(--sh);
+  transform: translateY(24px); transition: transform .24s;
+}
+@media (max-width: 460px) { .ry-mask--h5 .ry-drawer, .ry-sheet { width: 100%; } }
+.ry-mask.is-in .ry-sheet,
+.ry-mask--h5.is-in .ry-drawer { transform: translateY(0); }
+.ry-sheet__grip { width: 38px; height: 4px; border-radius: 999px; background: var(--line); margin: 8px auto 0; flex: 0 0 auto; }
+.ry-sheet .ry-layer__body { background: var(--surface); }
+
+/* --------------------------------------------------------- 阶段与步骤 */
+
+.ry-steps { display: flex; align-items: center; gap: 0; overflow-x: auto; padding: 4px 0; }
+.ry-step {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--faint); padding: 4px 10px; white-space: nowrap;
+}
+.ry-step__n {
+  width: 20px; height: 20px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--line-soft); color: var(--faint); font-size: 11px; font-family: var(--mono); flex: 0 0 auto;
+}
+.ry-step.is-done { color: var(--ok); }
+.ry-step.is-done .ry-step__n { background: var(--ok-soft); color: var(--ok); }
+.ry-step.is-on { color: var(--brand-ink); font-weight: 600; }
+.ry-step.is-on .ry-step__n { background: var(--brand); color: #fff; }
+.ry-step__sep { color: var(--line); flex: 0 0 auto; font-size: 12px; }
+
+/* 竖排进度（阶段推进） */
+.ry-track { list-style: none; margin: 0; padding: 0; }
+.ry-track li { position: relative; padding: 0 0 14px 22px; }
+.ry-track li::before {
+  content: ''; position: absolute; left: 5px; top: 5px; width: 8px; height: 8px;
+  border-radius: 999px; background: var(--line); border: 2px solid var(--surface);
+}
+.ry-track li::after {
+  content: ''; position: absolute; left: 9px; top: 15px; bottom: -2px; width: 1px; background: var(--line-soft);
+}
+.ry-track li:last-child { padding-bottom: 0; }
+.ry-track li:last-child::after { display: none; }
+.ry-track li.is-done::before { background: var(--ok); }
+.ry-track li.is-on::before { background: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.ry-track li.is-block::before { background: var(--warn); }
+.ry-track__t { font-size: 13.5px; font-weight: 600; margin: 0; }
+.ry-track__d { font-size: 12px; color: var(--muted); margin: 2px 0 0; line-height: 1.65; }
+
+/* --------------------------------------------------------- 时间轴 */
+
+.ry-tl { list-style: none; margin: 0; padding: 0; }
+.ry-tl li { position: relative; padding: 0 0 14px 20px; }
+.ry-tl li::before {
+  content: ''; position: absolute; left: 4px; top: 6px; width: 7px; height: 7px;
+  border-radius: 999px; background: var(--brand-line);
+}
+.ry-tl li::after { content: ''; position: absolute; left: 7px; top: 15px; bottom: -2px; width: 1px; background: var(--line-soft); }
+.ry-tl li:last-child { padding-bottom: 0; }
+.ry-tl li:last-child::after { display: none; }
+.ry-tl__t { font-size: 12.5px; margin: 0; }
+.ry-tl__m { font-size: 11.5px; color: var(--faint); margin: 2px 0 0; }
+
+/* --------------------------------------------------------- H5 专用件 */
+
+/* 顶部状态摘要条：先给状态、责任、下一动作和风险 */
+.ry-brief {
+  padding: 12px 14px; border-radius: 14px; margin-bottom: 12px;
+  background: var(--brand-soft); border: 1px solid var(--brand-line);
+}
+.ry-brief--warn { background: var(--warn-soft); border-color: var(--warn-line); }
+.ry-brief--bad { background: var(--danger-soft); border-color: var(--danger-line); }
+.ry-brief--info { background: var(--info-soft); border-color: var(--info-line); }
+.ry-brief--muted { background: var(--line-soft); border-color: var(--line); }
+.ry-brief__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ry-brief__k { font-size: 11.5px; color: var(--muted); }
+.ry-brief__v { font-size: 13px; font-weight: 600; }
+.ry-brief__next { margin: 8px 0 0; font-size: 12.5px; display: flex; align-items: baseline; gap: 6px; }
+.ry-brief__next b { color: var(--brand-ink); }
+
+.ry-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.ry-tile {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px;
+}
+.ry-tile--wide { grid-column: 1 / -1; }
+.ry-tile__k { font-size: 11.5px; color: var(--muted); display: block; }
+.ry-tile__v { font-size: 22px; font-weight: 600; font-family: var(--mono); display: block; margin-top: 2px; }
+.ry-tile__v.is-warn { color: var(--warn); }
+.ry-tile__v.is-bad { color: var(--danger); }
+.ry-tile__d { font-size: 11.5px; color: var(--faint); display: block; margin-top: 3px; }
+
+/* H5 表单：标签在上、控件在下的窄屏堆叠 */
+.ry-hform .ry-grid2, .ry-hform .ry-grid3 { grid-template-columns: 1fr; gap: 0; }
+.ry-hform .ry-input { padding: 9px 12px; font-size: 14px; }
+.ry-hform .ry-field { margin-bottom: 14px; }
+.ry-hform .ry-field__label { font-size: 12.5px; margin-bottom: 6px; }
+
+/* 长文本卡片（纪要、正文） */
+.ry-read { font-size: 13.5px; line-height: 1.85; white-space: pre-wrap; word-break: break-word; }
+.ry-read--quote {
+  border-left: 3px solid var(--brand-line); background: var(--brand-soft);
+  padding: 10px 12px; border-radius: 0 10px 10px 0;
+}
+
+/* 原件缩略（不依赖远程图片，用占位块表达） */
+.ry-thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
+.ry-thumb {
+  width: 74px; height: 74px; border-radius: 10px; border: 1px dashed var(--line);
+  background: var(--line-soft); color: var(--muted); font-size: 11px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-align: center;
+}
+.ry-thumb i { font-style: normal; font-size: 16px; }
+
+/* 日历投影块 */
+.ry-cal { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--surface); }
+.ry-cal__head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); }
+.ry-cal__day { border-bottom: 1px solid var(--line-soft); }
+.ry-cal__day:last-child { border-bottom: 0; }
+.ry-cal__d { display: flex; align-items: center; gap: 8px; padding: 8px 14px 4px; font-size: 12px; color: var(--muted); }
+.ry-cal__d b { font-size: 14px; color: var(--ink); font-family: var(--mono); }
+.ry-cal__d.is-today b { color: var(--brand); }
+.ry-cal__ev { display: flex; gap: 9px; padding: 6px 14px 10px; align-items: flex-start; }
+.ry-cal__tm { flex: 0 0 46px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-top: 1px; }
+.ry-cal__bd { flex: 1; min-width: 0; font-size: 13px; }
+.ry-cal__src { font-size: 11px; color: var(--faint); margin-top: 2px; }
+.ry-cal__bar { flex: 0 0 3px; align-self: stretch; border-radius: 999px; background: var(--brand); }
+.ry-cal__bar--task { background: var(--info); }
+.ry-cal__bar--visit { background: var(--ok); }
+.ry-cal__bar--lead { background: var(--warn); }
+.ry-cal__bar--opp { background: #7A5AF8; }
+
+/* 空态与状态（H5 更紧凑） */
+.ry-hstate { text-align: center; padding: 40px 20px; }
+.ry-hstate .ry-state__icon { font-size: 26px; }
+.ry-hstate .ry-state__title { font-size: 15px; }
+.ry-hstate .ry-state__body { font-size: 12.5px; }
+
+/* 底部更多菜单 */
+.ry-morelist { list-style: none; margin: 0; padding: 0; }
+.ry-morelist a, .ry-morelist span.ry-morelist__off {
+  display: flex; align-items: center; gap: 11px; padding: 13px 14px;
+  border-bottom: 1px solid var(--line-soft); color: inherit; font-size: 14px;
+}
+.ry-morelist li:last-child a, .ry-morelist li:last-child .ry-morelist__off { border-bottom: 0; }
+.ry-morelist i { font-style: normal; width: 22px; text-align: center; font-size: 16px; color: var(--brand); }
+.ry-morelist__off { color: var(--faint); }
+.ry-morelist__off i { color: var(--faint); }
+.ry-morelist__n { margin-left: auto; font-size: 12px; color: var(--faint); }
+
+/* 无权限 / 不可用（H5） */
+.ry-hdeny { padding: 46px 22px; text-align: center; }
+.ry-hdeny__ico { font-size: 30px; margin-bottom: 10px; }
+.ry-hdeny__t { font-size: 15px; margin-bottom: 8px; }
+.ry-hdeny__b { font-size: 12.5px; color: var(--muted); line-height: 1.8; }
+
+/* H5 也复用 PC 的键值列表，但标签更窄 */
+.ry-app .ry-kv li > span { flex: 0 0 96px; }
+.ry-app .ry-kv li { font-size: 13px; padding: 8px 0; }
+.ry-app .ry-kv--tight li > span { flex-basis: 84px; }
+
+/* H5 里的表格（仅在确实需要时使用，如逐项结果） */
+.ry-app .ry-tblwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.ry-app .ry-tbl { min-width: 420px; }

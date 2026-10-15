@@ -1,0 +1,1050 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>商机详情 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：商机详情（概览 / 阶段过程 / 推进回退 / 休眠关闭重开 / 业务线团队字段 / 活动任务）。 */
+  .od-hd { display: flex; flex-direction: column; gap: 6px; }
+  .od-hd__t { font-size: 16px; font-weight: 600; line-height: 1.4; }
+  .od-hd__tags { display: flex; gap: 5px; flex-wrap: wrap; }
+  .od-uni { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 2px; }
+  .od-uni__i { flex: 1 1 0; min-width: 62px; text-align: center; font-size: 10.5px; line-height: 1.5; padding: 6px 3px; border-radius: 8px; border: 1px solid var(--line); color: var(--muted); background: var(--surface); }
+  .od-uni__i.is-past { border-color: var(--brand-line); color: var(--brand-ink); background: var(--brand-soft); }
+  .od-uni__i.is-now { border-color: var(--brand); background: var(--brand); color: #fff; font-weight: 600; }
+  .od-stage { border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; margin-bottom: 7px; background: var(--surface); }
+  .od-stage.is-now { border-color: var(--brand-line); background: var(--brand-soft); }
+  .od-stage__h { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; }
+  .od-stage__m { font-size: 11.5px; color: var(--muted); line-height: 1.8; margin-top: 5px; }
+  .od-task { border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; margin-bottom: 7px; background: var(--surface); }
+  .od-task__h { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .od-task__h b { font-size: 13px; }
+  .od-task__m { font-size: 11.5px; color: var(--muted); line-height: 1.8; margin-top: 5px; }
+  .od-line { border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; margin-bottom: 7px; background: var(--surface); }
+  .od-line__h { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; }
+  .od-line__m { font-size: 11.5px; color: var(--muted); line-height: 1.8; margin-top: 5px; }
+  .od-block { border: 1px solid var(--danger-line); background: var(--danger-soft); border-radius: 10px; padding: 9px 11px; margin-bottom: 7px; font-size: 12.5px; line-height: 1.8; }
+  .od-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .od-acts .ry-btn { padding: 6px 10px; font-size: 12.5px; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom" id="od-body">
+  <div id="od-host"></div>
+
+  <!-- 本页契约：评审对照用。放在渲染容器之外，鉴权失败时同样可见，不承载业务事实。 -->
+  <div class="ry-hcard ry-hcard--flat" style="margin-top:14px">
+    <div class="ry-hcard__head"><h3>本页契约</h3><div class="ry-hcard__extra"><span class="h5-sec-note">PG-OPP-DETAIL</span></div></div>
+    <div class="ry-hcard__body">
+      <ul class="ry-kv ry-kv--tight" id="od-contract">
+        <li><span>页面契约</span><b>PG-OPP-DETAIL · H5 · 商机</b></li>
+        <li><span>可进入角色</span><b>R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员</b></li>
+        <li><span>依据</span><b>prd/03 §5～§13</b></li>
+        <li><span>覆盖验收</span><b>AC-22 AC-23</b></li>
+        <li><span>本页视图</span><b>阶段过程｜单条推进与回退｜结束／重新激活｜不展示产品、金额、竞争信息｜不提供 AI 摘要</b></li>
+        <li><span>阶段口径</span><b>详情同时展示统一阶段与详细阶段；当前统一阶段由当前详细阶段及冻结模板映射得出</b></li>
+        <li><span>顺序约束</span><b>只能按模板顺序推进，不支持跳级；回退只能到实际经过的历史详细阶段，原因必填</b></li>
+        <li><span>固定门禁</span><b>预计成交时间在离开「机会确认」前必须补齐，任何角色不能关闭或绕过</b></li>
+        <li><span>批量边界</span><b>H5 不提供批量业务操作；PC 批量只允许转派主负责人、增加／移除团队成员</b></li>
+        <li><span>不展示范围</span><b>产品、数量、单价、折扣、预计金额、报价、合同金额、多币种、部分赢单、竞争信息、AI 摘要</b></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<!-- 原型说明层：把「业务规则 / 注解 / 待修 / 不做」就地标注在页面上；不含业务逻辑，可整行摘除 -->
+<script src="../../assets/js/prd-notes.js" data-note-page="h5-opp-detail"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var u = S.currentUser(), D = S.all('dicts');
+
+  var PAGE = 'h5.opp.detail';
+  var id = ui.q('id');
+  var o = id ? S.opp(id) : null;
+
+  RY.nav.h5shell({
+    title: o ? o.name : '商机详情',
+    sub: '阶段、业务线、团队与历史',
+    back: 'h5/opportunity/list.html',
+    nav: 'opp',
+    tabbar: false   /* 详情页隐藏底部五入口，避免与底部动作区叠加 */
+  });
+
+  /* 进入即重新鉴权：无权限时不展示标题、摘要、数量与任何字段。
+     缺少 id 或对象不存在时不能按「有权限」继续渲染——否则会读到空对象并抛出未捕获错误。 */
+  var g = o ? P.guard(PAGE, 'opportunities', id)
+            : { ok: false, kind: 'unavailable', reason: '缺少商机标识，或该商机不存在、已不在你的数据范围内、团队关系已失效。' };
+  if (!g.ok) {
+    ui.qs('#od-host').innerHTML = ui.stateCard(g.kind, {
+      title: g.kind === 'no-permission' ? '没有该商机的访问权限' : '该商机当前不可用',
+      body: '<p>' + ui.esc(g.reason) + '</p>' +
+        '<p class="ry-hint">无权商机不返回标题、摘要、数量或可推断信息；加入团队只获得该商机记录级查看权，' +
+        '移出后仅由团队关系产生的权限立即失效。</p>' +
+        '<p class="ry-hint">商机不展示产品、金额、竞争信息，也不提供 AI 摘要；无论是否有权限，页面都不会出现这些内容。</p>' +
+        '<p class="ry-hint">每一次进入（列表进详情、搜索、深链、消息跳转）都会重新鉴权。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/opportunity/list.html') + '">返回商机列表</a>'
+    });
+    return;
+  }
+
+  var TABS = [
+    { k: 'ov', n: '概览' },
+    { k: 'st', n: '阶段过程' },
+    { k: 'mv', n: '推进／回退' },
+    { k: 'cl', n: '结束／重新激活' },
+    { k: 'ln', n: '业务线·团队·字段' },
+    { k: 'rc', n: '活动与任务' }
+  ];
+
+  function kv(list) {
+    return '<ul class="ry-kv ry-kv--tight">' + list.map(function (r) {
+      return '<li><span>' + ui.esc(r[0]) + '</span><b>' + (r[1] == null || r[1] === '' ? '—' : r[1]) + '</b></li>';
+    }).join('') + '</ul>';
+  }
+
+  /* ---------------------------------------------------------- 取值 */
+
+  function tpl() { return S.currentTemplate(o); }
+  function stage() { return S.currentStage(o); }
+  function idx() { return S.stageIndex(o); }
+  function mainLine() { return (o.lines || []).filter(function (x) { return x.role === '主业务线'; })[0] || null; }
+  function collabLines() { return (o.lines || []).filter(function (x) { return x.role !== '主业务线'; }); }
+  function cust() { return S.customer(o.customerId); }
+  function sceneName(code) {
+    var s = S.all('scenarios').filter(function (x) { return x.code === code; })[0];
+    return s ? s.name : (code || '—');
+  }
+  function isClosed() { return !!o.closeResult; }
+  function isDormant() { return false; }
+
+  /* 停滞：最近一次进入当前详细阶段后的有效停留时间；停滞仅是风险提醒（prd/03 §12）。 */
+  function stallDays() { return S.opportunityStagnation(o).days; }
+  function isStalled() {
+    var t = tpl();
+    var d = stallDays();
+    return !!(t && S.opportunityStagnation(o).on);
+  }
+
+  /* 统一阶段进度：由当前详细阶段与冻结模板的映射得出。 */
+  function unifiedBar() {
+    var cur = stage();
+    if (!cur) return '<p class="ry-hint">当前阶段不可用：商机引用的模板版本已不存在，仅可查看历史。</p>';
+    var curIdx = D.unifiedStage.indexOf(cur.unified);
+    return '<div class="od-uni">' + D.unifiedStage.map(function (x, i) {
+      var cls = i < curIdx ? ' is-past' : i === curIdx ? ' is-now' : '';
+      return '<span class="od-uni__i' + cls + '">' + ui.esc(x) + '</span>';
+    }).join('') + '</div>';
+  }
+
+  /* 实际经过过的详细阶段（回退目标只能来自这里）。 */
+  function visitedStages() {
+    var t = tpl();
+    if (!t) return [];
+    var seen = [];
+    (o.stageHistory || []).forEach(function (h) {
+      if (h.to && seen.indexOf(h.to) < 0) seen.push(h.to);
+    });
+    if (o.currentStageCode && seen.indexOf(o.currentStageCode) < 0) seen.push(o.currentStageCode);
+    var cur = idx();
+    return t.stages.filter(function (s) {
+      return seen.indexOf(s.code) >= 0 && t.stages.indexOf(s) < cur;
+    });
+  }
+
+  function maskText(s) {
+    return String(s || '').replace(/[0-9]{4,}/g, '****').replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/g, '****');
+  }
+
+  /* 单条字段写入：只写 prd/03 明确允许主负责人／主管维护的字段，并留痕。 */
+  function patchOpp(patch, action, from, to) {
+    Object.keys(patch).forEach(function (k) { o[k] = patch[k]; });
+    o.updatedAt = S.now();
+    S.audit('商机', o.id, action, from || '—', to || Object.keys(patch).join('、'));
+    S.save();
+  }
+
+  /* ---------------------------------------------------------- 视图：概览 */
+
+  function viewOv() {
+    var c = cust(), m = mainLine(), cur = stage(), s = stallDays();
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>商机概览</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">' + ui.esc(o.id) + '</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        '<div class="od-hd"><div class="od-hd__t">' + ui.esc(o.name) + '</div>' +
+        '<div class="od-hd__tags">' + ui.statusTag(o.processStatus) +
+          (isClosed() ? ' ' + ui.statusTag(o.closeResult) : '') +
+          (isStalled() ? ' ' + ui.tag('停滞 ' + s + ' 天', 'bad') : '') +
+          (isDormant() ? ' ' + ui.tag('停滞计时已暂停', 'muted') : '') + '</div></div>' +
+        unifiedBar() +
+        '<div style="margin-top:10px">' + kv([
+          ['客户', c ? '<a href="' + RY.nav.href('h5/customer/detail.html?id=' + encodeURIComponent(c.id)) + '">' + ui.esc(c.name) + '</a>' : '客户不可见'],
+          ['主负责人', ui.esc(S.userName(o.owner))],
+          ['当前统一阶段', cur ? ui.esc(cur.unified) : '—'],
+          ['当前详细阶段', cur ? ui.esc(cur.name) : '—'],
+          ['主业务线', m ? ui.esc(S.businessLineName(m.businessLine)) : '—'],
+          ['销售场景', m ? ui.esc(sceneName(m.scene)) : '—'],
+          ['协同业务线', collabLines().length ? ui.esc(collabLines().map(function (x) {
+            return S.businessLineName(x.businessLine) + '（' + x.status + '）';
+          }).join('、')) : '无'],
+          ['预计成交时间', o.predictedClose ? ui.esc(o.predictedClose) : ui.tag('待补充', 'warn')],
+          ['下一步行动', ui.esc(o.nextAction || '未设置')],
+          ['下一步时间', ui.esc(o.nextActionAt || '未设置')],
+          ['流程模板', tpl() ? ui.esc(tpl().name) + '（销售只需看到模板名称）' : '模板不可用'],
+          ['来源', ui.esc(o.source || '—') + (o.sourceLead ? '　<a href="' +
+            RY.nav.href('h5/lead/detail.html?id=' + encodeURIComponent(o.sourceLead)) + '">来源线索 ' + ui.esc(o.sourceLead) + '</a>' : '')],
+          ['创建时间', ui.esc(o.createdAt)],
+          ['最后更新', ui.esc(o.updatedAt || '—')]
+        ]) + '</div>' +
+        (isStalled() ? ui.banner('该商机已在当前详细阶段停留 ' + s + ' 天，超过模板阈值 ' + (tpl() ? tpl().stagnantDays : 14) +
+          ' 个自然日，已标记为停滞风险。该标记不代表提醒已发送；有效推进或结束会解除停滞。', 'warn') : '') +
+        '<div class="ry-acts-row" style="margin-top:10px">' +
+          '<button class="ry-btn ry-btn--sm" id="od-next">维护下一步行动</button>' +
+          (o.predictedClose ? '' : '<button class="ry-btn ry-btn--sm" id="od-fillclose">补齐预计成交时间</button>') +
+        '</div>' +
+      '</div></div>' +
+
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>本页不展示的内容</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">0.1 明确不做</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        '<ul class="ry-kv ry-kv--tight">' +
+        '<li><span>产品与金额</span><b>产品、数量、单价、折扣、预计金额、报价、合同金额、多币种与金额分析全部不建设</b></li>' +
+        '<li><span>关闭结果</span><b>只有赢单／输单／关闭，一条商机只有一个整体结果，不支持部分赢单与混合结果</b></li>' +
+        '<li><span>竞争信息</span><b>无独立竞争管理入口，页面不展示竞争字段</b></li>' +
+        '<li><span>AI 摘要</span><b>不提供。商机详情没有 AI 摘要区，也没有 AI 质量评分</b></li>' +
+        '<li><span>阶段自由度</span><b>不支持阶段跳级、条件免办、主管绕过与自动推进</b></li>' +
+        '<li><span>多客户</span><b>一条商机只有一个当前客户，不建设参与客户与多客户角色</b></li>' +
+        '</ul>' +
+        '<p class="ry-hint">这些内容在任何角色、任何状态下都不会出现；不以「无权限而隐藏」的形式表达，因为 0.1 根本不建设它们。</p>' +
+      '</div></div>';
+  }
+
+  /* ---------------------------------------------------------- 视图：阶段过程 */
+
+  function viewSt() {
+    var t = tpl(), cur = stage(), i = idx();
+    if (!t) {
+      return ui.stateCard('unavailable', {
+        title: '流程模板当前不可用',
+        body: '<p>该商机引用的模板版本已不在可用模板集合中，无法展示阶段与门槛。</p>' +
+          '<p class="ry-hint">历史阶段与已完成任务仍然保留，可查看，不允许推进。</p>'
+      });
+    }
+    var gate = S.gateCheck(o, 'forward');
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>双层阶段</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">模板：' + ui.esc(t.name) + '</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        unifiedBar() +
+        '<p class="ry-hint">统一阶段固定为「机会确认 → 需求确认 → 方案验证 → 报价与审批 → 商务与合同」，用于漏斗与跨业务线统计；' +
+        '详细阶段用于实际工作、门槛与阶段任务。每个详细阶段必须且只能映射一个统一阶段。' +
+        '页面只向销售展示匹配模板名称，不要求理解模板版本与技术规则。</p>' +
+        '<div style="margin-top:10px">' +
+          t.stages.map(function (s, k) {
+            var cls = s.code === o.currentStageCode ? ' is-now' : '';
+            return '<div class="od-stage' + cls + '"><div class="od-stage__h"><span>' + (k + 1) + '. ' + ui.esc(s.name) + '</span>' +
+              (s.code === o.currentStageCode ? ui.tag('当前阶段', 'info') : k < i ? ui.tag('已经过', 'muted') : ui.tag('未到达', 'muted')) +
+              '</div><div class="od-stage__m">映射统一阶段：' + ui.esc(s.unified) +
+              ((s.requiredFields || []).length ? '<br>离开前必填：' + ui.esc(s.requiredFields.map(function (cf) {
+                var f = S.customField(cf); return f ? f.name : cf;
+              }).join('、')) : '') +
+              ((s.tasks || []).length ? '<br>进入时生成任务：' + ui.esc(s.tasks.map(function (x) {
+                return x.title + (x.must ? '（必须完成）' : '');
+              }).join('、')) : '') +
+              (s.stagnantDays ? '' : '') + '</div></div>';
+          }).join('') +
+        '</div>' +
+      '</div></div>' +
+
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>当前阶段门槛</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">0.1 只支持两类门槛</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        (gate.pass
+          ? ui.banner('当前阶段离开门槛已全部满足。推进后可进入下一详细阶段。', 'brand')
+          : gate.problems.map(function (p) {
+              return '<div class="od-block">' + ui.esc(p.text) + '</div>';
+            }).join('') +
+            '<p class="ry-hint">阻断时明确显示缺失内容；普通提醒不阻断，不要求忽略原因或确认状态。' +
+            '0.1 不建设通用表达式、条件免办、主管绕过或复杂组合门槛。</p>') +
+      '</div></div>' +
+
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>阶段历史</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">' + (o.stageHistory || []).length + ' 条</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        ((o.stageHistory || []).length
+          ? '<div class="ry-tl">' + o.stageHistory.slice().reverse().map(function (h) {
+              var from = h.from ? (t.stages.filter(function (x) { return x.code === h.from; })[0] || {}).name || h.from : '创建';
+              var to = (t.stages.filter(function (x) { return x.code === h.to; })[0] || {}).name || h.to;
+              return '<div class="od-stage"><div class="od-stage__h"><span>' + ui.esc(from + ' → ' + to) + '</span>' +
+                '<span class="h5-sec-note">' + ui.esc(h.at) + '</span></div>' +
+                '<div class="od-stage__m">操作人：' + ui.esc(S.userName(h.by)) + (h.note ? '<br>' + ui.esc(h.note) : '') + '</div></div>';
+            }).join('') + '</div>'
+          : '<p class="ry-hint">暂无阶段历史。</p>') +
+        '<p class="ry-hint">系统记录前后阶段、操作者、时间、门槛校验、模板版本与来源端。回退不删除字段、客户、业务线、活动、附件、凭证、任务或历史事实。</p>' +
+      '</div></div>';
+  }
+
+  /* ---------------------------------------------------------- 视图：推进／回退 */
+
+  function viewMv() {
+    var t = tpl(), i = idx(), gate = S.gateCheck(o, 'forward');
+    var canAdv = P.can('opp.advance', o) && !isClosed() && !isDormant();
+    var canRb = P.can('opp.rollback', o) && !isClosed() && !isDormant();
+    var last = t ? i >= t.stages.length - 1 : true;
+
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>推进阶段</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">只能按模板顺序</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        kv([
+          ['当前详细阶段', t && stage() ? ui.esc(stage().name) : '—'],
+          ['下一详细阶段', (!last && t) ? ui.esc(t.stages[i + 1].name) : '已处于最后阶段'],
+          ['推进说明', '选填'],
+          ['门槛校验', gate.pass ? ui.tag('通过', 'ok') : ui.tag('阻断 ' + gate.problems.length + ' 项', 'bad')]
+        ]) +
+        (gate.problems.length ? gate.problems.map(function (p) {
+          return '<div class="od-block">' + ui.esc(p.text) + '</div>';
+        }).join('') : '') +
+
+        (isClosed() ? ui.banner('商机已结束（' + ui.esc(o.closeResult) + '），仅关闭结果支持重新激活。', 'warn') : '') +
+        '<div class="od-acts" style="margin-top:10px">' +
+          '<button class="ry-btn ry-btn--primary' + (canAdv ? '' : ' is-off') + '" data-op="advance"' +
+            (canAdv ? '' : ' data-denied="1" data-action="opp.advance"') + '>推进到下一阶段' +
+            (canAdv ? '' : '<i class="ry-btn__lock">无权限或状态不允许</i>') + '</button>' +
+        '</div>' +
+        '<p class="ry-hint">0.1 不支持跳级，必须按模板顺序推进。任务、活动、规则或 Agent 只能提醒、生成候选操作和辅助判断，' +
+        '<b>不自动推进或回退阶段</b>。团队成员不默认获得阶段权限。</p>' +
+      '</div></div>' +
+
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>回退阶段</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">只能回到实际经过的阶段</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        kv([
+          ['可回退目标', visitedStages().length ? ui.esc(visitedStages().map(function (x) { return x.name; }).join('、')) : '无可回退的历史阶段'],
+          ['回退原因', '必填'],
+          ['回退影响', '不删除任何字段、客户、业务线、活动、附件、凭证、任务或历史事实；不统一增加「需重新确认」标记'],
+          ['再次推进', '按当前冻结模板重新校验门槛']
+        ]) +
+
+        (isClosed() ? ui.banner('已结束商机不允许回退阶段；仅关闭结果支持重新激活。', 'warn') : '') +
+        '<div class="od-acts" style="margin-top:10px">' +
+          '<button class="ry-btn' + (canRb ? '' : ' is-off') + '" data-op="rollback"' +
+            (canRb ? '' : ' data-denied="1" data-action="opp.rollback"') + '>回退到历史阶段' +
+            (canRb ? '' : '<i class="ry-btn__lock">无权限或状态不允许</i>') + '</button>' +
+        '</div>' +
+        '<p class="ry-hint">默认由主负责人推进／回退，主管可在管理范围内代操作。回退跨过的后续阶段自动任务如未完成则置为<b>已失效</b>（不得记为已取消）；' +
+        '再次进入历史阶段时按新的阶段进入事件生成新任务，历史完成结果不能复用。</p>' +
+      '</div></div>' +
+
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>并发与幂等</h3></div><div class="ry-hcard__body">' +
+        kv([
+          ['并发处理', '多人同时操作使用数据版本校验，先提交成功；后提交者收到「商机已被其他人更新，请刷新后重试」'],
+          ['页面不展示', '不展示数据版本号'],
+          ['幂等', '创建、推进、回退、结束、重新激活、迁移、拆分、批量操作、阶段任务与系统提醒必须幂等'],
+          ['提交反馈', '关键动作提交后显示「处理中」；超时先按操作标识查询服务端结果，确认失败后才允许重试']
+        ]) +
+        '<div class="od-acts" style="margin-top:10px"><button class="ry-btn ry-btn--sm" id="od-conflict">演示并发冲突</button></div>' +
+      '</div></div>';
+  }
+
+  /* ---------------------------------------------------------- 视图：结束／重新激活 */
+  function viewCl() {
+    var canClose = P.can('opp.close', o), canReopen = P.can('opp.reopen', o);
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>商机结果</h3></div><div class="ry-hcard__body">' +
+      kv([['流程状态', ui.statusTag(o.processStatus)], ['已结束结果', o.closeResult ? ui.statusTag(o.closeResult) : '—'],
+        ['依据／原因', ui.esc(o.closeBasis || o.closeReason || '—')], ['结束时间', ui.esc(o.closedAt || '—')]]) +
+      '<div class="od-acts" style="margin-top:10px">' +
+      (isClosed() ? (o.closeResult === '关闭' ? '<button class="ry-btn ry-btn--primary"' + (canReopen ? '' : ' data-denied="1" data-action="opp.reopen"') + ' data-op="reopen">重新激活</button>' : '') :
+        '<button class="ry-btn ry-btn--danger"' + (canClose ? '' : ' data-denied="1" data-action="opp.close"') + ' data-op="close">结束商机</button>') +
+      '</div><p class="ry-hint">结束结果只有赢单、输单、关闭；仅关闭结果支持填写原因后重新激活。停滞只作为提醒，不改变流程状态。</p></div></div>';
+  }
+
+  /* ---------------------------------------------------------- 视图：业务线·团队·字段 */
+
+  function customFieldRows() {
+    var lines = (o.lines || []).filter(function (x) { return x.status !== '已移除' && x.status !== '已拆分为新商机'; })
+      .map(function (x) { return x.businessLine; });
+    var held = [], dropped = [];
+    S.arr('customFields').forEach(function (f) {
+      if (f.status !== '启用' && !(o.custom || {})[f.code]) return;
+      var apply = !f.businessLines || !f.businessLines.length || f.businessLines.some(function (b) { return lines.indexOf(b) >= 0; });
+      var has = !!(o.custom || {})[f.code];
+      if (apply) held.push({ f: f, v: o.custom[f.code], ed: true });
+      else if (has) dropped.push({ f: f, v: o.custom[f.code] });
+    });
+    return { held: held, dropped: dropped };
+  }
+
+  function cfValue(f, code) {
+    if (f.type === '单选') {
+      var op = (f.options || []).filter(function (x) { return x.code === code; })[0];
+      return op ? op.name : (code || '—');
+    }
+    return code || '—';
+  }
+
+  function viewLn() {
+    var m = mainLine(), cols = collabLines();
+    var cf = customFieldRows();
+    var canEdit = u.role === 'R5' || o.owner === u.id || (u.role === 'R2' && P.inScope('opportunities', o));
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>业务线明细</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">恰好一条主业务线</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        (m ? '<div class="od-line"><div class="od-line__h"><span>' + ui.esc(S.businessLineName(m.businessLine)) + '</span>' +
+          ui.tag('主业务线', 'info') + '</div>' +
+          '<div class="od-line__m">销售场景：' + ui.esc(sceneName(m.scene)) +
+          (m.scope ? '<br>范围说明：' + ui.esc(m.scope) : '') +
+          '<br>状态：' + ui.esc(m.status || '当前参与') + '</div></div>' : '') +
+        (cols.length ? cols.map(function (x) {
+          return '<div class="od-line"><div class="od-line__h"><span>' + ui.esc(S.businessLineName(x.businessLine)) + '</span>' +
+            ui.tag('协同业务线', 'muted') + '</div>' +
+            '<div class="od-line__m">无独立销售场景、流程、阶段、负责人或关闭结果' +
+            (x.scope ? '<br>范围说明：' + ui.esc(x.scope) : '') +
+            '<br>状态：' + ui.esc(x.status || '当前参与') +
+            (x.splitTo ? '　已拆出为 <a href="' + RY.nav.href('h5/opportunity/detail.html?id=' + encodeURIComponent(x.splitTo)) + '">' +
+              ui.esc(x.splitTo) + '</a>' : '') + '</div>' +
+            (x.status === '当前参与' && !x.splitTo ? '<div class="od-acts"><button class="ry-btn ry-btn--sm"' + (P.can('opp.lines', o) ? (isClosed() ? ' disabled title="已关闭商机不能修改业务线"' : '') : ' data-denied="1" data-action="opp.lines"') + ' data-op="removeline" data-line="' + ui.esc(x.businessLine) + '">移除协同业务线</button></div>' : '') + '</div>';
+        }).join('') : '<p class="ry-hint">当前没有协同业务线。</p>') +
+        '<div class="od-acts" style="margin-top:10px">' +
+          '<button class="ry-btn ry-btn--sm ry-btn--primary"' + (P.can('opp.lines', o) ? (isClosed() ? ' disabled title="已关闭商机不能修改业务线"' : '') : ' data-denied="1" data-action="opp.lines"') + ' data-op="addline">增加协同业务线</button>' +
+          '<button class="ry-btn ry-btn--sm"' + (P.can('opp.migrate', o) ? (isClosed() || isDormant() ? ' disabled title="已结束商机不能迁移模板"' : '') : ' data-denied="1" data-action="opp.migrate"') + ' data-op="mainline">变更主业务线／场景</button>' +
+          '<button class="ry-btn ry-btn--sm"' + (P.can('opp.split', o) ? '' : ' data-denied="1" data-action="opp.split"') + ' data-op="split">拆分协同业务线</button>' +
+        '</div>' +
+        '<p class="ry-hint">整条商机只有一套阶段、一个主负责人和一个关闭结果；需要分别推进或判断结果时，应拆成独立商机。' +
+        '主业务线变更时原主业务线默认转为协同业务线，随后重新校验场景与模板；已结束商机不可修改主业务线或销售场景。' +
+        '0.1 不建立团队成员与业务线明细的强绑定。</p>' +
+      '</div></div>' +
+
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>商机团队</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">' + (o.team || []).length + ' 人</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        (o.team || []).map(function (m2) {
+          return '<div class="od-line"><div class="od-line__h"><span>' + ui.esc(S.userName(m2.userId)) + '</span>' +
+            ui.tag(m2.role, m2.role === '主负责人' ? 'info' : 'muted') + '</div>' +
+            '<div class="od-line__m">加入团队自动获得该商机记录级查看权；移出后仅由团队关系产生的权限立即失效。' +
+            '加入团队不自动获得全部关联任务查看权。</div>' +
+            (m2.role === '主负责人'
+              ? '<div class="ry-acts-row" style="margin-top:6px"><span class="ry-noperm" title="主负责人不能被移除，请先转派主负责人">移除<i>需先转派</i></span></div>'
+              : '<div class="od-acts" style="margin-top:6px"><button class="ry-btn ry-btn--sm"' +
+                (canEdit ? ' data-del-member="' + ui.esc(m2.userId) + '"' : ' data-denied="1" data-action="opp.team"') + '>移除' +
+                (canEdit ? '' : '<i class="ry-btn__lock">无权限或状态不允许</i>') + '</button></div>') +
+            '</div>';
+        }).join('') +
+        '<div class="od-acts" style="margin-top:10px">' +
+          '<button class="ry-btn ry-btn--sm"' + (canEdit ? '' : ' data-denied="1" data-action="opp.team"') + ' data-op="addmember">增加团队成员</button>' +
+          '<button class="ry-btn ry-btn--sm"' + (P.can('opp.reassign', o) ? '' : ' data-denied="1" data-action="opp.reassign"') + ' data-op="reassign">转派主负责人</button>' +
+        '</div>' +
+        '<p class="ry-hint">移除成员不自动取消或转派任务；主负责人转派不改变团队，普通人工任务不自动转派。' +
+        '团队成员默认不能修改客户、核心信息、业务线、场景、自定义字段、阶段与过程状态。</p>' +
+      '</div></div>' +
+
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>自定义字段</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">按主／协同业务线并集展示</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        (cf.held.length ? kv(cf.held.map(function (x) {
+          return [x.f.name + '（' + x.f.type + '）', ui.esc(cfValue(x.f, x.v))];
+        })) : '<p class="ry-hint">当前业务线下没有适用的自定义字段。</p>') +
+        (cf.dropped.length ? '<div class="ry-hcard__head" style="margin-top:10px"><h3 style="font-size:12.5px">历史自定义信息</h3></div>' +
+          kv(cf.dropped.map(function (x) {
+            return [x.f.name, ui.esc(cfValue(x.f, x.v)) + '　' + ui.tag('当前业务线已不适用', 'muted')];
+          })) +
+          '<p class="ry-hint">移除业务线后，无值且不再命中的字段不展示；已有值不删除，进入历史自定义信息只读展示并标记「当前业务线已不适用」，且不再参与门槛校验。</p>'
+          : '') +
+        '<div class="od-acts" style="margin-top:10px"><button class="ry-btn ry-btn--sm"' +
+          (canEdit ? '' : ' data-denied="1" data-action="opp.team"') + ' data-op="editcf">编辑自定义字段</button></div>' +
+        '<p class="ry-hint">字段展示不等于必填；必填由当前模板与详细阶段门槛决定。字段本身不配置全局必填或创建必填。' +
+        '主负责人和主管可编辑，团队成员默认不可编辑；敏感数据不得通过普通自定义字段承载。</p>' +
+      '</div></div>';
+  }
+
+  /* ---------------------------------------------------------- 视图：活动与任务 */
+
+  function viewRc() {
+    var sts = S.arr('stageTasks').filter(function (x) { return x.oppId === o.id; });
+    var acts = S.arr('activities').filter(function (x) { return x.oppId === o.id; });
+    var tsks = S.arr('tasks').filter(function (x) {
+      return !x.stageTask && x.related && x.related.type === '商机' && x.related.id === o.id;
+    });
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>阶段任务</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">' + sts.length + ' 条 · 直接生成正式任务</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        (sts.length ? sts.map(function (t) {
+          return '<div class="od-task"><div class="od-task__h"><b>' + ui.esc(t.title) + '</b>' +
+            '<span>' + ui.statusTag(t.status) + (t.must ? ' ' + ui.tag('必须完成', 'bad') : '') + '</span></div>' +
+            '<div class="od-task__m">' + ui.esc(t.desc || '') +
+            '<br>所属详细阶段：' + ui.esc(t.stageCode) + '　截止：' + ui.esc(t.due || '无截止时间') +
+            '<br>生成方式：' + ui.esc(t.generatedBy) + '　责任人：' + ui.esc(S.userName(t.owner)) +
+            (t.overdue ? '<br><b>已逾期</b>' : '') + '</div>' +
+            '<div class="od-acts" style="margin-top:6px"><a class="ry-btn ry-btn--sm" href="' +
+              RY.nav.href('h5/task/detail.html?id=' + encodeURIComponent(t.id)) + '">打开正式任务</a></div>' +
+            '</div>';
+        }).join('') : '<p class="ry-hint">该商机当前没有阶段任务。阶段任务在商机进入详细阶段后直接生成正式任务，不经过候选确认。</p>') +
+        '<p class="ry-hint">默认责任人为商机主负责人，生成后按统一任务权限转派；团队角色不参与自动分派。' +
+        '截止时间按系统业务时区计算，进入日为第 0 天，第 N 个自然日 23:59:59 到期。' +
+        '阶段核心数据成功后异步生成任务；生成失败不回滚阶段，记录并自动重试；只补齐缺失任务，不允许选择性跳过。' +
+        '因阶段回退、模板迁移等上下文变化而不再适用的系统阶段任务统一置为「已失效」，不得记为「已取消」。</p>' +
+      '</div></div>' +
+
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>销售活动</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">只读投影 · ' + acts.length + ' 条</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        (acts.length ? acts.map(function (a) {
+          return '<div class="od-task"><div class="od-task__h"><b>' + ui.esc(a.type) + '</b><span class="h5-sec-note">' + ui.esc(a.at) + '</span></div>' +
+            '<div class="od-task__m">' + ui.esc(a.summary) + '<br>记录人：' + ui.esc(S.userName(a.actor)) + '</div>' +
+            '<div class="od-acts" style="margin-top:6px"><a class="ry-btn ry-btn--sm" href="' +
+              RY.nav.href('h5/activity/detail.html?id=' + encodeURIComponent(a.id)) + '">活动详情</a></div></div>';
+        }).join('') : '<p class="ry-hint">该商机暂无销售活动。活动表示已发生事实，保存后不自动改阶段、不改关闭结果。</p>') +
+        '<div class="od-acts" style="margin-top:10px"><a class="ry-btn ry-btn--sm" href="' +
+          RY.nav.href('h5/activity/create.html?oppId=' + encodeURIComponent(o.id)) + '">记录销售活动</a></div>' +
+      '</div></div>' +
+
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>正式任务</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">' + tsks.length + ' 条</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        (tsks.length ? tsks.map(function (t) {
+          return '<div class="od-task"><div class="od-task__h"><b>' + ui.esc(t.name) + '</b>' + ui.statusTag(t.status) + '</div>' +
+            '<div class="od-task__m">来源：' + ui.esc(t.source) + '　业务类型：' + ui.esc(t.bizType) +
+            '<br>责任人：' + ui.esc(S.userName(t.owner)) + '　截止：' + ui.esc(t.dueAt || '无') + '</div>' +
+            '<div class="od-acts" style="margin-top:6px"><a class="ry-btn ry-btn--sm" href="' +
+              RY.nav.href('h5/task/detail.html?id=' + encodeURIComponent(t.id)) + '">任务详情</a></div></div>';
+        }).join('') : '<p class="ry-hint">该商机暂无其他关联正式任务。</p>') +
+      '</div></div>' +
+
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>业务时间线</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">高影响历史长期保留</span></div></div>' +
+      '<div class="ry-hcard__body">' + timeline() + '</div></div>';
+  }
+
+  function timeline() {
+    var auds = S.all('audits').filter(function (a) { return a.objectType === '商机' && a.objectId === o.id; });
+    var rows = [];
+    rows.push(['创建商机', ui.esc(o.createdAt) + '　' + ui.esc(o.source || '直接创建')]);
+    (o.stageHistory || []).forEach(function (h) {
+      var t = tpl();
+      var to = t ? ((t.stages.filter(function (x) { return x.code === h.to; })[0] || {}).name || h.to) : h.to;
+      rows.push(['阶段事件 → ' + to, ui.esc(h.at) + '　' + ui.esc(S.userName(h.by)) + (h.note ? '　' + ui.esc(h.note) : '')]);
+    });
+    auds.filter(function (a) { return !/^(阶段推进|阶段回退|新建商机)$/.test(a.action || ''); }).forEach(function (a) {
+      rows.push([a.action || '商机变更', ui.esc(a.at) + '　' + ui.esc(a.actor || S.userName(a.by) || '—') +
+        ((a.from || a.to) ? '　' + ui.esc(a.from || '—') + ' → ' + ui.esc(a.to || '—') : '')]);
+    });
+    (o.lines || []).forEach(function (x) {
+      if (x.splitTo) rows.push(['协同业务线已拆出', ui.esc(S.businessLineName(x.businessLine)) + ' → ' + ui.esc(x.splitTo)]);
+    });
+    rows.sort(function (a, b) { return String(b[1]).localeCompare(String(a[1])); });
+    return kv(rows) +
+      '<p class="ry-hint">网站内统一业务时间线覆盖创建、普通修改、自定义字段、客户、业务线、场景、阶段、模板迁移、结束／重新激活、拆分与负责人转派；' +
+      '普通用户不能删除高影响历史。0.1 不建设日志批量导出。' +
+      (auds.length ? '当前原型已有 ' + auds.length + ' 条本会话审计记录。' : '') + '</p>';
+  }
+
+  var VIEWS = { ov: viewOv, st: viewSt, mv: viewMv, cl: viewCl, ln: viewLn, rc: viewRc };
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  var ACTIVE = 'ov';
+
+  function render(active) {
+    ACTIVE = active || ACTIVE;
+    var tabbar = '<div class="ry-fbar" style="position:static;margin-bottom:10px;padding:0"><div class="ry-fbar__seg" style="flex:1;flex-wrap:wrap">' +
+      TABS.map(function (t) {
+        return '<button type="button" data-tab="' + t.k + '"' + (t.k === ACTIVE ? ' class="is-on"' : '') + '>' + t.n + '</button>';
+      }).join('') + '</div></div>';
+    ui.qs('#od-host').innerHTML = tabbar + '<div id="od-sec">' + VIEWS[ACTIVE]() + '</div>';
+    bind();
+    ui.bindMasked(document.body);
+  }
+
+  function bind() {
+    var host = ui.qs('#od-host');
+    ui.qsa('[data-tab]', host).forEach(function (b) {
+      b.addEventListener('click', function () { render(b.getAttribute('data-tab')); });
+    });
+    ui.qsa('[data-op]', host).forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]')) return;
+        var op = b.getAttribute('data-op');
+        if (op === 'advance') doAdvance();
+        else if (op === 'rollback') doRollback();
+
+
+        else if (op === 'close') doClose();
+        else if (op === 'reopen') doReopen();
+        else if (op === 'mainline') doMainLine();
+        else if (op === 'addline') doAddOpportunityLine();
+        else if (op === 'removeline') doRemoveOpportunityLine(b.getAttribute('data-line'));
+        else if (op === 'split') doSplit();
+        else if (op === 'addmember') doAddMember();
+        else if (op === 'reassign') doReassign();
+        else if (op === 'editcf') doEditCf();
+      });
+    });
+    ui.qsa('[data-del-member]', host).forEach(function (b) {
+      b.addEventListener('click', function () { doDelMember(b.getAttribute('data-del-member')); });
+    });
+    var nx = ui.qs('#od-next');
+    if (nx) nx.addEventListener('click', doNextAction);
+    var fc = ui.qs('#od-fillclose');
+    if (fc) fc.addEventListener('click', doFillClose);
+    var cf = ui.qs('#od-conflict');
+    if (cf) cf.addEventListener('click', function () {
+      ui.versionConflict({
+        objectLabel: o.name + '（' + o.id + '）',
+        message: '你点击推进时，另一名用户已先提交了该商机的阶段变更。为避免覆盖他人修改，本次提交已拒绝。',
+        by: '王栩（销售主管）'
+      });
+    });
+    ui.bindDenied(host);
+  }
+
+  /* ---------------------------------------------------------- 动作 */
+
+  function doAdvance() {
+    captureNote();
+    var t = tpl(), i = idx();
+    /* 原先是裸调用未定义的全局 stageIndex()，点「推进到下一阶段」直接抛 ReferenceError；
+       上一行的 idx() 已是 S.stageIndex(o) 的封装，直接用 i 判定。 */
+    if (!t || i < 0) { ui.toast('当前阶段不可用，无法推进。', 'warn'); return; }
+    if (i >= t.stages.length - 1) { ui.toast('已处于最后阶段，无后续阶段可推进。', 'warn'); return; }
+
+    if (isClosed()) { ui.toast('已结束商机不能推进阶段。仅关闭结果可重新激活。', 'warn'); return; }
+    var gate = S.gateCheck(o, 'forward');
+    if (!gate.pass) {
+      ui.modal({
+        title: '阶段门槛未通过', size: 'sm',
+        subtitle: '阻断时明确显示缺失内容并提供填写入口；不支持主管绕过。',
+        body: '<ul class="ry-kv ry-kv--tight">' + gate.problems.map(function (p) {
+            return '<li><span>缺失</span><b>' + ui.esc(p.text) + '</b></li>';
+          }).join('') + '</ul>' +
+          '<p class="ry-hint">预计成交时间是系统级固定门槛，所有业务线、场景、模板和角色均不能关闭或绕过。' +
+          '0.1 不建设条件免办、通用表达式或复杂组合门槛。</p>',
+        footer: '<button class="ry-btn" data-close>先去补齐</button>' +
+          (o.predictedClose ? '' : '<button class="ry-btn ry-btn--primary" id="od-gofill">填写预计成交时间</button>'),
+        onOpen: function (el) {
+          var b = ui.qs('#od-gofill', el);
+          if (b) b.addEventListener('click', function () { ui.close(); doFillClose(); });
+        }
+      });
+      return;
+    }
+    var next = t.stages[i + 1];
+    ui.confirm({
+      title: '推进阶段', confirmText: '确认推进',
+      message: '<p>' + ui.esc(stage().name) + ' → <b>' + ui.esc(next.name) + '</b>（统一阶段 ' + ui.esc(next.unified) + '）</p>' +
+        '<p class="ry-hint">推进说明选填；系统会记录前后阶段、操作者、时间、门槛校验、模板版本与来源端。' +
+        '进入新阶段后会直接生成该阶段的正式任务。</p>',
+      onConfirm: function () {
+        var r = S.advanceStage(o, noteValue);
+        if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+        render('st');
+        ui.toast('已推进到「' + next.name + '」，该阶段任务已生成。', 'ok');
+      }
+    });
+  }
+
+  var noteValue = '';
+  function captureNote() {
+    var el = ui.qs('#od-note');
+    if (el) noteValue = el.value.trim();
+  }
+
+  function doRollback() {
+    var targets = visitedStages();
+    if (!targets.length) {
+      ui.modal({
+        title: '没有可回退的历史阶段', size: 'sm',
+        body: '<p>回退只能到<b>实际经过的历史详细阶段</b>，不能回退到从未经过的阶段。</p>' +
+          '<p class="ry-hint">该商机当前是首个详细阶段，没有历史阶段可以回退。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+      });
+      return;
+    }
+    RY.nav.sheet({
+      title: '回退阶段', sub: '原因必填；业务事实不删除',
+      body: RY.ui.field('回退到', ui.select('target', targets.map(function (s) {
+          return { value: s.code, label: s.name + '（统一阶段 ' + s.unified + '）' };
+        })), '只能选择实际经过过的历史详细阶段。', true) +
+        RY.ui.field('回退原因', ui.textarea('reason', '', '必填，将写入审计', 3), '', true) +
+        RY.ui.banner('回退不删除字段、客户、业务线、活动、附件、凭证、任务或历史事实，也不统一增加「需重新确认」标记；' +
+          '再次推进时按当前冻结模板重新校验门槛。回退跨过的后续阶段自动任务如未完成则置为「已失效」。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-rb">确认回退</button>',
+      onOpen: function (host, close) {
+        ui.qs('#od-rb', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          if (!String(v.reason || '').trim()) { ui.toast('回退原因必填。', 'warn'); return; }
+          var r = S.rollbackStage(o, v.target, String(v.reason).trim());
+          if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+          close();
+          render('st');
+          ui.toast('已回退到「' + r.stage.name + '」，后续阶段未完成的自动任务已置为已失效。', 'ok');
+        });
+      }
+    });
+  }
+
+  function doClose() {
+    var openStageTasks = S.arr('tasks').filter(function (x) {
+      return x.related && x.related.type === '商机' && x.related.id === o.id && ['已完成', '已取消', '已失效', '已拒绝'].indexOf(x.status) < 0;
+    }).length;
+    var futureSched = S.all('schedules').filter(function (x) {
+      return x.related && x.related.type === '商机' && x.related.id === o.id && x.status !== '已取消' && String(x.startAt || '').slice(0, 10) >= S.today();
+    }).length;
+    RY.nav.sheet({
+      title: '关闭商机', sub: '不校验当前阶段门槛',
+      body: RY.ui.field('关闭结果', ui.select('result', [
+          { value: '', label: '请选择' }, { value: '赢单', label: '赢单' }, { value: '输单', label: '输单' }, { value: '关闭', label: '关闭' }
+        ], ''), '一条商机只有一个整体结果，不支持部分赢单与混合结果。', true) +
+        RY.ui.field('赢单成交依据（仅赢单必填）', ui.select('basis', [{ value: '', label: '不适用' }].concat(D.wonBasis), ''),
+          '选择「其他」时必须填写说明。附件不统一强制。') +
+        RY.ui.field('输单原因（仅输单必填）', ui.select('lost', [{ value: '', label: '不适用' }].concat(D.lostReason), '')) +
+        RY.ui.field('关闭原因（仅关闭必填）', ui.select('stop', [{ value: '', label: '不适用' }].concat(D.stopReason), '')) +
+        RY.ui.field('说明', ui.textarea('note', '', '选择「其他」时必填；其余选填', 2)) +
+        RY.ui.banner('关闭是独立动作，可在任意详细阶段执行，赢单也不强制位于「商务与合同」。' +
+          '当前关联正式任务未完成 <b>' + openStageTasks + '</b> 条、未来日程 <b>' + futureSched + '</b> 条：' +
+          '只提示并提供入口，<b>不自动批量取消</b>；关联任务／日程按自身模块规则处理并显示「关联商机已关闭」。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--danger" id="od-cl">确认关闭</button>',
+      onOpen: function (host, close) {
+        ui.qs('#od-cl', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          if (!v.result) { ui.toast('请选择关闭结果。', 'warn'); return; }
+          var basis = '', reason = '', note = String(v.note || '').trim();
+          if (v.result === '赢单') {
+            if (!v.basis) { ui.toast('赢单必须选择成交依据。', 'warn'); return; }
+            if (v.basis === '其他' && !note) { ui.toast('成交依据选择「其他」时说明必填。', 'warn'); return; }
+            basis = v.basis;
+          } else if (v.result === '输单') {
+            if (!v.lost) { ui.toast('输单原因必填。', 'warn'); return; }
+            if (v.lost === '其他' && !note) { ui.toast('输单原因选择「其他」时说明必填。', 'warn'); return; }
+            reason = v.lost;
+          } else {
+            if (!v.stop) { ui.toast('关闭原因必填。', 'warn'); return; }
+            if (v.stop === '其他' && !note) { ui.toast('关闭原因选择「其他」时说明必填。', 'warn'); return; }
+            reason = v.stop;
+          }
+          var closed = S.closeOpp(o, v.result, { basis: basis, reason: reason, note: note });
+          if (!closed.ok) { ui.toast(closed.reason, 'warn'); return; }
+          close(); render('cl');
+          ui.toast('已关闭，结果为「' + v.result + '」。', 'ok');
+        });
+      }
+    });
+  }
+
+  function doReopen() {
+    if (o.closeResult !== '关闭') { ui.toast('仅已结束（关闭）商机可重新激活。', 'warn'); return; }
+    RY.nav.sheet({
+      title: '重新激活商机', sub: '主管或独立能力人员',
+      body: RY.ui.field('重新激活原因', ui.textarea('reason', '', '必填，将写入审计', 3), '', true) +
+        RY.ui.banner('重新激活恢复结束前详细阶段，继续引用关闭前冻结模板；清除当前关闭结果字段，' +
+          '但原关闭事件、依据与原因永久保留。不自动恢复已取消任务，也不重建任务或日程。0.1 不建设重新激活审批流。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-ro">确认重新激活</button>',
+      onOpen: function (host, close) {
+        ui.qs('#od-ro', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          if (!String(v.reason || '').trim()) { ui.toast('重新激活原因必填。', 'warn'); return; }
+          var reopened = S.reopenOpp(o, String(v.reason).trim());
+          if (reopened && reopened.ok === false) { ui.toast(reopened.reason, 'warn'); return; }
+          close(); render('cl');
+          ui.toast('已重新激活，回到「' + (stage() ? stage().name : '') + '」。', 'ok');
+        });
+      }
+    });
+  }
+
+  function doMainLine() {
+
+    if (isClosed()) { ui.toast('已结束商机不能修改主业务线；仅关闭结果支持重新激活。', 'warn'); return; }
+    var ml = mainLine();
+    var lines = S.arr('businessLines').filter(function (b) { return b.status === '启用'; });
+    RY.nav.sheet({
+      title: '变更主业务线／销售场景', sub: '会触发显式模板迁移',
+      body: RY.ui.field('主业务线（唯一）', ui.select('line', [{ value: '', label: '请选择' }].concat(lines.map(function (b) {
+          return { value: b.code, label: b.name };
+        })), ml ? ml.businessLine : ''), '原主业务线默认转为协同业务线。', true) +
+        RY.ui.field('销售场景', ui.select('scene', [{ value: '', label: '请选择' }].concat(
+          ml && ml.businessLine ? S.scenarioOptions(ml.businessLine).map(function (s) { return { value: s.code, label: s.name }; }) : []
+        ), ml ? ml.scene : ''), '仅展示该业务线已启用场景；场景停用后新商机不可选择。', true) +
+        RY.ui.field('变更说明', ui.textarea('note', '', '选填，将写入审计', 2)) +
+        RY.ui.banner('模板变化时，主业务线、销售场景、模板版本、当前详细阶段和当前统一阶段必须一起成功或失败。' +
+          '旧模板自动生成且未完成的任务失效，新模板目标阶段重新生成任务；任何迁移失败均恢复原商机状态。' +
+          '迁移不要求立即满足目标阶段离开门槛，也不伪造新模板此前阶段历史；下一次推进时校验。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-ml">确认变更</button>',
+      onOpen: function (host, close) {
+        var sel = ui.qs('select[name=line]', host);
+        sel.addEventListener('change', function () {
+          var opts = S.scenarioOptions(sel.value).map(function (s) { return { value: s.code, label: s.name }; });
+          var sc = ui.qs('select[name=scene]', host);
+          sc.innerHTML = [{ value: '', label: '请选择' }].concat(opts).map(function (x) {
+            return '<option value="' + ui.esc(x.value) + '">' + ui.esc(x.label) + '</option>';
+          }).join('');
+        });
+        ui.qs('#od-ml', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          if (!v.line || !v.scene) { ui.toast('主业务线与销售场景都必须选择。', 'warn'); return; }
+          var r = S.changeMainLine(o, v.line, v.scene, String(v.note || '').trim());
+          if (r.needsStageChoice && r.candidates && r.candidates.length) {
+            RY.nav.sheet({ title: '选择迁移后的详细阶段', body: RY.ui.field('目标详细阶段', ui.select('targetStage', r.candidates.map(function(s){return {value:s.code,label:s.name+'（'+s.unified+'）'};})), '', true), footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-migration-stage">继续迁移</button>', onOpen: function(stageHost,stageClose){ui.qs('#od-migration-stage',stageHost).addEventListener('click',function(){var selected=ui.formValues(stageHost).targetStage;var retry=S.changeMainLine(o,v.line,v.scene,String(v.note||'').trim(),selected);if(!retry.ok){ui.toast(retry.reason,'warn');return;}stageClose();close();render('st');ui.toast('已迁移到模板「'+retry.template.name+'」，当前详细阶段「'+retry.stage.name+'」。','ok');});} });
+            return;
+          }
+          if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+          close(); render('st');
+          ui.toast('已迁移到模板「' + r.template.name + '」，当前详细阶段「' + r.stage.name + '」。', 'ok');
+        });
+      }
+    });
+  }
+
+  function doSplit() {
+
+    if (isClosed()) { ui.toast('已关闭商机不能拆分。', 'warn'); return; }
+    var cols = collabLines().filter(function (x) { return x.status === '当前参与'; });
+    if (!cols.length) {
+      ui.modal({
+        title: '没有可拆分的协同业务线', size: 'sm',
+        body: '<p>0.1 只允许选择一条或多条<b>协同业务线</b>拆出新商机，原主业务线不能直接通过拆分移出。</p>' +
+          '<p class="ry-hint">该商机当前没有处于「当前参与」的协同业务线。需要分别推进或判断结果时，可先增加协同业务线。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+      });
+      return;
+    }
+    RY.nav.sheet({
+      title: '拆分协同业务线', sub: '仅进行中商机可拆分',
+      body: RY.ui.field('拆分业务线', ui.select('line', cols.map(function (x) {
+          return { value: x.code, label: S.businessLineName(x.businessLine) };
+        })), '主业务线不能直接通过拆分移出。', true) +
+        RY.ui.field('新商机名称', ui.input('name', o.name + '－' + S.businessLineName(cols[0].businessLine), '默认「原商机名称－业务线名称」'),
+          '允许修改和重名。', true) +
+        RY.ui.field('新商机销售场景', ui.select('scene', [{ value: '', label: '请选择' }].concat(
+          S.scenarioOptions(cols[0].businessLine).map(function (s) { return { value: s.code, label: s.name }; })
+        ), ''), '新商机需重新匹配模板。', true) +
+        RY.ui.field('新商机主负责人', ui.select('owner', S.arr('users').filter(function (x) { return x.role === 'R1' || x.role === 'R2'; })
+          .map(function (x) { return { value: x.id, label: x.name }; }), u.id), '预计成交时间与下一步行动默认空。', true) +
+        RY.ui.field('拆分原因', ui.textarea('reason', '', '必填，将写入审计', 3), '', true) +
+        RY.ui.banner('新商机继承当前客户与来源关系，重新匹配模板并从<b>首个详细阶段</b>开始，不继承原阶段、活动、已完成任务、团队或自定义字段。' +
+          '新商机创建与原商机对应业务线标记「已拆出」属于同一业务事务，任一步失败均不生效；提交校验数据版本并具备幂等保护。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-sp">确认拆分</button>',
+      onOpen: function (host, close) {
+        ui.qs('#od-sp', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          if (!String(v.name || '').trim()) { ui.toast('新商机名称必填。', 'warn'); return; }
+          if (!v.scene) { ui.toast('新商机销售场景必填。', 'warn'); return; }
+          if (!String(v.reason || '').trim()) { ui.toast('拆分原因必填。', 'warn'); return; }
+          var r = S.splitLine(o, v.line, { name: String(v.name).trim(), scene: v.scene, owner: v.owner, reason: String(v.reason || '').trim() });
+          if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+          close(); render('ln');
+          ui.toast('已拆出新商机 ' + r.opportunity.id + '。', 'ok');
+        });
+      }
+    });
+  }
+
+  function doAddOpportunityLine() {
+    var main = mainLine();
+    var choices = S.all('businessLines').filter(function (line) {
+      if (line.status !== '启用' || line.code === main.businessLine) return false;
+      var existing = (o.lines || []).filter(function (x) { return x.businessLine === line.code; })[0];
+      return !existing || (!existing.splitTo && existing.status !== '当前参与');
+    }).map(function (line) { return { value: line.code, label: line.name }; });
+    if (!choices.length) { ui.toast('没有可增加的其他启用业务线。', 'warn'); return; }
+    RY.nav.sheet({
+      title: '增加协同业务线', sub: '共享本商机的阶段和主负责人，不单独匹配流程模板。',
+      body: ui.field('业务线', ui.select('line', [{ value: '', label: '请选择业务线' }].concat(choices), ''), '', true) +
+        ui.field('参与范围说明', ui.textarea('scope', '', '说明该业务线参与本商机的范围', 3)) +
+        ui.field('增加原因', ui.textarea('reason', '', '将记录到商机历史', 3), '', true),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-line-add-ok">增加业务线</button>',
+      onOpen: function (host, close) {
+        ui.qs('#od-line-add-ok', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          if (!v.line || !String(v.reason || '').trim()) { ui.toast('请选择业务线并填写增加原因。', 'warn'); return; }
+          var r = S.addOpportunityLine(o, v.line, v.scope, v.reason);
+          if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+          close(); render('ln'); ui.toast('已增加协同业务线。', 'ok');
+        });
+      }
+    });
+  }
+
+  function doRemoveOpportunityLine(lineCode) {
+    var line = (o.lines || []).filter(function (x) { return x.businessLine === lineCode && x.role !== '主业务线' && x.status === '当前参与'; })[0];
+    if (!line) { ui.toast('当前协同业务线不存在。', 'warn'); return; }
+    ui.confirm({
+      title: '移除协同业务线',
+      message: '<p>将把「' + ui.esc(S.businessLineName(lineCode)) + '」标记为已移除。记录和范围说明会保留，历史不会删除。</p>',
+      confirmText: '确认移除', requireReason: true, reasonLabel: '移除原因',
+      onConfirm: function (reason) {
+        var r = S.removeOpportunityLine(o, lineCode, reason);
+        if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+        render('ln'); ui.toast('协同业务线已移除，历史记录已保留。', 'ok');
+      }
+    });
+  }
+
+  function doAddMember() {
+    var cands = S.arr('users').filter(function (x) {
+      return !(o.team || []).some(function (m) { return m.userId === x.id; });
+    });
+    RY.nav.sheet({
+      title: '增加团队成员', sub: '加入即获得该商机记录级查看权',
+      body: RY.ui.field('成员', ui.select('user', [{ value: '', label: '请选择' }].concat(cands.map(function (x) {
+          return { value: x.id, label: x.name + '（' + x.dept + '）' };
+        })), ''), '', true) +
+        RY.ui.field('团队角色', ui.select('role', D.teamRole, '仅作职责标记；停用角色不可新增选择。', true)) +
+        RY.ui.banner('加入团队自动获得该商机记录级查看权；不自动获得全部关联任务查看权，任务查看沿用统一任务权限。' +
+          '团队角色不参与自动分派。', 'info'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-am">确认增加</button>',
+      onOpen: function (host, close) {
+        ui.qs('#od-am', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          if (!v.user) { ui.toast('请选择成员。', 'warn'); return; }
+          var r = S.addTeamMember(o, v.user, v.role);
+          if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+          close(); render('ln');
+          ui.toast('已增加团队成员。', 'ok');
+        });
+      }
+    });
+  }
+
+  function doDelMember(userId) {
+    if (!(u.role === 'R5' || o.owner === u.id || (u.role === 'R2' && P.inScope('opportunities', o)))) {
+      ui.modal({
+        title: '该动作当前不可执行', size: 'sm',
+        body: '<p>' + ui.esc(P.whyNot('opp.team') || '当前角色或对象状态不允许该动作。') + '</p>' +
+          '<p class="ry-hint">权限由「角色页面权限 ∩ 动作权限 ∩ 数据范围 ∩ 字段规则 ∩ 当前对象状态」共同决定；' +
+          '团队成员默认不能维护团队，仅主负责人与主管可维护。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+      });
+      return;
+    }
+    var openTasks = S.arr('tasks').filter(function (t) {
+      return t.related && t.related.type === '商机' && t.related.id === o.id && t.status === '待处理';
+    }).length;
+    ui.confirm({
+      title: '移除团队成员', confirmText: '确认移除',
+      message: '<p>将移除 ' + ui.esc(S.userName(userId)) + '。仅由团队关系产生的查看权限立即失效，其他组织或管理范围权限不受影响。</p>' +
+        '<p class="ry-hint">该商机当前有 <b>' + openTasks + '</b> 条未完成正式任务：移除成员<b>不自动取消或转派任务</b>，请自行确认。</p>',
+      onConfirm: function () {
+        var r = S.removeTeamMember(o, userId);
+        if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+        render('ln');
+        ui.toast('已移除团队成员。', 'ok');
+      }
+    });
+  }
+
+  function doReassign() {
+    RY.nav.sheet({
+      title: '转派主负责人', sub: '不改变团队构成',
+      body: RY.ui.field('新主负责人', ui.select('user', S.arr('users').filter(function (x) { return x.role === 'R1' || x.role === 'R2'; })
+          .map(function (x) { return { value: x.id, label: x.name + '（' + x.role + '）' }; }), o.owner), '', true) +
+        RY.ui.field('转派原因', ui.textarea('reason', '', '必填，将写入审计', 2), '', true) +
+        RY.ui.banner('主负责人转派不改变团队；普通人工任务不自动转派，原／新负责人收到通知。' +
+          '系统生成、未完成且仍由原主负责人负责的阶段任务自动转给新负责人；人工转派过的任务不变。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-ra">确认转派</button>',
+      onOpen: function (host, close) {
+        ui.qs('#od-ra', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          if (!v.user) { ui.toast('请选择新主负责人。', 'warn'); return; }
+          if (!String(v.reason || '').trim()) { ui.toast('转派原因必填。', 'warn'); return; }
+          S.reassignOwner(o, v.user, String(v.reason).trim());
+          close(); render('ln');
+          ui.toast('已转派主负责人。', 'ok');
+        });
+      }
+    });
+  }
+
+  function doEditCf() {
+    var cf = customFieldRows();
+    var body = cf.held.length ? cf.held.map(function (x) {
+      var f = x.f;
+      if (f.type === '单选') {
+        var opts = (f.options || []).map(function (p) { return { value: p.code, label: p.name }; });
+        return RY.ui.field(f.name, ui.select('cf_' + f.code, [{ value: '', label: '未填写' }].concat(opts), x.v || ''), '', false);
+      }
+      if (f.type === '多行文本') return RY.ui.field(f.name, ui.textarea('cf_' + f.code, x.v || '', '', 3));
+      return RY.ui.field(f.name, ui.input('cf_' + f.code, x.v || '', f.type === '日期' ? 'YYYY-MM-DD' : ''));
+    }).join('') : '<p class="ry-hint">当前业务线下没有适用的自定义字段。</p>';
+    RY.nav.sheet({
+      title: '编辑自定义字段', sub: '主负责人和主管可编辑',
+      body: body + RY.ui.banner('字段本身不配置全局必填或创建必填，只能由模板配置阶段推进前必填。' +
+        '投入使用后不能改类型；字段修改记录字段、原值、新值、操作人和时间，进入商机统一时间线。' +
+        '团队成员默认不可编辑。', 'info'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-cf">保存</button>',
+      onOpen: function (host, close) {
+        ui.qs('#od-cf', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          var patch = {};
+          Object.keys(v).forEach(function (k) {
+            if (k.indexOf('cf_') === 0) patch[k.slice(3)] = v[k];
+          });
+          var from = JSON.stringify(o.custom || {});
+          o.custom = o.custom || {};
+          Object.keys(patch).forEach(function (k) { o.custom[k] = patch[k]; });
+          o.updatedAt = S.now();
+          S.audit('商机', o.id, '修改自定义字段', from, JSON.stringify(o.custom));
+          S.save();
+          close(); render('ln');
+          ui.toast('自定义字段已保存。', 'ok');
+        });
+      }
+    });
+  }
+
+  function doNextAction() {
+    RY.nav.sheet({
+      title: '维护下一步行动', sub: '主负责人和主管维护',
+      body: RY.ui.field('下一步行动', ui.input('next', o.nextAction || '', '如：安排需求范围确认会议'), '', true) +
+        RY.ui.field('下一步时间', ui.input('at', o.nextActionAt || '', 'YYYY-MM-DD')) +
+        RY.ui.banner('下一步行动与时间是商机整体事实，创建时可空；可只读投影到统一日程，日历不能编辑源字段。', 'info'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-na">保存</button>',
+      onOpen: function (host, close) {
+        ui.qs('#od-na', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          if (!String(v.next || '').trim()) { ui.toast('下一步行动必填。', 'warn'); return; }
+          patchOpp({ nextAction: String(v.next).trim(), nextActionAt: String(v.at || '').trim() }, '维护下一步行动');
+          close(); render('ov');
+          ui.toast('下一步行动已更新。', 'ok');
+        });
+      }
+    });
+  }
+
+  function doFillClose() {
+    RY.nav.sheet({
+      title: '补齐预计成交时间', sub: '系统固定门禁项',
+      body: RY.ui.field('预计成交时间', ui.input('close', o.predictedClose || '', 'YYYY-MM-DD'), '', true) +
+        RY.ui.banner('预计成交时间是<b>系统级固定门槛</b>：创建和处于「机会确认」时允许为空，离开「机会确认」前必须补齐；' +
+          '所有业务线、场景、模板和角色均不能关闭或绕过。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="od-fc">保存</button>',
+      onOpen: function (host, close) {
+        ui.qs('#od-fc', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          if (!v.close) { ui.toast('请填写预计成交时间。', 'warn'); return; }
+          patchOpp({ predictedClose: String(v.close).trim() }, '补齐预计成交时间', '空', String(v.close).trim());
+          close(); render('ov');
+          ui.toast('预计成交时间已补齐。', 'ok');
+        });
+      }
+    });
+  }
+
+  render('ov');
+  ui.bindMasked(document.body);
+})();
+</script>
+</body>
+</html>

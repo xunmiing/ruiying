@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>新建线索 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：线索极低门槛录制（最少必填、显式归属、四类查重分别表达）。 */
+  .lc-req { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+  .lc-chk { border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; margin-bottom: 7px; background: var(--surface); }
+  .lc-chk__h { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; }
+  .lc-chk__m { font-size: 11.5px; color: var(--muted); line-height: 1.8; margin-top: 5px; }
+  .lc-chk--bad { border-color: var(--danger-line); background: var(--danger-soft); }
+  .lc-chk--warn { border-color: var(--warn-line); background: var(--warn-soft); }
+  .lc-chk--ok { border-color: var(--ok-line, var(--line)); background: var(--ok-soft, var(--surface)); }
+  .lc-attr { border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; background: var(--surface); }
+  .lc-attr__t { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .lc-dest { font-size: 12px; line-height: 1.9; }
+  .lc-dest b { color: var(--brand-ink, var(--ink)); }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom" id="lc-body">
+  <div id="lc-host"></div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var u = S.currentUser(), D = S.all('dicts');
+
+  var PAGE = 'h5.lead.create';
+  var g = P.guard(PAGE, 'leads', null);
+
+  RY.nav.h5shell({
+    title: '新建线索',
+    sub: '极低门槛录制 · 最少必填',
+    back: 'h5/lead/list.html',
+    nav: 'lead'
+  });
+
+  if (!g.ok) {
+    ui.qs('#lc-host').innerHTML = ui.stateCard(g.kind, {
+      title: g.kind === 'no-permission' ? '没有新建线索的权限' : '当前不可新建线索',
+      body: '<p>' + ui.esc(g.reason) + '</p>' +
+        '<p class="ry-hint">新建线索是受控动作，需要同时具备页面权限、动作权限与数据范围；' +
+        'H5 只做单条创建，批量导入与试迁移是 PC 的固定模板能力。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/lead/list.html') + '">返回线索列表</a>'
+    });
+    return;
+  }
+
+  /* 幂等键在页面加载时生成一次，重试与重复提交复用同一个键，避免创建第二条线索。 */
+  var IDEM = 'H5-' + u.id + '-' + String(S.all('leads').length) + '-' + Math.random().toString(36).slice(2, 8);
+  var created = null;   /* 已创建成功的线索：重复提交时不再创建 */
+  var belong = '';      /* '' | self | user | pool —— 必须由用户显式选择 */
+  var checkState = null;
+
+  /* 归属选择会触发重渲染；输入内容必须先缓存，避免用户反复填写。 */
+  var vals = { raw: '', source: '', customer: '', contact: '', phone: '', recordId: '', targetUser: '', targetPool: '' };
+  var linesOn = [];
+  function capture() {
+    if (!ui.qs('#lc-raw')) return;
+    var v = ui.formValues(ui.qs('#lc-host'));
+    Object.keys(vals).forEach(function (k) { if (v[k] !== undefined) vals[k] = v[k]; });
+    linesOn = ui.qsa('[data-line].is-on', ui.qs('#lc-host')).map(function (b) { return b.getAttribute('data-line'); });
+  }
+
+  function kv(list) {
+    return '<ul class="ry-kv ry-kv--tight">' + list.map(function (r) {
+      return '<li><span>' + ui.esc(r[0]) + '</span><b>' + (r[1] == null || r[1] === '' ? '—' : r[1]) + '</b></li>';
+    }).join('') + '</ul>';
+  }
+
+  var poolOptions = S.arr('leadPools').filter(function (p) { return p.status === '启用'; });
+  var userOptions = S.arr('users').filter(function (x) { return x.role === 'R1' || x.role === 'R2'; });
+  var lineOptions = S.arr('businessLines').filter(function (b) { return b.status === '启用'; });
+
+  /* ------------------------------------------------------------ 查重 */
+
+  /* 客户、联系人、线索业务相似和技术幂等分别检查：只有技术重复强阻断，业务相似只提示。 */
+  function runCheck(raw, recordId) {
+    var key = String(raw || '').trim();
+    var out = { customer: [], contact: [], similar: [], technical: [] };
+    if (key.length < 2) return out;
+
+    S.arr('customers').forEach(function (c) {
+      if (P.inScope('customer', c) && (c.name.indexOf(key) >= 0 || key.indexOf(c.name) >= 0)) {
+        out.customer.push(c.id + '　' + c.name);
+      }
+    });
+    S.arr('contacts').forEach(function (c) {
+      if (P.inScope('contact', c) && c.name.indexOf(key) >= 0) out.contact.push(c.id + '　' + c.name);
+    });
+    S.arr('leads').forEach(function (l) {
+      if (!P.inScope('lead', l)) return;
+      if (String(l.raw || '').indexOf(key) >= 0) out.similar.push(l.id + '　' + String(l.raw).slice(0, 20));
+    });
+    /* 技术幂等：相同幂等键、相同来源系统 + 相同非空外部记录 ID 不得创建第二条。 */
+    if (recordId) {
+      S.arr('leads').forEach(function (l) {
+        if (l.idempotencyKey === recordId) out.technical.push(l.id + '　外部记录 ID ' + recordId);
+      });
+    }
+    S.arr('leads').forEach(function (l) {
+      if (l.idempotencyKey === IDEM) out.technical.push(l.id + '　幂等键 ' + IDEM);
+    });
+    return out;
+  }
+
+  function checkBlock() {
+    var degraded = P.flag('serviceError');
+    var techBad = !!(checkState && checkState.technical.length);
+    var rows = [
+      ['客户查重', checkState.customer.length ? 'warning' : 'ok',
+        checkState.customer.length ? '命中 ' + checkState.customer.length + ' 个客户，请先确认是否已有主记录。' : '未命中已有客户主记录。'],
+      ['联系人查重', checkState.contact.length ? 'warning' : 'ok',
+        checkState.contact.length ? '命中 ' + checkState.contact.length + ' 位联系人，请确认是否重复录入。' : '未命中已有联系人。'],
+      ['线索业务相似', checkState.similar.length ? 'warning' : 'ok',
+        checkState.similar.length ? '业务相似 ' + checkState.similar.length + ' 条，仅提示，不阻断创建。' : '未发现业务相似线索。'],
+      ['技术幂等', techBad ? 'bad' : 'ok',
+        techBad ? '命中已有幂等键或外部记录 ID，不得创建第二条线索。' : '幂等键 ' + IDEM + ' 未被使用。']
+    ];
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>查重结果</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">业务相似只提示 · 技术重复强阻断</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        rows.map(function (r) {
+          var tone = r[1] === 'bad' ? 'lc-chk--bad' : r[1] === 'warning' ? 'lc-chk--warn' : 'lc-chk--ok';
+          return '<div class="lc-chk ' + tone + '"><div class="lc-chk__h"><span>' + ui.esc(r[0]) + '</span>' +
+            ui.tag(r[1] === 'bad' ? '阻断' : r[1] === 'warning' ? '提示' : '通过', r[1] === 'bad' ? 'bad' : r[1] === 'warning' ? 'warn' : 'ok') +
+            '</div><div class="lc-chk__m">' + ui.esc(r[2]) + '</div>' +
+            (r[0] === '客户查重' && checkState.customer.length ? '<div class="lc-chk__m">' +
+              checkState.customer.map(function (x) { return ui.esc(x); }).join('<br>') + '</div>' : '') +
+            (r[0] === '线索业务相似' && checkState.similar.length ? '<div class="lc-chk__m">' +
+              checkState.similar.map(function (x) { return ui.esc(x); }).join('<br>') + '</div>' : '') +
+            (r[0] === '技术幂等' && techBad ? '<div class="lc-chk__m">' +
+              checkState.technical.map(function (x) { return ui.esc(x); }).join('<br>') + '</div>' : '') +
+            '</div>';
+        }).join('') +
+        (degraded ? ui.banner('业务查重服务当前不可用：本次只做降级提示并<b>标记待人工复核</b>，创建仍可继续；' +
+          '<b>技术幂等异常不受降级影响，命中即不得创建</b>。', 'warn') : '') +
+        '<p class="ry-hint">查重与列表同权：不返回也无权线索的标题、摘要、数量或可推断信息。' +
+        '外部数据不得静默覆盖销售已确认事实。</p>' +
+      '</div></div>';
+  }
+
+  /* ------------------------------------------------------------ 表单 */
+
+  function viewForm() {
+    var dest = destHtml();
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>阶段一 · 最少必填</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">只有两项必填</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        ui.field('原始内容', ui.textarea('raw', vals.raw, '把客户说的话、渠道给的名单信息原样贴进来即可', 6),
+          '永久保留且只读。后续纠正通过补充说明、结构化字段修正或新来源记录完成，不覆盖原件。', true) +
+        ui.field('来源', ui.select('source', [{ value: '', label: '请选择来源' }].concat(D.leadSource), vals.source),
+          '来源字典与系统记录来源分开；本单的系统记录来源固定为「人工录入」。', true) +
+        kv([
+          ['系统记录来源', ui.tag('人工录入', 'muted') + '（人工、批量导入、试迁移三者分开）'],
+          ['创建人', ui.esc(u.name) + '（' + ui.esc(u.role) + '）'],
+          ['初始状态', ui.tag('待处理', 'warn') + '（不产生保护期、任务或活动）']
+        ]) +
+        '<p class="ry-hint">客户、联系人、联系方式、候选业务线和外部记录 ID 全部可空。' +
+        '结构化不足<b>只做非阻断提示</b>，不阻止你先把线索录进来。</p>' +
+      '</div></div>' +
+
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>阶段二 · 归属（必须显式选择）</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">无负责人且无池时失败</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        '<div class="ry-fbar__seg" style="margin-bottom:12px">' +
+          '<button type="button" data-belong="self"' + (belong === 'self' ? ' class="is-on"' : '') + '>本人</button>' +
+          '<button type="button" data-belong="user"' + (belong === 'user' ? ' class="is-on"' : '') + '>指定负责人</button>' +
+          '<button type="button" data-belong="pool"' + (belong === 'pool' ? ' class="is-on"' : '') + '>指定池</button>' +
+        '</div>' +
+        (belong === 'user' ? ui.field('指定负责人', ui.select('targetUser', [{ value: '', label: '请选择负责人' }].concat(
+            userOptions.map(function (x) { return { value: x.id, label: x.name + '（' + x.role + ' · ' + x.dept + '）' }; })), vals.targetUser), '', true) : '') +
+        (belong === 'pool' ? ui.field('指定池', ui.select('targetPool', [{ value: '', label: '请选择池' }].concat(
+            poolOptions.map(function (p) { return { value: p.code, label: p.name + '（持有上限 ' + p.holdLimit + '）' }; })), vals.targetPool),
+            '只有「启用」状态的池能接收新线索；「停止接收」不进新线索，「停用」不可选。', true) : '') +
+        '<div class="lc-attr"><div class="lc-attr__t">当前选择的归属结果（创建前预览）</div>' +
+          '<div class="lc-dest">' + dest + '</div></div>' +
+        '<p class="ry-hint">活跃线索必须满足「当前负责人有值 XOR 当前池有值」。' +
+        '新建统一为待处理，<b>不产生保护期、任务或活动</b>；保护期只由池内分派或认领产生。</p>' +
+      '</div></div>' +
+
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>阶段三 · 可选结构化信息</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">全部可空</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+        ui.field('客户', ui.select('customer', [{ value: '', label: '暂不识别客户（只关联线索）' }].concat(
+          S.arr('customers').filter(function (c) { return P.inScope('customer', c); }).map(function (c) {
+            return { value: c.id, label: c.name };
+          })), vals.customer), '客户未识别时线索只关联自身，不建占位客户。') +
+        ui.field('联系人', ui.select('contact', [{ value: '', label: '暂不识别联系人' }].concat(
+          S.arr('contacts').filter(function (c) { return P.inScope('contact', c); }).map(function (c) {
+            return { value: c.id, label: c.name + ' · ' + (c.title || '') };
+          })), vals.contact)) +
+        ui.field('联系电话', ui.input('phone', vals.phone, '留空即可；保存后默认脱敏展示'), '负责人身份不自动授予明文，号码默认脱敏。') +
+        '<div class="ry-field"><span class="ry-field__label">候选业务线（可多选）</span>' +
+          '<div class="ry-fbar__seg" style="flex-wrap:wrap">' +
+            lineOptions.map(function (b) {
+              return '<button type="button" data-line="' + b.code + '"' +
+                (linesOn.indexOf(b.code) >= 0 ? ' class="is-on"' : '') + '>' + ui.esc(b.name) + '</button>';
+            }).join('') + '</div>' +
+          '<span class="ry-field__hint">候选业务线用于转换时提供默认值；不标注也不阻断创建。</span>' +
+        '</div>' +
+        ui.field('外部记录 ID', ui.input('recordId', vals.recordId, '来自外部名单的原始记录编号'), '与来源系统一起参与技术幂等校验。') +
+        '<div id="lc-gap"></div>' +
+      '</div></div>' +
+
+      checkBlock() +
+      '<div class="ry-hcard ry-hcard--flat"><div class="ry-hcard__body">' +
+        '<div class="ry-acts-row">' +
+          '<button class="ry-btn" id="lc-check">重新查重</button>' +
+          '<button class="ry-btn ry-btn--primary" id="lc-save">保存线索</button>' +
+          '<a class="ry-btn" href="' + RY.nav.href('h5/lead/list.html') + '">取消</a>' +
+        '</div>' +
+        '<p class="ry-hint" id="lc-msg">保存后进入待处理，可在详情页继续补充结构化信息、认领、跟进或转换。' +
+        'H5 只做单条创建，不提供批量导入；批量导入是 PC 的固定模板能力。</p>' +
+      '</div></div>' +
+
+      '<div class="ry-hcard ry-hcard--flat" style="margin-top:14px"><div class="ry-hcard__head"><h3>本页契约</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">PG-LEAD-CREATE</span></div></div>' +
+      '<div class="ry-hcard__body">' + kv([
+        ['页面契约', 'PG-LEAD-CREATE · H5 · 线索'],
+        ['可进入角色', 'R1 销售｜R2 销售主管｜R3 销售运营'],
+        ['依据', 'prd/02 §2'],
+        ['覆盖验收', 'AC-08'],
+        ['本页视图', '极低门槛录制、最少必填'],
+        ['最少必填', '仅原始内容与来源；其余全部可空'],
+        ['归属约束', '必须显式选择本人／指定负责人／指定池；无负责人且无池时失败'],
+        ['创建结果', '统一为待处理；不产生保护期、任务或活动'],
+        ['查重边界', '客户／联系人／线索业务相似／技术幂等分别检查；只有技术重复强阻断'],
+        ['端职责', 'H5 单条创建；批量导入与试迁移是 PC 固定模板能力']
+      ]) + '</div></div>';
+  }
+
+  function destHtml() {
+    if (belong === 'self') {
+      return '<b>当前负责人：' + ui.esc(u.name) + '（本人）</b><br>' +
+        '当前池：不在池内<br>' +
+        '保护期：<b>无</b>（创建时直接归属不属于池内分派或认领，不产生保护期）';
+    }
+    if (belong === 'user') {
+      return '<b>当前负责人：' + ui.esc(vals.targetUser ? S.userName(vals.targetUser) : '请选择指定负责人') + '（直接分派）</b><br>' +
+        '当前池：不在池内<br>' +
+        '保护期：<b>无</b>（创建时直接分派不要求属于原池，也不产生保护期）';
+    }
+    if (belong === 'pool') {
+      var pool = vals.targetPool ? S.poolOf(vals.targetPool) : null;
+      return '<b>当前负责人：无</b><br>' +
+        '<b>当前池：' + ui.esc(pool ? pool.name : '请选择指定池') + '</b>（在池待分配）<br>' +
+        '保护期：<b>无</b>（进入池不产生保护期；只有池内分派或认领才产生）<br>' +
+        (pool ? '该池 ' + (pool.protectEnabled ? '启用保护期 ' + pool.protectDays + ' 天' : '未启用保护期') +
+          '，持有上限 ' + pool.holdLimit + ' 条' : '');
+    }
+    return '<b>尚未选择归属</b><br>无负责人且无池时保存会失败；原型不会回退到默认池或默认负责人。';
+  }
+
+  /* ------------------------------------------------------------ 渲染 */
+
+  function render() {
+    checkState = checkState || { customer: [], contact: [], similar: [], technical: [] };
+    ui.qs('#lc-host').innerHTML = viewForm();
+
+    ui.qsa('[data-belong]', ui.qs('#lc-host')).forEach(function (b) {
+      b.addEventListener('click', function () {
+        capture();                     /* 归属切换前先缓存已填写内容 */
+        belong = b.getAttribute('data-belong');   /* 必须显式选择，不提供默认值 */
+        render();
+      });
+    });
+    ui.qsa('[data-line]', ui.qs('#lc-host')).forEach(function (b) {
+      b.addEventListener('click', function () { b.classList.toggle('is-on'); });
+    });
+    var rv = ui.qs('#lc-raw');
+    if (rv) rv.addEventListener('blur', function () { doCheck(true); });
+    ui.qs('#lc-check').addEventListener('click', function () { doCheck(false); });
+    ui.qs('#lc-save').addEventListener('click', save);
+
+    /* 结构化不足只做非阻断提示，不阻止提交。 */
+    var missing = [];
+    if (!vals.customer) missing.push('客户');
+    if (!vals.contact) missing.push('联系人');
+    if (!vals.phone) missing.push('联系方式');
+    if (!linesOn.length) missing.push('候选业务线');
+    if (!vals.recordId) missing.push('外部记录 ID');
+    ui.qs('#lc-gap').innerHTML = missing.length
+      ? ui.banner('结构化不足提示（非阻断）：' + missing.join('、') + ' 尚未填写。' +
+          '可以先保存为待处理，稍后在详情页补充；<b>这不影响创建成功</b>。', 'info')
+      : ui.banner('结构化信息已较完整。仍可继续补充或直接保存。', 'info');
+    ui.bindMasked(document.body);
+  }
+
+  function doCheck(quiet) {
+    capture();
+    if (!String(vals.raw || '').trim()) { if (!quiet) ui.toast('请先填写原始内容再查重。', 'warn'); return; }
+    checkState = runCheck(vals.raw, String(vals.recordId || '').trim());
+    render();
+    if (!quiet) ui.toast('查重完成：技术重复 ' + checkState.technical.length + ' 条，业务相似 ' +
+      (checkState.customer.length + checkState.contact.length + checkState.similar.length) + ' 条。', 'ok');
+  }
+
+  /* ------------------------------------------------------------ 保存 */
+
+  function save() {
+    /* 重复提交不重复创建：已经成功创建过就直接进入详情。 */
+    if (created) {
+      ui.toast('该线索已创建成功，不会重复创建。', 'ok');
+      window.location.href = RY.nav.href('h5/lead/detail.html?id=' + encodeURIComponent(created.id));
+      return;
+    }
+    capture();
+    var v = vals;
+    var raw = String(v.raw || '').trim();
+    if (!raw) { ui.toast('原始内容必填，这是唯一必须先有的信息。', 'warn'); return; }
+    if (!v.source) { ui.toast('请选择来源。', 'warn'); return; }
+    if (!belong) {
+      ui.modal({
+        title: '必须显式选择归属', size: 'sm',
+        body: '<p>创建线索时要明确保存为<b>本人、直接分派给指定负责人，或进入指定池</b>，三者必选其一。</p>' +
+          '<p class="ry-hint">无负责人且无池时创建失败。原型不提供默认池回退，也不做自动分派。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+      });
+      return;
+    }
+    var owner = '', pool = '';
+    if (belong === 'self') owner = u.id;
+    if (belong === 'user') {
+      owner = v.targetUser || '';
+      if (!owner) { ui.toast('请选择指定负责人。', 'warn'); return; }
+    }
+    if (belong === 'pool') {
+      pool = v.targetPool || '';
+      if (!pool) { ui.toast('请选择指定池。', 'warn'); return; }
+    }
+    if (!owner && !pool) { ui.toast('无负责人且无池时不能创建。', 'warn'); return; }
+
+    /* 技术幂等异常不受业务查重降级影响：命中即不得创建。 */
+    checkState = runCheck(raw, String(v.recordId || '').trim());
+    if (checkState.technical.length) {
+      ui.modal({
+        title: '技术幂等校验未通过', size: 'sm',
+        body: '<p>命中已有线索的幂等键或外部记录 ID，<b>不得创建第二条线索</b>。</p>' +
+          '<ul class="ry-kv ry-kv--tight">' + checkState.technical.map(function (x) {
+            return '<li><span>已有线索</span><b>' + ui.esc(x) + '</b></li>';
+          }).join('') + '</ul>' +
+          '<p class="ry-hint">请改为在已有线索上继续跟进，或核对来源系统与外部记录 ID。' +
+          '业务查重可降级，技术幂等异常不允许降级。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+      });
+      render();
+      return;
+    }
+
+    var lines = linesOn.slice();
+
+    var l;
+    if (P.flag('weakNetwork')) {
+      /* 弱网演示：提交前明确告知不会重复创建，重试复用同一幂等键。 */
+      ui.modal({
+        title: '网络不稳定', size: 'sm',
+        body: '<p>当前网络不稳定。若提交结果未知，请<b>不要重复填写</b>：重试会复用同一幂等键 ' +
+          '<code>' + ui.esc(IDEM) + '</code>，不会创建第二条线索。</p>',
+        footer: '<button class="ry-btn" data-close>取消</button>' +
+          '<button class="ry-btn ry-btn--primary" id="lc-retry">继续提交</button>',
+        onOpen: function (el) {
+          ui.qs('#lc-retry', el).addEventListener('click', function () { ui.close(); doSave(raw, v, owner, pool, lines); });
+        }
+      });
+      return;
+    }
+    doSave(raw, v, owner, pool, lines);
+  }
+
+  function doSave(raw, v, owner, pool, lines) {
+    created = S.createLead({
+      raw: raw,
+      source: String(v.source),
+      sourceRecord: '人工录入',
+      customerId: v.customer || '',
+      contactId: v.contact || '',
+      phone: String(v.phone || '').trim(),
+      candidateLines: lines,
+      owner: owner,
+      currentPool: owner ? '' : pool,
+      sourcePool: '',            /* 从未过池：本单不是从池内取得，主动退回与保护期都不适用 */
+      idempotencyKey: String(v.recordId || '').trim() || IDEM
+    });
+
+    var fresh = S.lead(created.id);
+    ui.modal({
+      title: '线索已创建', size: 'sm',
+      body: '<p>线索编号 <b>' + ui.esc(fresh.id) + '</b>，状态为 ' + ui.statusTag(fresh.status) + '。</p>' +
+        kv([
+          ['当前负责人', fresh.owner ? ui.esc(S.userName(fresh.owner)) : '无'],
+          ['当前池', fresh.currentPool ? ui.esc((S.poolOf(fresh.currentPool) || {}).name || fresh.currentPool) : '不在池内'],
+          ['保护期', ui.esc(fresh.protectUntil || '无')],
+          ['产生的任务／活动', '无（创建不自动产生任务或活动）'],
+          ['原始内容', '已永久保留且只读'],
+          ['查重降级标记', P.flag('serviceError') ? '本次业务查重已降级，已标记待人工复核' : '未发生降级']
+        ]) +
+        '<p class="ry-hint">重复提交不会重复创建：本次幂等键为 <code>' + ui.esc(fresh.idempotencyKey) + '</code>。</p>',
+      footer: '<button class="ry-btn" data-close>留在本页继续录下一条</button>' +
+        '<button class="ry-btn ry-btn--primary" id="lc-go">查看线索详情</button>',
+      onOpen: function (el) {
+        ui.qs('#lc-go', el).addEventListener('click', function () {
+          window.location.href = RY.nav.href('h5/lead/detail.html?id=' + encodeURIComponent(fresh.id));
+        });
+      }
+    });
+    render();
+    if (ui.qs('#lc-msg')) {
+      ui.qs('#lc-msg').innerHTML = '已创建 <b>' + ui.esc(fresh.id) + '</b>。重复点击保存不会重复创建，只会打开该线索详情。';
+    }
+  }
+
+  render();
+  ui.bindMasked(document.body);
+})();
+</script>
+</body>
+</html>

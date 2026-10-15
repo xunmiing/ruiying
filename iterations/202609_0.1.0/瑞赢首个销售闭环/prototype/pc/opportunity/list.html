@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>商机列表 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：商机列表 */
+  .op-filters { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; }
+  .op-views { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+  .op-filters .ry-field { margin: 0; }
+  .op-sumbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--r-btn); background: #FCFDFD; margin-bottom: 12px; }
+  .op-sumbar b { font-size: 15px; }
+  /* 顶部统计即快捷筛选：点一下按该口径过滤，再点一次或点「可见商机」回到全部 */
+  .op-sumchip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border: 1px solid var(--line);
+    border-radius: 999px; background: var(--surface); font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+  .op-sumchip b { font-size: 14px; color: var(--ink); }
+  .op-sumchip:hover { border-color: var(--brand-line); color: var(--brand-ink); }
+  .op-sumchip.is-on { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .op-sumchip.is-on b { color: #fff; }
+  .op-sumchip[disabled] { cursor: default; opacity: .55; }
+  .op-row-m { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .op-stage { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 12px; }
+  .op-stage i { color: var(--faint); font-style: normal; }
+  .op-stage b { color: var(--brand-ink); }
+  .op-more-menu { position:static; min-width:150px; display:grid; margin-top:5px; padding:6px; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 3px 10px rgba(20,35,50,.10); }
+  .op-more-menu a { padding:7px 9px; white-space:nowrap; border-radius:5px; }
+  .op-more-menu a:hover { background:var(--brand-soft); }
+  .op-list-wrap { max-width:100%; overflow-x:auto; }
+  .op-list-table { min-width:1800px; width:max-content; }
+  .op-list-table th,.op-list-table td { white-space:nowrap; }
+  .op-list-table .ry-cellname { display:inline-block; max-width:220px; overflow:hidden; text-overflow:ellipsis; vertical-align:bottom; }
+  .op-list-table .op-demo-row td { background:#f4f8ff; }
+  .ry-page > .ry-card--flat { display:none; }
+  #op-rows .ry-tbl-act { position:relative; }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="op-guard"></div>
+      <div id="op-body" style="display:none">
+        <div id="op-sum"></div>
+        <div class="ry-filter" id="op-filter-card">
+          <div class="ry-filter__row op-filters" id="op-filters"></div>
+          <div class="ry-filter__more" id="op-filter-more"><div class="ry-filter__row" id="op-extra-filters"></div></div>
+          <div class="ry-filter__foot">
+            <div class="ry-resultbar__tools">
+              <button class="ry-btn" id="op-filter-toggle" type="button" aria-expanded="false" aria-controls="op-filter-more">更多筛选</button>
+              <button class="ry-btn ry-btn--primary" id="op-apply">查询</button>
+              <button class="ry-btn" id="op-reset">重置条件</button>
+            </div>
+            <div class="ry-resultbar__tools"><button class="ry-btn" id="op-cols">列显示设置</button><button type="button" data-pcn-rule="oppRestore"></button></div>
+          </div>
+        </div>
+        <div class="ry-card">
+          <div class="ry-card__head"><h3>商机</h3>
+            <div class="ry-card__extra"><button class="ryn-perm-link" type="button" data-perm-note="OPP-L-P2">② 创建、导出与批量</button><button class="ry-btn ry-btn--sm" id="op-exp">导出</button></div>
+          </div>
+          <div class="ry-card__body">
+            <div id="op-selbar"></div>
+            <div id="op-resultbar" class="ry-resultbar"></div>
+            <div class="ry-table__wrap op-list-wrap ry-standard-list-wrap ry-standard-list-wrap--select ry-standard-list-wrap--actions" role="region" aria-label="商机列表，可左右滚动" tabindex="0"><table class="ry-table op-list-table"><thead><tr id="op-thead"></tr></thead><tbody id="op-rows"></tbody></table></div>
+            <div id="op-pager"></div>
+            <div id="op-note" class="ry-note"></div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/opportunity-review-mode.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<!-- 原型说明层：把「业务规则 / 注解 / 待修 / 不做」就地标注在页面上；不含业务逻辑，可整行摘除 -->
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser(), D = S.all('dicts');
+  document.addEventListener('click', function (e) { var b = e.target.closest('[data-perm-note]'); if (b && window.RYNOTES) RYNOTES.openPermission(b.getAttribute('data-perm-note')); });
+  function can(a, o) { return RY.perm.can(a, o); }
+  function deny(a) { return RY.perm.whyNot(a); }
+
+  var st = S.listState('opp.list');
+  if (ui.q('menu') === '1') { st.view = 'all'; st.filters = {}; st.quick = ''; st.page = 1; S.save(); }
+  if (ui.q('menu') === '1') { var menuUrl = new URL(location.href); menuUrl.searchParams.delete('menu'); history.replaceState(null, '', menuUrl.href); }
+  if (st.filters && st.filters.process === '休眠') st.filters.process = '';
+  if (st.quick === 'sleep') st.quick = '';
+  if (!st.filters) st.filters = {};
+  if (!st.quick) st.quick = '';
+  if (!st.columns) st.columns = ['name', 'id', 'customer', 'customerId', 'line', 'scene', 'salesRegion', 'template', 'templateVersion', 'stage', 'unified', 'stageEntered', 'owner', 'closeTime', 'process', 'closeResult', 'created', 'updated'];
+  if (!st.columnLayoutVersion) {
+    var expanded = [];
+    st.columns.forEach(function (k) {
+      var parts = { name:['name','id'], customer:['customer','customerId'], line:['line','scene'], template:['template','templateVersion'], stage:['stage','unified','stageEntered'], status:['process','closeResult'], updated:['created','updated'] }[k] || [k];
+      parts.forEach(function (part) { if (expanded.indexOf(part) < 0) expanded.push(part); });
+    });
+    st.columns = expanded;
+    st.columnLayoutVersion = 2;
+    S.save();
+  }
+  if (st.columns.indexOf('salesRegion') < 0) st.columns.push('salesRegion');
+  st.columns = st.columns.filter(function (k) { return ['name','id','customer','customerId','line','scene','salesRegion','template','templateVersion','stage','unified','stageEntered','owner','closeTime','process','closeResult','created','updated'].indexOf(k) >= 0; });
+  if (!st.view) st.view = 'all';
+  if (!st.sort) st.sort = 'updated';
+  var page = st.page || 1, size = st.size || 20, openMenuId = '';
+  if ([20, 50, 100].indexOf(size) < 0) size = 20;
+
+  RY.nav.shell({
+    nav: 'opp.list',
+    title: '商机列表',
+    subtitle: '',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '销售管理' }, { label: '商机' }],
+    actions: ui.actionBtn('opp.create', '新建商机', ' id="op-new"', 'ry-btn--primary') + '<button type="button" data-pcn-rule="oppTemplate"></button>'
+  });
+
+  if (!RY.perm.page('opp.list')) {
+    ui.renderState('#op-guard', 'no-permission', {
+      title: '没有商机列表权限',
+      body: '<p>当前账号没有「商机列表」的页面权限。</p>',
+      actions: '<a class="ry-btn" href="../../pc.html">返回工作台</a>'
+    });
+    return;
+  }
+  ui.qs('#op-body').style.display = '';
+  function setFiltersOpen(open) {
+    st.filtersOpen = !!open;
+    ui.qs('#op-filter-more').classList.toggle('is-open', st.filtersOpen);
+    var toggle = ui.qs('#op-filter-toggle');
+    toggle.textContent = st.filtersOpen ? '收起筛选' : '更多筛选';
+    toggle.setAttribute('aria-expanded', st.filtersOpen ? 'true' : 'false');
+    S.save();
+  }
+  setFiltersOpen(st.filtersOpen === true);
+  ui.qs('#op-filter-toggle').addEventListener('click', function () { setFiltersOpen(!st.filtersOpen); });
+  ui.qs('#op-new').addEventListener('click', function (e) {
+    if (e.target.closest('[data-denied]')) return;
+    window.location.href = 'create.html';
+  });
+
+  /* ------------------------------------------------------------------ 列 */
+
+  var COLS = [
+    { key: 'name', name: '商机名称' },
+    { key: 'id', name: '商机编号' },
+    { key: 'customer', name: '客户' },
+    { key: 'customerId', name: '客户编号' },
+    { key: 'line', name: '主业务线' },
+    { key: 'scene', name: '销售场景' },
+    { key: 'salesRegion', name: '销售归属地区' },
+    { key: 'template', name: '流程模板' },
+    { key: 'templateVersion', name: '模板版本' },
+    { key: 'stage', name: '当前详细阶段' },
+    { key: 'unified', name: '统一阶段' },
+    { key: 'stageEntered', name: '阶段进入时间' },
+    { key: 'owner', name: '主负责人' },
+    { key: 'closeTime', name: '预计成交时间' },
+    { key: 'process', name: '流程状态' },
+    { key: 'closeResult', name: '关闭结果' },
+    { key: 'created', name: '创建时间' },
+    { key: 'updated', name: '最近更新' },
+  ];
+
+  /* ---------------------------------------------------------------- 工具 */
+
+  function daysSince(str) {
+    if (!str) return null;
+    var d = new Date(String(str).replace(/-/g, '/').slice(0, 10));
+    if (isNaN(d.getTime())) return null;
+    var t = new Date(S.today().replace(/-/g, '/'));
+    return Math.round((t - d) / 86400000);
+  }
+  function stageOf(o) { return S.currentStage(o); }
+  function tplOf(o) { return S.currentTemplate(o); }
+  function isStagnant(o) {
+    return S.opportunityStagnation(o).on;
+  }
+  function mainLine(o) { return (o.lines || []).filter(function (l) { return l.role === '主业务线'; })[0] || {}; }
+  function sceneName(code) {
+    var s = S.all('scenarios').filter(function (x) { return x.code === code; })[0];
+    return s ? s.name : (code || '—');
+  }
+  function mine(o) {
+    return o.owner === u.id || (o.team || []).some(function (m) { return m.userId === u.id; });
+  }
+
+  /* ---------------------------------------------------------------- 筛选 */
+
+  function filterDefs() {
+    return [
+      { k: 'kw', label: '关键词', type: 'input', ph: '商机名称 / 编号 / 客户名称' },
+      { k: 'customer', label: '客户', type: 'select', opts: [{ value: '', label: '全部' }].concat(S.all('customers').map(function (c) { return { value: c.id, label: c.name }; })) },
+      { k: 'line', label: '主业务线', type: 'select', opts: [{ value: '', label: '全部' }].concat(S.all('businessLines').map(function (b) { return { value: b.code, label: b.name + (b.status === '启用' ? '' : '（' + b.status + '）') }; })) },
+      { k: 'scene', label: '销售场景', type: 'select', opts: [{ value: '', label: '全部' }].concat(S.all('scenarios').map(function (s) { return { value: s.code, label: s.name + '（' + S.businessLineName(s.businessLine) + '）' }; })) },
+      { k: 'salesRegion', label: '销售归属地区', type: 'input', ph: '输入省份或城市' },
+      { k: 'unified', label: '统一阶段', type: 'select', opts: [{ value: '', label: '全部' }].concat(D.unifiedStage) },
+      { k: 'stage', label: '当前详细阶段', type: 'select', opts: [{ value: '', label: '全部' }].concat(allStages()) },
+      { k: 'owner', label: '主负责人', type: 'select', opts: [{ value: '', label: '全部' }].concat(S.all('users').map(function (x) { return { value: x.id, label: x.name }; })) },
+      { k: 'teamMember', label: '团队成员', type: 'select', opts: [{ value: '', label: '全部' }].concat(S.all('users').map(function (x) { return { value: x.id, label: x.name }; })) },
+      { k: 'process', label: '流程状态', type: 'select', opts: [{ value: '', label: '全部' }].concat(D.oppProcessStatus) },
+      { k: 'close', label: '已结束结果', type: 'select', opts: [{ value: '', label: '全部' }].concat(D.oppCloseResult).concat([{ value: '未关闭', label: '未关闭' }, { value: '已关闭', label: '已结束（任意结果）' }]) },
+      { k: 'closeFrom', label: '预计成交时间（起）', type: 'date' },
+      { k: 'closeTo', label: '预计成交时间（止）', type: 'date' },
+      { k: 'updatedFrom', label: '最近更新（起）', type: 'date' },
+      { k: 'stagnant', label: '停滞风险', type: 'select', opts: [{ value: '', label: '不看停滞' }, { value: '1', label: '仅看停滞提醒' }] },
+      { k: 'sort', label: '排序', type: 'select', opts: [
+        { value: 'updated', label: '最近更新（新→旧）' },
+        { value: 'closeTime', label: '预计成交时间（近→远）' },
+        { value: 'closeTimeDesc', label: '预计成交时间（远→近）' },
+        { value: 'stage', label: '阶段停留（久→近）' },
+        { value: 'stagnant', label: '停滞天数（多→少）' },
+        { value: 'created', label: '创建时间（新→旧）' }
+      ] }
+    ];
+  }
+
+  function allStages() {
+    var out = [];
+    S.all('templates').forEach(function (t) {
+      t.stages.forEach(function (s) {
+        if (!out.some(function (x) { return x.value === s.code; })) {
+          out.push({ value: s.code, label: s.name + '（' + t.name + ' ' + t.version + '）' });
+        }
+      });
+    });
+    return out;
+  }
+
+  function renderFilters() {
+    var controls = filterDefs().map(function (f) {
+      var v = st.filters[f.k] === undefined ? '' : st.filters[f.k];
+      var ctl = f.type === 'select' ? ui.select('f_' + f.k, f.opts, v)
+        : f.type === 'date' ? ui.input('f_' + f.k, v, 'YYYY-MM-DD', 'date')
+        : ui.input('f_' + f.k, v, f.ph || '');
+      return ui.field(f.label, ctl);
+    });
+    ui.qs('#op-filters').innerHTML = controls.slice(0, 4).join('');
+    ui.qs('#op-extra-filters').innerHTML = controls.slice(4).join('');
+  }
+
+  function readFilters() {
+    var out = {};
+    filterDefs().forEach(function (f) {
+      var el = ui.qs('[name=f_' + f.k + ']');
+      out[f.k] = el ? el.value : '';
+    });
+    return out;
+  }
+
+  /* ---------------------------------------------------------------- 数据 */
+
+  function filtered() { return filteredWith(st.filters || {}); }
+  function filteredWith(f) {
+    f = f || {};
+    var list = S.all('opportunities').filter(function (o) {
+      if (o.id === 'OPP-202609-0042') return false; // 固定演示行，不参与正式结果与导出
+      if (!RY.perm.inScope('opportunities', o)) return false;
+      if (st.view === 'mine' && o.owner !== u.id) return false;
+      if (st.view === 'involved' && (o.owner === u.id || !(o.team || []).some(function (m) { return m.userId === u.id; }))) return false;
+      if (st.view === 'team' && !(o.owner === u.id || S.inTeamOf(o.owner, u.id))) return false;
+      if (f.kw) {
+        var kw = f.kw.toLowerCase();
+        var c = S.customer(o.customerId);
+        var hay = (o.id + ' ' + o.name + ' ' + (c ? c.name : '')).toLowerCase();
+        if (hay.indexOf(kw) < 0) return false;
+      }
+      if (f.customer && o.customerId !== f.customer) return false;
+      if (f.line && mainLine(o).businessLine !== f.line) return false;
+      if (f.scene && mainLine(o).scene !== f.scene) return false;
+      if (f.salesRegion && ((o.salesRegionProvince || '') + ' ' + (o.salesRegionCity || '')).indexOf(f.salesRegion) < 0) return false;
+      if (f.unified) { var s1 = stageOf(o); if (!s1 || s1.unified !== f.unified) return false; }
+      if (f.stage && o.currentStageCode !== f.stage) return false;
+      if (f.owner && o.owner !== f.owner) return false;
+      if (f.teamMember && !(o.team || []).some(function (m) { return m.userId === f.teamMember; })) return false;
+      if (f.process && o.processStatus !== f.process) return false;
+      if (f.close === '未关闭') { if (o.closeResult) return false; }
+      else if (f.close === '已关闭') { if (!o.closeResult) return false; }
+      else if (f.close && o.closeResult !== f.close) return false;
+      if (f.closeFrom && (!o.predictedClose || o.predictedClose < f.closeFrom)) return false;
+      if (f.closeTo && (!o.predictedClose || o.predictedClose > f.closeTo)) return false;
+      if (f.updatedFrom && (o.updatedAt || '').slice(0, 10) < f.updatedFrom) return false;
+      if (f.stagnant === '1' && !isStagnant(o)) return false;
+      return true;
+    });
+    var s = st.sort;
+    list.sort(function (a, b) {
+      if (s === 'closeTime') return String(a.predictedClose || '9999').localeCompare(String(b.predictedClose || '9999'));
+      if (s === 'closeTimeDesc') return String(b.predictedClose || '0000').localeCompare(String(a.predictedClose || '0000'));
+      if (s === 'stage') return String(a.stageEnteredAt || '').localeCompare(String(b.stageEnteredAt || ''));
+      if (s === 'stagnant') return (daysSince(b.stageEnteredAt) || 0) - (daysSince(a.stageEnteredAt) || 0);
+      if (s === 'created') return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+      return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+    });
+    return list;
+  }
+
+  /* ---------------------------------------------------------------- 渲染 */
+
+  function cell(o, key) {
+    var t = tplOf(o), s = stageOf(o), ml = mainLine(o), c = S.customer(o.customerId);
+    if (key === 'name') {
+      var sg = S.opportunityStagnation(o);
+      return '<td><a class="ry-cellname" title="' + ui.esc(o.name) + '" href="detail.html?id=' + o.id + '&from=list">' + ui.esc(o.name) + '</a></td>';
+    }
+    if (key === 'id') return '<td><code>' + ui.esc(o.id) + '</code></td>';
+    if (key === 'customer') return '<td>' + (c ? ui.esc(c.name) : '<span class="ry-faint">客户不可用</span>') + '</td>';
+    if (key === 'customerId') return '<td><code>' + (c ? ui.esc(c.id) : '—') + '</code></td>';
+    if (key === 'line') {
+      var collab = (o.lines || []).filter(function (l) { return l.role !== '主业务线' && l.status === '当前参与'; });
+      return '<td>' + ui.tag(S.businessLineName(ml.businessLine), 'brand') + '</td>';
+    }
+    if (key === 'scene') return '<td>' + ui.esc(sceneName(ml.scene)) + '</td>';
+    if (key === 'salesRegion') return '<td>' + ui.esc(o.salesRegionProvince && o.salesRegionCity ? o.salesRegionProvince + ' · ' + o.salesRegionCity : '未填写') + '</td>';
+    if (key === 'template') return '<td>' + (t ? ui.esc(t.name) : '<span class="ry-faint">模板版本不可用</span>') + '</td>';
+    if (key === 'templateVersion') return '<td>' + (t ? ui.esc(t.version) : '—') + '</td>';
+    if (key === 'stage') return '<td>' + (s ? ui.esc(s.name) : '—') + '</td>';
+    if (key === 'unified') return '<td>' + (s ? ui.esc(s.unified) : '—') + '</td>';
+    if (key === 'stageEntered') return '<td>' + ui.esc((o.stageEnteredAt || '').slice(0, 16) || '—') + '</td>';
+    if (key === 'owner') return '<td>' + ui.esc(S.userName(o.owner) || '无') + '</td>';
+    if (key === 'closeTime') return '<td>' + (o.predictedClose ? ui.esc(o.predictedClose) : ui.tag('待补充', 'warn')) + '</td>';
+    if (key === 'created') return '<td>' + ui.esc((o.createdAt || '').slice(0, 16) || '—') + '</td>';
+    if (key === 'updated') return '<td>' + ui.esc((o.updatedAt || '').slice(0, 16) || '—') + '</td>';
+    if (key === 'process') return '<td>' + ui.statusTag(o.processStatus) + (isStagnant(o) ? ' ' + ui.tag('停滞提醒', 'warn') : '') + '</td>';
+    if (key === 'closeResult') return '<td>' + (o.closeResult ? ui.statusTag(o.closeResult) : '—') + '</td>';
+    return '<td>—</td>';
+  }
+
+  function render() {
+    var list = filtered();
+    var total = list.length;
+    var pages = Math.max(1, Math.ceil(total / size));
+    if (page > pages) page = pages;
+    var rows = list.slice((page - 1) * size, page * size);
+
+    var countFilters = Object.assign({}, st.filters, { process: '', close: '', stagnant: '' });
+    var countList = filteredWith(countFilters);
+    var nOpen = countList.filter(function (o) { return o.processStatus === '进行中' && !o.closeResult; }).length;
+    var nClosed = countList.filter(function (o) { return !!o.closeResult; }).length;
+    var nStag = countList.filter(isStagnant).length;
+    function chip(kind, label, n) {
+      return '<button type="button" class="op-sumchip' + (st.quick === kind ? ' is-on' : '') + '" data-quick="' + kind + '"' +
+        ' title="按「' + ui.esc(label) + '」筛选；再点一次或点「可见商机」回到全部">' +
+        ui.esc(label) + ' <b>' + n + '</b></button>';
+    }
+    var viewOpts = [
+      { key: 'all', label: '全部' },
+      { key: 'team', label: '团队' },
+      { key: 'mine', label: '我负责的' },
+      { key: 'involved', label: '我参与的' }
+    ];
+    if (viewOpts.every(function (x) { return x.key !== st.view; })) st.view = viewOpts[0].key;
+    ui.qs('#op-sum').innerHTML = '<div class="ry-tabs op-views" role="tablist" aria-label="商机范围">' + viewOpts.map(function (x) {
+      return '<button class="ry-tab' + (st.view === x.key ? ' is-on' : '') + '" role="tab" aria-selected="' + (st.view === x.key) + '" data-view="' + x.key + '">' + x.label + '</button>';
+    }).join('') + '</div><div class="op-sumbar">' +
+      '<span class="ry-hint">' + ui.esc(viewOpts.filter(function (x) { return x.key === st.view; })[0].label) + ' · ' + countList.length + ' 条</span>' +
+      chip('open', '进行中', nOpen) +
+
+      chip('stagnant', '停滞提醒', nStag) +
+      chip('closed', '已结束（赢单／输单／关闭）', nClosed) +
+      '<button type="button" data-pcn-rule="oppStagnation"></button></div>';
+
+    ui.qs('#op-thead').innerHTML = '<th style="width:34px"><input type="checkbox" id="op-all"></th>' +
+      COLS.filter(function (c) { return st.columns.indexOf(c.key) >= 0; }).map(function (c) { return '<th>' + ui.esc(c.name) + '</th>'; }).join('') +
+      '<th style="width:170px">操作</th>';
+
+    var formalRows = rows.map(function (o) {
+      return '<tr><td><input type="checkbox" data-op-sel="' + o.id + '"></td>' +
+        COLS.filter(function (c) { return st.columns.indexOf(c.key) >= 0; }).map(function (c) { return cell(o, c.key); }).join('') +
+        '<td class="ry-tbl-act">' +
+          '<a class="ry-btn ry-btn--sm" href="detail.html?id=' + o.id + '&from=list">详情</a>' +
+          ui.actionBtn('opp.advance', '推进阶段', ' data-op-go="advance" data-id="' + o.id + '"', 'ry-btn--sm') +
+          '<button class="ry-btn ry-btn--sm" data-op-more="' + o.id + '">更多</button>' + (openMenuId === o.id ? '<div class="op-more-menu" data-op-menu="' + o.id + '"><a href="detail.html?id=' + o.id + '&from=list">打开详情</a><a href="detail.html?id=' + o.id + '&from=list#advance">阶段任务</a><a href="detail.html?id=' + o.id + '&from=list#lines">业务线与协同</a><a href="detail.html?id=' + o.id + '&from=list#timeline">日志记录</a></div>' : '') +
+        '</td></tr>';
+    }).join('');
+    var demo = S.opp('OPP-202609-0042');
+    var demoHref = 'detail.html?id=OPP-202609-0042&amp;demo=1&amp;from=list';
+    var demoRow = demo ? '<tr class="op-demo-row"><td>—</td>' +
+      COLS.filter(function (c) { return st.columns.indexOf(c.key) >= 0; }).map(function (c) {
+        return c.key === 'name' ? '<td><a class="ry-cellname" href="' + demoHref + '">演示商机</a><div class="op-row-m">' + ui.esc(demo.name) + '</div></td>' : cell(demo, c.key);
+      }).join('') +
+      '<td class="ry-tbl-act"><a class="ry-btn ry-btn--sm" href="' + demoHref + '">查看演示</a></td></tr>' : '';
+    ui.qs('#op-rows').innerHTML = demoRow + (formalRows || '<tr><td colspan="' + (st.columns.length + 2) + '" class="ry-hint">当前筛选条件下没有正式商机。</td></tr>');
+
+    ui.qs('#op-resultbar').innerHTML = '<span>共 ' + total + ' 条商机</span>' +
+      '<span class="ry-resultbar__right">排序：' + ui.esc(sortName(st.sort)) + '　每页 <select id="op-page-size"><option' + (size===20?' selected':'') + '>20</option><option' + (size===50?' selected':'') + '>50</option><option' + (size===100?' selected':'') + '>100</option></select> 条</span>';
+    ui.qs('#op-pager').innerHTML = ui.pager(total, page, size, 'opp.list');
+    ui.qs('#op-note').innerHTML = '';
+    var pageSizeEl = ui.qs('#op-page-size'); if (pageSizeEl) pageSizeEl.addEventListener('change', function(){ size=Number(pageSizeEl.value); st.size=size; page=1; st.page=1; S.save(); render(); });
+
+    ui.qs('#op-selbar').innerHTML = ui.selectionBar({ id: 'op-sel', filteredTotal: total, crossPageCount: 0 }) +
+      '<div class="ry-actions-row" style="margin:6px 0 10px">' +
+        ui.actionBtn('opp.batch.reassign', '批量转派主负责人', ' data-op-batch="reassign"', 'ry-btn--sm') +
+        ui.actionBtn('opp.batch.team', '批量加团队成员', ' data-op-batch="team"', 'ry-btn--sm') +
+        ui.actionBtn('opp.batch.team', '批量移出团队成员', ' data-op-batch="unteam"', 'ry-btn--sm') +
+        '<button type="button" data-pcn-rule="oppBatch"></button>' +
+      '</div>';
+
+    ui.bindPager('#op-pager', function (p) { page = p; st.page = p; S.save(); render(); });
+    ui.bindSelection({
+      id: 'op-sel', key: 'opp.list', pageIds: rows.map(function (r) { return r.id; }),
+      filteredIds: list.map(function (r) { return r.id; }), filteredTotal: total,
+      onChange: function (ids) {
+        ui.qsa('[data-op-sel]').forEach(function (x) { x.checked = ids.indexOf(x.getAttribute('data-op-sel')) >= 0; });
+        var all = ui.qs('#op-all'); if (all) all.checked = rows.length > 0 && rows.every(function (row) { return ids.indexOf(row.id) >= 0; });
+      }
+    });
+    ui.qsa('[data-op-sel]').forEach(function (x) {
+      x.addEventListener('change', function () {
+        var cur = ui.selected('opp.list').slice(), v = x.getAttribute('data-op-sel');
+        if (x.checked) { if (cur.indexOf(v) < 0) cur.push(v); } else cur = cur.filter(function (y) { return y !== v; });
+        if (cur.length > 100) { ui.toast('已选 ' + cur.length + ' 条，超过单次上限 100 条。请先收窄筛选条件，系统不会自动截断。', 'warn'); x.checked = false; return; }
+        ui.syncSel('opp.list', cur);
+      });
+    });
+    ui.qs('#op-all').addEventListener('change', function (e) {
+      var checked = e.target.checked;
+      ui.qsa('[data-op-sel]').forEach(function (x) { x.checked = checked; x.dispatchEvent(new Event('change')); });
+    });
+    ui.qsa('[data-op-go]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]')) return;
+        window.location.href = 'detail.html?id=' + b.getAttribute('data-id') + '&from=list#advance';
+      });
+    });
+    ui.qsa('[data-op-more]').forEach(function (b) {
+      b.addEventListener('click', function (e) { e.stopPropagation(); var key=b.getAttribute('data-op-more'); openMenuId=openMenuId===key?'':key; render(); });
+    });
+    ui.qsa('[data-op-batch]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]')) return;
+        batch(b.getAttribute('data-op-batch'));
+      });
+    });
+    ui.bindDenied('#ry-page');
+  }
+  document.addEventListener('click', function(e){ if(openMenuId && !e.target.closest('[data-op-more]') && !e.target.closest('[data-op-menu]')) { openMenuId=''; render(); } });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape' && openMenuId){openMenuId='';render();} });
+
+  function sortName(k) {
+    var f = filterDefs().filter(function (x) { return x.k === 'sort'; })[0];
+    var o = f.opts.filter(function (x) { return x.value === k; })[0];
+    return o ? o.label : k;
+  }
+
+  /* -------------------------------------------------------------- 更多菜单 */
+
+  function moreMenu(id) { openMenuId = openMenuId === id ? '' : id; render(); }
+
+  /* ---------------------------------------------------------------- 批量 */
+
+  function batch(kind) {
+    var ids = ui.selected('opp.list');
+    if (!ids.length) { ui.toast('请先选择商机。', 'warn'); return; }
+    var title = { reassign: '批量转派主负责人', team: '批量添加团队成员', unteam: '批量移除团队成员' }[kind];
+    var perm = { reassign: 'opp.batch.reassign', team: 'opp.batch.team', unteam: 'opp.batch.team' }[kind];
+    if (!can(perm)) {
+      ui.modal({ title: '该动作当前不可执行', size: 'sm', body: '<p>' + ui.esc(deny(perm)) + '</p>' +
+        '<p class="ry-hint">批量动作需要独立于单条动作的权限；入口保留并给出原因，不以前端隐藏替代权限校验。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>' });
+      return;
+    }
+    var targetOpts = S.all('users').map(function (x) { return { value: x.id, label: x.name + '（' + RY.perm.ROLES[x.role].code + '）' }; });
+
+    ui.modal({
+      title: title + '（逐条预检）', size: 'lg',
+      body: ui.banner('共 ' + ids.length + ' 条。批量动作异步执行并逐条预检：<b>已成功项不会重复执行</b>；失败项可在处理记录中只重试失败项。' +
+        '关闭状态的商机会被跳过并记录原因，不做静默忽略。', 'info') +
+        ui.field(kind === 'reassign' ? '新主负责人' : '团队成员', ui.select('target', targetOpts, ''), '', true) +
+        (kind === 'reassign' ? ui.field('转派原因', ui.textarea('reason', '', '将写入审计'), '', true) : ui.field('成员角色', ui.select('role', ['协同销售', '方案', '售前', '交付'], '协同销售'))) +
+        '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr><th>商机</th><th>当前主负责人</th><th>状态</th><th>预检</th><th>说明</th></tr></thead><tbody>' +
+        ids.map(function (oid) {
+          var o = S.opp(oid);
+          if (!o || !RY.perm.inScope('opportunities', o)) return '<tr><td>' + ui.esc(oid) + '</td><td>—</td><td>—</td><td>' + ui.tag('失败', 'bad') + '</td><td class="ry-hint">对象不可用或不在数据范围内</td></tr>';
+          var closed = !!o.closeResult;
+          var reason = closed ? '商机已关闭（' + o.closeResult + '），批量团队与负责人动作不适用' : '按当前状态执行';
+          return '<tr><td>' + ui.esc(o.name) + '<div class="op-row-m"><code>' + o.id + '</code></div></td>' +
+            '<td>' + ui.esc(S.userName(o.owner)) + '</td><td>' + ui.statusTag(o.processStatus) + (o.closeResult ? ' ' + ui.statusTag(o.closeResult) : '') + '</td>' +
+            '<td>' + (closed ? ui.tag('跳过', 'warn') : ui.tag('可执行', 'ok')) + '</td><td class="ry-hint">' + ui.esc(reason) + '</td></tr>';
+        }).join('') + '</tbody></table></div>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="opb-ok">确认执行</button>',
+      onOpen: function (el) {
+        ui.qs('#opb-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!v.target) { ui.toast('请选择目标人员。', 'warn'); return; }
+          if (kind === 'reassign' && !v.reason) { ui.toast('转派主负责人需要填写原因。', 'warn'); return; }
+          ui.close();
+          var job = S.addJob({ type: '批量', action: title, object: '商机', status: '处理中', total: ids.length });
+          ui.asyncRun({ title: '正在执行批量操作', total: ids.length, processId: job.processId, onDone: function () {
+            var okn = 0, items = [];
+            ids.forEach(function (oid) {
+              var o = S.opp(oid);
+              if (!o || !RY.perm.inScope('opportunities', o)) { items.push({ key: oid, name: oid, result: '失败', reason: '对象不可用或不在当前数据范围内' }); return; }
+              if (o.closeResult) { items.push({ key: oid, name: o.name, result: '失败', reason: '商机已关闭，动作不适用' }); return; }
+              var r;
+              if (kind === 'reassign') { S.reassignOwner(o, v.target, v.reason); r = { ok: true }; }
+              if (kind === 'team') r = S.addTeamMember(o, v.target, v.role || '协同销售');
+              if (kind === 'unteam') r = S.removeTeamMember(o, v.target);
+              if (r && r.ok === false) { items.push({ key: oid, name: o.name, result: '失败', reason: r.reason }); return; }
+              okn++; items.push({ key: oid, name: o.name, result: '成功', reason: '' });
+            });
+            var fails = items.filter(function (x) { return x.result === '失败'; }).length;
+            S.updateJob(job.id, { status: fails ? (okn ? '部分成功' : '失败') : '已完成', success: okn, failed: fails, items: items });
+            ui.closeAll(); ui.syncSel('opp.list', []);
+            if (fails) ui.jobResult(S.job(job.id)); else ui.toast(title + '完成，共 ' + okn + ' 条。', 'success');
+            render();
+          } });
+        });
+      }
+    });
+  }
+
+  /* ------------------------------------------------------ 列设置 / 导出 */
+
+  ui.qs('#op-cols').addEventListener('click', function () {
+    ui.modal({
+      title: '列显示设置', size: 'sm',
+      body: '<p class="ry-hint">列显示是当前账号在本页的展示偏好，不改变数据范围与权限。</p>' +
+        COLS.map(function (c) {
+          return '<label class="ry-check"><input type="checkbox" data-col="' + c.key + '"' + (st.columns.indexOf(c.key) >= 0 ? ' checked' : '') + '> ' + ui.esc(c.name) + '</label><br>';
+        }).join(''),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="opc-ok">保存列设置</button>',
+      onOpen: function (el) {
+        ui.qs('#opc-ok', el).addEventListener('click', function () {
+          var ks = ui.qsa('[data-col]', el).filter(function (x) { return x.checked; }).map(function (x) { return x.getAttribute('data-col'); });
+          if (!ks.length) { ui.toast('至少保留一列。', 'warn'); return; }
+          st.columns = ks; S.save(); ui.close(); render();
+        });
+      }
+    });
+  });
+
+  function exportModal() {
+    if (!can('opp.export')) {
+      ui.modal({ title: '不能导出商机', size: 'sm', body: '<p>' + ui.esc(deny('opp.export')) + '</p>' +
+        '<p class="ry-hint">导出是独立授权动作，与列表查看权限分离；未授权时入口保留并给出原因。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>' });
+      return;
+    }
+    var fields = ['商机编号', '商机名称', '客户名称', '主业务线', '协同业务线', '销售场景', '流程模板与版本', '当前详细阶段', '统一阶段', '主负责人', '团队成员', '预计成交时间', '流程状态', '关闭结果', '创建时间', '最近更新'];
+    S.all('customFields').filter(function(f){return f.status==='启用';}).forEach(function(f){ if(filtered().some(function(o){var lines=(o.lines||[]).filter(function(l){return l.status==='当前参与';}).map(function(l){return l.businessLine;}); return !f.businessLines.length || f.businessLines.some(function(x){return lines.indexOf(x)>=0;});})) fields.push(f.name); });
+    ui.modal({
+      title: '导出商机', size: 'md',
+      body: '<p>将导出当前筛选结果 <b>' + filtered().length + '</b> 条，排序与筛选条件一并生效。</p>' +
+        ui.banner('导出为异步任务，提交后可在处理记录中查看结果与失败原因；处理记录只保留 7 天且仅本人可见，不是正式审计的替代。导出不包含联系人明文联系方式。', 'warn') +
+        ui.field('导出字段', '<div>' + fields.map(function (f) {
+          return '<label class="ry-check"><input type="checkbox" data-exf="' + f + '" checked> ' + f + '</label>　';
+        }).join('') + '</div>'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="opx-ok">提交导出</button>',
+      onOpen: function (el) {
+        ui.qs('#opx-ok', el).addEventListener('click', function () {
+          var fs = ui.qsa('[data-exf]', el).filter(function (x) { return x.checked; }).map(function (x) { return x.getAttribute('data-exf'); });
+          if (!fs.length) { ui.toast('至少选择一个导出字段。', 'warn'); return; }
+          ui.close();
+          var n = filtered().length;
+          var job = S.addJob({ type: '导出', action: '商机导出', object: '商机', status: '处理中', total: n, fields: fs, fileName: '商机_' + S.today().replace(/-/g, '') + '.xlsx' });
+          ui.asyncRun({ title: '正在生成导出文件', total: n, processId: job.processId, onDone: function () {
+            S.updateJob(job.id, { status: '已完成', success: n, failed: 0 });
+            ui.closeAll(); ui.toast('导出已完成，可在处理记录中查看。', 'success');
+          } });
+        });
+      }
+    });
+  }
+  ui.qs('#op-exp').addEventListener('click', exportModal);
+
+  /* ------------------------------------------------------------ 筛选绑定 */
+
+  ui.qs('#op-apply').addEventListener('click', function () {
+    st.filters = readFilters(); st.sort = st.filters.sort || 'updated'; st.quick = ''; page = 1; st.page = 1; S.save(); render();
+  });
+  ui.qs('#op-reset').addEventListener('click', function () {
+    st.filters = {}; st.sort = 'updated'; st.quick = ''; page = 1; st.page = 1; S.save(); renderFilters(); render();
+  });
+  /* 顶部统计即快捷筛选：每个口径各自设置对应筛选维度，互不叠加；
+     点当前已选中的口径或「可见商机」即回到全部。 */
+  ui.qs('#op-sum').addEventListener('click', function (e) {
+    var vb = e.target.closest('[data-view]');
+    if (vb) { st.view = vb.getAttribute('data-view'); page = 1; st.page = 1; S.save(); render(); return; }
+    var b = e.target.closest('[data-quick]');
+    if (!b) return;
+    var kind = b.getAttribute('data-quick');
+    if (kind === st.quick || kind === 'all') kind = '';
+    var f = st.filters;
+    if (kind === 'open') { f.process = '进行中'; f.close = '未关闭'; f.stagnant = ''; }
+    else if (kind === 'stagnant') { f.process = ''; f.close = ''; f.stagnant = '1'; }
+    else if (kind === 'closed') { f.process = ''; f.close = '已关闭'; f.stagnant = ''; }
+    else { f.process = ''; f.close = ''; f.stagnant = ''; }
+    st.quick = kind; page = 1; st.page = 1; S.save(); renderFilters(); render();
+  });
+  ui.qs('#op-filter-card').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); ui.qs('#op-apply').click(); }
+  });
+
+  renderFilters();
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>知识详情 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：知识详情（查看 / 下载 / 复制链接重新鉴权 / 日志记录）。 */
+  .kd-doc { font-size: 13px; line-height: 2; white-space: pre-wrap; word-break: break-word; }
+  .kd-v { border-left: 2px solid var(--line); padding-left: 10px; margin: 8px 0; }
+  .kd-v__t { font-size: 12.5px; font-weight: 600; }
+  .kd-v__m { font-size: 11.5px; color: var(--muted); line-height: 1.8; }
+  .kd-link { width: 100%; font-family: var(--mono); font-size: 11.5px; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body">
+  <div id="kd-host"></div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.knowledge.detail';
+
+  RY.nav.h5shell({
+    title: '知识详情',
+    back: 'h5/knowledge/list.html',
+    nav: 'more',
+    tabbar: false   /* 详情页不显示底部五入口 */
+  });
+
+  var u = S.currentUser();
+
+  /* ---------------------------------------------------------- 鉴权 */
+  /* 先做空值判定，再进入 guard：缺少标识或对象不存在时不抛异常，走统一状态页。 */
+  var id = ui.q('id');
+  var k = id ? S.kb(id) : null;
+
+  var deny = null;
+  if (!P.page(PAGE)) {
+    deny = { kind: 'no-permission', title: '无法查看该文档', body: '当前账号无法查看该文档。' };
+  } else if (!k) {
+    deny = { kind: 'unavailable', title: '文档不可用',
+      body: '缺少文档标识，或该文档不存在、已被合并或不再对当前账号可见。' };
+  } else if (k.status === '草稿') {
+    deny = { kind: 'unavailable', title: '该文档尚未发布',
+      body: '草稿状态的知识文档不进入 H5 查看与搜索，也不能被 Agent 引用。正式发布后才对发布范围内的用户可见。' };
+  } else if (k.status === '已停用') {
+    deny = { kind: 'unavailable', title: '该文档已停用',
+      body: '停用文档不进入普通搜索，也不作为 Agent 新回答来源；文档与操作日志在 PC 瑞赢知识管理中保留，H5 不再展示正文。' };
+  } else if (!S.knowledgeInPublishScope(k, u)) {
+    deny = { kind: 'no-permission', title: '无法查看该文档', body: '当前账号无法查看该文档。' };
+  }
+
+  if (deny) {
+    ui.qs('#kd-host').innerHTML = ui.stateCard(deny.kind, {
+      title: deny.title,
+      body: '<p>' + deny.body + '</p>',
+      actions: '<a class="ry-btn ry-btn--primary" href="' + RY.nav.href('h5/knowledge/list.html') + '">返回知识检索</a>'
+    }) + contractHtml();
+    return;
+  }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function render() {
+    var html = '';
+
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>' + ui.esc(k.title) + '</h3>' +
+      '<div class="ry-hcard__extra">' + (k.history && k.history.length > 1 ? ui.tag('已更新', 'warn') : ui.tag('已发布', 'ok')) + '</div></div>' +
+      '<div class="ry-hcard__body">' + ui.kv([
+        ['文档编号', '<code>' + ui.esc(k.code) + '</code>'],
+        ['当前版本', ui.esc(k.version)],
+        ['创建时间', ui.esc(k.createdAt || '未记录')],
+        ['发布时间', ui.esc(k.publishedAt || '—')],
+        ['适用范围', ui.esc(k.scope)],
+        ['来源', '瑞赢知识文档　维护人 ' + ui.esc(S.userName(k.owner))],
+        ['文档开关', (k.allowDownload ? '允许下载' : '禁止下载') + '　' + (k.allowShare ? '允许瑞赢内分享' : '禁止对外分享')]
+      ]) + '</div></div>';
+
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>正文（只读）</h3>' +
+      '<div class="ry-hcard__extra">' + ui.tag('只读', 'info') + '</div></div>' +
+      '<div class="ry-hcard__body"><div class="kd-doc">' + ui.esc(k.body || '该文档暂无可展示正文。') + '</div>' +
+      '<div class="ry-acts-row" style="margin-top:10px">' +
+        (k.allowDownload
+          ? '<button class="ry-btn ry-btn--primary" id="kd-dl">下载文档</button>'
+          : '<button class="ry-btn" disabled>禁止下载</button>') +
+        '<button class="ry-btn" id="kd-link">复制知识链接</button>' +
+        '<a class="ry-btn" href="' + RY.nav.href('h5/agent/object.html') + '">交给 Agent 检索</a></div>' +
+      '</div></div>';
+
+    /* 创建与每次修改的操作日志，只读展示。 */
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>日志记录</h3>' +
+      '</div><div class="ry-hcard__body">' +
+      ((k.history || []).length ? k.history.slice().reverse().map(function (h) {
+        return '<div class="kd-v"><div class="kd-v__t">' + ui.esc(h.action || (String(h.note || '').indexOf('首次') >= 0 ? '创建／发布' : '修改／发布')) + '　' + ui.esc(h.at) + '</div>' +
+          '<div class="kd-v__m">维护人 ' + ui.esc(h.by) + '　说明：' + ui.esc(h.note || '—') + '</div></div>';
+      }).join('') : '<p class="ry-hint">暂无日志记录。</p>') +
+      '</div></div>';
+
+    html += contractHtml();
+    ui.qs('#kd-host').innerHTML = html;
+    bind();
+  }
+
+  function bind() {
+    var dl = ui.qs('#kd-dl');
+    if (dl) dl.addEventListener('click', function () {
+      ui.modal({
+        title: '下载文档', size: 'sm',
+        body: '<p>演示下载：' + ui.esc(k.title) + '（' + ui.esc(k.version) + '）。静态原型不生成真实文件。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>知道了</button>'
+      });
+    });
+
+    var lk = ui.qs('#kd-link');
+    if (lk) lk.addEventListener('click', function () {
+      var href = new URL(RY.nav.href('h5/knowledge/detail.html?id=' + encodeURIComponent(k.id)), location.href).href;
+      ui.modal({
+        title: '复制知识链接', size: 'sm',
+        body: ui.field('文档链接', '<input class="ry-input kd-link" readonly value="' + ui.esc(href) + '">', '', '') +
+          ui.kv([['文档', ui.esc(k.code) + '　' + ui.esc(k.version)]]),
+        footer: '<button class="ry-btn" data-close>关闭</button><button class="ry-btn ry-btn--primary" id="kd-copy">复制链接</button>',
+        onOpen: function (el) {
+          ui.qs('#kd-copy', el).addEventListener('click', function () {
+            var input = ui.qs('.kd-link', el);
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(href).then(function () { ui.toast('链接已复制', 'ok'); },
+                function () { input.select(); ui.toast('请复制选中的链接', 'warn'); });
+            } else { input.select(); ui.toast('请复制选中的链接', 'warn'); }
+          });
+        }
+      });
+    });
+  }
+
+  function contractHtml() {
+    return '<div class="ry-hcard ry-hcard--flat" style="margin-top:14px">' +
+      '<div class="ry-hcard__head"><h3>本页契约</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">PG-KB-DETAIL</span></div></div>' +
+      '<div class="ry-hcard__body">' + ui.kv([
+        ['页面契约', 'PG-KB-DETAIL · 知识详情（H5 在线查看与下载）'],
+        ['所属模块', '瑞赢知识（08 PC 基础平台与集成治理 §12 知识管理）'],
+        ['端', '企业微信 H5（只读）｜维护与发布在 PC 瑞赢知识管理'],
+        ['可进入角色', 'ALL5：R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员（仍需发布范围与数据范围校验）'],
+        ['PRD 来源', 'prd/08 §12 知识管理；页面规格 prd.md §6.24A 知识查看与搜索'],
+        ['覆盖 AC', 'AC-54（下载与对外分享开关生效且留痕；Agent 只检索有权文档且不自动建任务）'],
+        ['本页视图', '查看｜下载｜链接不扩大权限，打开时重新鉴权'],
+        ['关键边界', '草稿与已停用不展示正文；无权与范围外走统一状态页；下载按开关校验；链接重新鉴权；H5 只读无配置入口'],
+        ['查看权限', '仅已发布且在发布范围内的文档可查看；无权或对象失效时不展示正文、附件、摘要、标题和数量。'],
+        ['下载与分享', '有查看权限即可下载，但文档关闭允许下载时仍可在线查看、不可下载；对外分享按文档开关校验。复制链接仅分享文档地址，不扩大访问权限。'],
+        ['版本与 Agent', '创建及每次修改记录时间、操作人与内容说明；已发布文档修改先形成待发布草稿，发布后更新当前版本，不提供旧版本回拨。Agent 只引用当前有权的正式发布版本并展示来源与版本，不自动创建任务或改变对象状态。'],
+        ['链接与留痕', '链接打开时按访问者身份重新鉴权；停用、发布范围变更或用户失权后旧链接失效。查看、下载与系统内分享留痕；下载后的人工外发不追踪接收人。'],
+        ['维护与反馈', 'H5 只读，PC 瑞赢知识管理负责维护与发布；内容错误、过期或文件异常通过现有线下群反馈运营。静态原型不生成真实下载文件。']
+      ]) + '</div></div>';
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

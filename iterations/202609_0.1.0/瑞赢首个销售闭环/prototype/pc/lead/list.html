@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>线索 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：线索列表 */
+  .ld-list-table { min-width: 1830px; }
+  .ld-list-table th:first-child, .ld-list-table td:first-child:not([colspan]) { position: sticky; left: 0; z-index: 2; background: var(--surface); min-width: 34px; }
+  .ld-list-table th:nth-child(2), .ld-list-table td:nth-child(2) { position: sticky; left: 42px; z-index: 2; background: var(--surface); min-width: 142px; }
+  .ld-list-table th:last-child, .ld-list-table td:last-child { position: sticky; right: 0; z-index: 2; background: var(--surface); }
+  .ld-row-m { font-size: 11.5px; color: var(--muted); line-height: 1.7; }
+  .ld-warn { color: var(--warn); font-size: 11.5px; }
+  .ld-review-bar { display:flex; align-items:center; gap:8px; margin:0 0 12px; }
+  .ld-more-menu { display:grid; min-width:156px; margin-top:5px; padding:6px; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 3px 10px rgba(20,35,50,.10); }
+  .ld-more-menu a, .ld-more-menu button { display:block; width:100%; padding:7px 9px; border:0; border-radius:5px; background:transparent; color:inherit; font:inherit; text-align:left; text-decoration:none; white-space:nowrap; cursor:pointer; }
+  .ld-more-menu a:hover, .ld-more-menu button:hover { background:var(--brand-soft); }
+  .ld-more-menu__divider { margin:5px 3px; border-top:1px solid var(--line-soft); }
+  .ld-list-table .ld-demo-row td { background:#f4f8ff; }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div class="ld-review-bar"><button type="button" data-pcn-rule="leadOwnership"></button></div>
+      <div class="ry-tabs" id="ld-scopes" role="tablist" aria-label="线索范围"></div>
+      <div id="ld-filter"></div>
+      <div class="ry-resultbar" id="ld-resultbar"></div>
+      <div id="ld-selbar"></div>
+      <div class="ry-card"><div class="ry-card__body ry-card__body--flush">
+        <div class="ry-table__wrap ry-standard-list-wrap ry-standard-list-wrap--select ry-standard-list-wrap--actions" role="region" aria-label="线索列表，可左右滚动" tabindex="0"><table class="ry-table ry-table--tight ld-list-table">
+          <thead><tr id="ld-thead"></tr></thead>
+          <tbody id="ld-rows"></tbody>
+        </table></div>
+      </div></div>
+      <div id="ld-pager"></div>
+      <p class="ry-hint" id="ld-note"></p>
+    
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  document.addEventListener('click', function (e) { var b = e.target.closest('[data-perm-note]'); if (b && window.RYNOTES) RYNOTES.openPermission(b.getAttribute('data-perm-note')); });
+  var D = S.all('dicts');
+
+  var st = S.listState('lead.list');
+  if (ui.q('menu') === '1') { S.listState('lead.list', { scope:'all', flt:{}, page:1 }); st = S.listState('lead.list'); }
+  if (ui.q('menu') === '1') { var menuUrl = new URL(location.href); menuUrl.searchParams.delete('menu'); history.replaceState(null, '', menuUrl.href); }
+  var scope = ui.q('scope') || st.scope || 'all';
+  var flt = Object.assign({ kw: '', owner: '', pool: '', sourcePool: '', status: '', source: '', line: '', protect: '', createdFrom: '', createdTo: '', followFrom: '', followTo: '' }, st.flt || {});
+  var page = st.page || 1, size = 10, openMenuId = '';
+
+  /* 数据范围：我的 / 团队 / 池内 */
+  function scopes() {
+    var list = [
+      { key: 'all', name: '全部', desc: '当前用户有权查看的全部线索' },
+      { key: 'team', name: '团队', desc: '当前用户有权查看的团队线索' },
+      { key: 'mine', name: '我负责的', desc: '当前负责人是我' },
+      { key: 'pool', name: '池内', desc: '当前仍在池内，且我有权查看' }
+    ];
+    return list;
+  }
+
+  RY.nav.shell({
+    nav: 'lead.list',
+    title: '线索',
+    subtitle: '',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '销售管理' }, { label: '线索' }],
+    actions: '<a class="ry-btn" href="../customer/import.html?kind=lead">固定模板导入</a>' +
+      '<button class="ry-btn" id="ld-exp">导出</button>' +
+      '<button class="ry-btn ry-btn--primary" id="ld-new">新建线索</button>'
+  });
+
+  /* ---------------------------------------------------------------- 范围 */
+
+  function renderScopes() {
+    ui.qs('#ld-scopes').innerHTML = scopes().map(function (s) {
+      return '<button class="ry-tab' + (scope === s.key ? ' is-on' : '') + '" role="tab" aria-selected="' + (scope === s.key) + '" data-scope="' + s.key + '" title="' + ui.esc(s.desc) + '">' +
+        ui.esc(s.name) + ' <b>' + countOf(s.key) + '</b></button>';
+    }).join('');
+    ui.qsa('[data-scope]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        scope = b.getAttribute('data-scope');
+        st.scope = scope; page = 1; st.page = 1; S.save(); render();
+      });
+    });
+  }
+
+  function countOf(key) {
+    return S.all('leads').filter(function (l) {
+      if (!visible(l)) return false;
+      if (key === 'mine') return l.owner === u.id;
+      if (key === 'pool') return !!l.currentPool;
+      if (key === 'team') return l.owner === u.id || !!l.owner && S.inTeamOf(l.owner, u.id);
+      return true;
+    }).length;
+  }
+
+  function visible(l) {
+    if (RY.perm.inScope('leads', l)) return true;
+    var p = l.currentPool ? S.poolOf(l.currentPool) : null;
+    return !!p && (p.members || []).indexOf(u.id) >= 0;
+  }
+
+  function inScope(l) {
+    if (!visible(l)) return false;
+    if (scope === 'mine') return l.owner === u.id;
+    if (scope === 'pool') return !!l.currentPool;
+    if (scope === 'team') return l.owner === u.id || !!l.owner && S.inTeamOf(l.owner, u.id);
+    return true;
+  }
+
+
+  /* ---------------------------------------------------------------- 筛选 */
+
+  ui.qs('#ld-filter').className = 'ry-filter';
+  ui.qs('#ld-filter').innerHTML =
+    '<div class="ry-filter__row">' +
+      ui.field('关键词', ui.input('kw', flt.kw, '线索编号／原始内容／手机号'), '', false) +
+      ui.field('当前负责人', ui.select('owner', [{ value: '', label: '全部' }, { value: '__pool', label: '池内（无负责人）' }].concat(S.all('users').filter(function (x) { return x.role === 'R1' || x.role === 'R2'; }).map(function (x) { return { value: x.id, label: x.name }; })), flt.owner), '', false) +
+      ui.field('当前池', ui.select('pool', [{ value: '', label: '全部' }].concat(S.all('leadPools').map(function (p) { return { value: p.code, label: p.name }; })), flt.pool), '', false) +
+      ui.field('线索状态', ui.select('status', [{ value: '', label: '全部' }].concat(['待处理', '跟进中', '已转化', '无效']), flt.status), '', false) +
+    '</div>' +
+    '<div class="ry-filter__more" id="ld-more"><div class="ry-filter__row">' +
+      ui.field('来源池', ui.select('sourcePool', [{ value: '', label: '全部' }].concat(S.all('leadPools').map(function (p) { return { value: p.code, label: p.name }; })), flt.sourcePool || ''), '', false) +
+      ui.field('来源', ui.select('source', [{ value: '', label: '全部' }].concat(D.leadSource), flt.source), '', false) +
+      ui.field('候选业务线', ui.select('line', [{ value: '', label: '全部' }].concat(S.all('businessLines').map(function (l) { return { value: l.code, label: l.name }; })), flt.line), '', false) +
+      ui.field('保护期', ui.select('protect', [{ value: '', label: '全部' }, { value: 'on', label: '保护期内' }, { value: 'expired', label: '已到期' }, { value: 'none', label: '无保护期' }], flt.protect), '', false) +
+      ui.field('创建时间', '<div class="ry-daterange">' + ui.input('createdFrom', flt.createdFrom, '起') + '<span>~</span>' + ui.input('createdTo', flt.createdTo, '止') + '</div>', '', false) +
+      ui.field('最近跟进', '<div class="ry-daterange">' + ui.input('followFrom', flt.followFrom, '起') + '<span>~</span>' + ui.input('followTo', flt.followTo, '止') + '</div>', '', false) +
+    '</div></div>' +
+    '<div class="ry-filter__foot"><div class="ry-resultbar__tools">' +
+      '<button class="ry-btn" id="ld-toggle-more">更多筛选</button>' +
+      '<button class="ry-btn ry-btn--primary" id="ld-apply">查询</button>' +
+      '<button class="ry-btn" id="ld-reset">重置条件</button>' +
+    '</div></div>';
+  RY.nav.bindFilterToggle('#ld-toggle-more', '#ld-more');
+
+  /* ---------------------------------------------------------------- 过滤 */
+
+  function filtered() {
+    var k = flt.kw.trim();
+    return S.all('leads').filter(function (l) {
+      if (!inScope(l)) return false;
+      if (k && l.id.indexOf(k) < 0 && l.raw.indexOf(k) < 0 && (l.phone || '').indexOf(k) < 0) return false;
+      if (flt.owner === '__pool' && l.owner) return false;
+      if (flt.owner && flt.owner !== '__pool' && l.owner !== flt.owner) return false;
+      if (flt.pool && l.currentPool !== flt.pool) return false;
+      if (flt.sourcePool && l.sourcePool !== flt.sourcePool) return false;
+      if (flt.status && l.status !== flt.status) return false;
+      if (flt.source && l.source !== flt.source) return false;
+      if (flt.line && l.candidateLines.indexOf(flt.line) < 0) return false;
+      var pu = (l.protectUntil || '').slice(0, 10);
+      if (flt.protect === 'on' && !(pu && pu >= S.today())) return false;
+      if (flt.protect === 'expired' && !(pu && pu < S.today())) return false;
+      if (flt.protect === 'none' && pu) return false;
+      var cd = l.createdAt.slice(0, 10);
+      if (flt.createdFrom && cd < flt.createdFrom) return false;
+      if (flt.createdTo && cd > flt.createdTo) return false;
+      var fd = (l.lastFollowUpAt || '').slice(0, 10);
+      if (flt.followFrom && (!fd || fd < flt.followFrom)) return false;
+      if (flt.followTo && (!fd || fd > flt.followTo)) return false;
+      return true;
+    });
+  }
+
+  /* ---------------------------------------------------------- 状态与动作 */
+
+  var ACTIONS_BY_STATE = {
+    '待处理': ['claim', 'assign', 'follow', 'invalid', 'convert', 'edit'],
+    '跟进中': ['follow', 'transfer', 'returnPool', 'invalid', 'convert', 'edit'],
+        '已转化': ['view'],
+    '无效': ['correctInvalid', 'view']
+  };
+  var ACTION_NAME = {
+    claim: '认领', assign: '分派', follow: '记录跟进', transfer: '转交', returnPool: '退回池内',
+    invalid: '标记无效', correctInvalid: '无效纠错',
+    convert: '整条转换', edit: '编辑', view: '查看'
+  };
+  /* 归属动作按「是否在池 + 是否已有负责人」判定，不能只看状态：
+     认领／分派只在池内且无负责人时可用；转交／退回只在已有负责人时可用。
+     认领与分派不改变业务状态（prd/02 §3.2），因此「待处理 + 已有负责人」是正常组合。 */
+  function actsOf(lead) {
+    var acts = (ACTIONS_BY_STATE[lead.status] || []).slice();
+    if (['待处理', '跟进中'].indexOf(lead.status) < 0) return acts;
+    function rm(x) { var i = acts.indexOf(x); if (i >= 0) acts.splice(i, 1); }
+    function add(x) { if (acts.indexOf(x) < 0) acts.push(x); }
+    var inPool = !!lead.currentPool, owned = !!lead.owner;
+    if (inPool && !owned) { add('claim'); add('assign'); } else { rm('claim'); rm('assign'); }
+    if (owned) { add('transfer'); add('returnPool'); } else { rm('transfer'); rm('returnPool'); }
+    var ORDER = ['claim', 'assign', 'follow', 'transfer', 'returnPool', 'recycle', 'nurture', 'invalid', 'convert', 'edit', 'view'];
+    return acts.sort(function (a, b) { var ia = ORDER.indexOf(a), ib = ORDER.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
+  }
+
+  function stateCell(l) {
+    var extra = '';
+    if (l.status === '已转化' && l.convertTargets) extra = '<div class="ld-row-m">转化对象：' + l.convertTargets.join('、') + '</div>';
+    if (l.status === '无效' && l.invalidReason) extra = '<div class="ld-row-m">无效原因：' + ui.esc(l.invalidReason) + (l.correctedAt ? '　已纠错于 ' + ui.esc(l.correctedAt.slice(0, 10)) : '') + '</div>';
+    return ui.statusTag(l.status) + extra;
+  }
+
+  function ownerCell(l) {
+    if (l.owner) return ui.esc(S.userName(l.owner)) + '<div class="ld-row-m">' + (l.currentPool ? '同时仍在池内（异常，需治理）' : '单一当前负责人') + '</div>';
+    if (l.currentPool) return '<span class="ry-faint">无负责人</span><div class="ld-row-m">所属池：' + ui.esc(poolName(l.currentPool)) + '</div>';
+    return '<span class="ry-faint">无负责人</span><div class="ld-row-m">不在池内</div>';
+  }
+
+  function poolName(code) { var p = S.poolOf(code); return p ? p.name : code; }
+
+  function protectCell(l) {
+    if (!l.protectUntil) return '<span class="ry-faint">无</span>';
+    var day = l.protectUntil.slice(0, 10);
+    var on = day >= S.today();
+    return '<span class="' + (on ? '' : 'ld-warn') + '">' + ui.esc(day) + '</span><div class="ld-row-m">' + (on ? '保护期内' : '已到期（不会自动回收）') + '</div>';
+  }
+
+  /* ---------------------------------------------------------------- 渲染 */
+
+  var bar = document.createElement('div');
+  bar.className = 'ry-selbar';
+  bar.id = 'ld-batchbar';
+  bar.style.display = 'none';
+  bar.innerHTML = '<span>已选 <b id="ld-bn">0</b> 条</span>' +
+    '<button class="ry-btn ry-btn--sm" data-ld-batch="transfer">批量转交</button>' +
+    '<button class="ry-btn ry-btn--sm" data-ld-batch="assign">批量分派</button>' +
+    '<button class="ry-btn ry-btn--sm" data-ld-batch="returnPool">批量退回池内</button>' +
+    '<button class="ry-btn ry-btn--sm" data-ld-batch="recycle">批量回收</button>';
+
+  function render() {
+    renderScopes();
+    var list = filtered();
+    var total = list.length;
+    var pages = Math.max(1, Math.ceil(total / size));
+    if (page > pages) page = pages;
+    var rows = list.slice((page - 1) * size, page * size);
+    if (openMenuId && !rows.some(function (l) { return l.id === openMenuId; })) openMenuId = '';
+
+    ui.qs('#ld-thead').innerHTML = '<th style="width:34px"><input type="checkbox" id="ld-all"></th><th>线索编号</th><th>原始摘要</th><th>来源</th><th>来源记录</th><th>候选业务线</th><th>销售归属地区</th>' +
+      '<th>当前负责人</th><th>当前池</th><th>业务状态</th><th>保护截止时间</th><th>下一步动作</th><th>下次跟进</th><th>最近活动</th><th style="width:190px">操作</th>';
+
+    var formalRows = rows.map(function (l) {
+      var acts = actsOf(l);
+      return '<tr><td><input type="checkbox" data-ld-sel="' + l.id + '"></td>' +
+        '<td><a class="ry-cellname" href="detail.html?id=' + l.id + '&from=' + scope + '">' + l.id + '</a></td>' +
+        '<td>' + ui.esc(l.raw.slice(0, 34)) + (l.raw.length > 34 ? '…' : '') + '</td>' +
+        '<td>' + ui.esc(l.source) + '</td><td>' + ui.esc(l.sourceRecord) + '</td>' +
+        '<td>' + (l.candidateLines.length ? l.candidateLines.map(function (x) { return ui.tag(S.businessLineName(x), 'muted'); }).join(' ') : '<span class="ry-faint">未标注</span>') + '</td>' +
+        '<td>' + (l.salesRegionProvince ? ui.esc(l.salesRegionProvince + ' · ' + (l.salesRegionCity || '')) : '未填写') + '</td>' +
+        '<td>' + (l.owner ? ui.esc(S.userName(l.owner)) : '—') + '</td>' +
+        '<td>' + (l.currentPool ? ui.esc(poolName(l.currentPool)) : '—') + '</td>' +
+        '<td>' + stateCell(l) + '</td>' +
+        '<td>' + protectCell(l) + '</td>' +
+        '<td>' + (l.nextAction ? ui.esc(l.nextAction) : '<span class="ry-faint">未设置</span>') + '</td>' +
+        '<td>' + ui.esc((l.nextFollowUp || '—').slice(0, 10)) + '</td>' +
+        '<td>' + ui.esc((l.lastFollowUpAt || '—').slice(0, 10)) + '</td>' +
+        '<td class="ry-tbl-act">' + acts.slice(0, 3).map(function (a) {
+          return '<button class="ry-btn ry-btn--sm' + (a === 'convert' ? ' ry-btn--primary' : '') + '" data-ld-op="' + a + '" data-id="' + l.id + '">' + ACTION_NAME[a] + '</button>';
+        }).join('') +
+          '<button class="ry-btn ry-btn--sm" type="button" data-ld-more="' + l.id + '" aria-expanded="' + (openMenuId === l.id) + '" aria-controls="ld-menu-' + l.id + '">更多</button>' +
+          (openMenuId === l.id ? moreMenuHtml(l, acts.slice(3)) : '') + '</td></tr>';
+    }).join('');
+    var demoRow = '<tr class="ld-demo-row"><td>—</td>' +
+      '<td><a class="ry-cellname" href="detail.html?id=LED-DEMO-PC&amp;demo=1&amp;from=list">演示线索</a><div class="ld-row-m">LED-DEMO-PC</div></td>' +
+      '<td>远驰科技二期车电项目，演示线索状态和操作</td><td>市场活动</td><td>演示录入</td>' +
+      '<td>' + ui.tag(S.businessLineName('BL-CE'), 'muted') + '</td><td>上海市</td><td>' + ui.esc(S.userName('U-001')) + '</td><td>—</td>' +
+      '<td>' + ui.statusTag('跟进中') + '</td><td>—</td><td>提交方案初稿并确认预算</td><td>2026-09-25</td><td>2026-09-18</td>' +
+      '<td class="ry-tbl-act"><a class="ry-btn ry-btn--sm" href="detail.html?id=LED-DEMO-PC&amp;demo=1&amp;from=list">查看演示</a></td></tr>';
+    ui.qs('#ld-rows').innerHTML = demoRow + (formalRows || '<tr><td colspan="15" class="ry-hint">当前范围与筛选条件下没有正式线索。</td></tr>');
+
+    ui.qs('#ld-resultbar').innerHTML = '<span>共 ' + total + ' 条线索（范围：' + ui.esc(scopeName()) + '）</span>';
+    ui.qs('#ld-pager').innerHTML = ui.pager(total, page, size, 'lead.list');
+    ui.qs('#ld-note').innerHTML = '演示线索固定显示在列表首行，不计入正式结果、筛选、批量操作或导出。';
+
+    ui.qs('#ld-selbar').innerHTML = '<div id="ld-selhost"></div>';
+    var host = ui.qs('#ld-selhost');
+    host.innerHTML = ui.selectionBar({ id: 'ld-sel', filteredTotal: total, crossPageCount: 0 });
+    host.appendChild(bar);
+
+    ui.bindPager('#ld-pager', function (p) { page = p; st.page = p; S.save(); render(); });
+    ui.bindSelection({
+      id: 'ld-sel', key: 'lead.list', pageIds: rows.map(function (r) { return r.id; }),
+      filteredIds: list.map(function (r) { return r.id; }), filteredTotal: total,
+      onChange: function (ids) {
+        bar.style.display = ids.length ? 'flex' : 'none';
+        var bn = ui.qs('#ld-bn'); if (bn) bn.textContent = ids.length;
+        ui.qsa('[data-ld-sel]').forEach(function (x) { x.checked = ids.indexOf(x.getAttribute('data-ld-sel')) >= 0; });
+        ui.qs('#ld-all').checked = rows.length > 0 && rows.every(function (row) { return ids.indexOf(row.id) >= 0; });
+      }
+    });
+    ui.qsa('[data-ld-sel]').forEach(function (x) {
+      x.addEventListener('change', function () {
+        var cur = ui.selected('lead.list').slice(), v = x.getAttribute('data-ld-sel');
+        if (x.checked) { if (cur.indexOf(v) < 0) cur.push(v); } else cur = cur.filter(function (y) { return y !== v; });
+        if (cur.length > 100) { ui.toast('已选 ' + cur.length + ' 条，超过单次上限 100 条。请先收窄筛选条件，系统不会自动截断。', 'warn'); x.checked = false; return; }
+        ui.syncSel('lead.list', cur);
+      });
+    });
+    ui.qs('#ld-all').addEventListener('change', function (e) {
+      var checked = e.target.checked;
+      ui.qsa('[data-ld-sel]').forEach(function (x) { x.checked = checked; x.dispatchEvent(new Event('change')); });
+    });
+    ui.qsa('[data-ld-op]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        doAction(b.getAttribute('data-ld-op'), b.getAttribute('data-id'));
+      });
+    });
+    ui.qsa('[data-ld-more]').forEach(function (b) {
+      b.addEventListener('click', function (e) { e.stopPropagation(); moreMenu(b.getAttribute('data-ld-more')); });
+    });
+    ui.qsa('[data-ld-menu-op]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var action = b.getAttribute('data-ld-menu-op'), id = b.getAttribute('data-id');
+        openMenuId = ''; render(); doAction(action, id);
+      });
+    });
+  }
+
+  function scopeName() {
+    var s = scopes().filter(function (x) { return x.key === scope; })[0];
+    return s ? s.name : scope;
+  }
+
+  /* ---------------------------------------------------------------- 动作 */
+
+  function doAction(a, id) {
+    var l = S.lead(id);
+    if (!l) { ui.toast('该线索已不可用。', 'warn'); return; }
+    if (actsOf(l).indexOf(a) < 0) { ui.toast('当前状态或归属不支持该操作。', 'warn'); render(); return; }
+    var R = {
+      claim: function () {
+        ui.confirm({
+          title: '认领线索',
+          message: '<p>认领 ' + l.id + ' 后你成为<b>唯一当前负责人</b>，线索离开池内。</p>' +
+            '<p>保护期：' + (S.poolOf(l.currentPool) ? (S.poolOf(l.currentPool).protectEnabled ? S.poolOf(l.currentPool).protectDays + ' 天' : '该池不启用保护期') : '无') + '。</p>' +
+            '<p class="ry-hint">认领是并发动作：同一线索只有第一个完成的人成功，其余会收到并发提示。持有上限按池规则校验。</p>',
+          confirmText: '确认认领',
+          onConfirm: function () {
+            var holdCount = S.all('leads').filter(function (x) { return x.owner === u.id; }).length;
+            var r = S.leadAction(id, 'claim', { holdCount: holdCount });
+            if (!r.ok) { ui.toast(r.reason, 'warn'); render(); return; }
+            ui.toast('认领成功，你已成为唯一当前负责人；业务状态不变（仍为「' + r.lead.status + '」）。', 'success'); render();
+          }
+        });
+      },
+      assign: function () {
+        ui.drawer({
+          title: '分派线索', subtitle: '评审演示不按当前角色拦截。分派后线索离开池内，被分派人成为唯一当前负责人。',
+          body: ui.kv([['线索', l.id], ['当前状态', l.status], ['所属池', l.currentPool ? poolName(l.currentPool) : '—']]) +
+            ui.field('分派给', ui.select('target', S.all('users').filter(function (x) { return x.role === 'R1' || x.role === 'R2'; }).map(function (x) { return { value: x.id, label: x.name + '（' + RY.perm.ROLES[x.role].code + '）' }; })), '', true) +
+            ui.banner('分派给不具备该池成员资格或已超持有上限的销售时，系统会在提交时拒绝并给出原因，不会静默成功。', 'info'),
+          footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ld-as">确认分派</button>',
+          onOpen: function (el) {
+            ui.qs('#ld-as', el).addEventListener('click', function () {
+              var v = ui.formValues(el);
+              var r = S.leadAction(id, 'assign', { target: v.target });
+              if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+              ui.close(); ui.toast('已分派给 ' + S.userName(v.target) + '。', 'success'); render();
+            });
+          }
+        });
+      },
+      follow: function () {
+        ui.drawer({
+          title: '记录跟进', subtitle: '评审演示：记录已发生的沟通，保存后关联当前线索。',
+          body: ui.field('沟通方式', ui.select('channel', ['电话','微信','会议','邮件','其他'], '电话'), '', true) +
+            ui.field('发生时间', ui.input('at', S.now().slice(0, 16), 'YYYY-MM-DD HH:mm'), '', true) +
+            ui.field('实际沟通人', ui.input('target', l.contactName || '', '姓名或称谓')) +
+            ui.field('结果摘要', ui.textarea('content', '', '记录真实沟通结果'), '', true),
+          footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ld-follow-save">保存活动</button>',
+          onOpen: function (el) { ui.qs('#ld-follow-save', el).addEventListener('click', function () {
+            var v = ui.formValues(el);
+            if (!v.channel || !v.at || !String(v.content || '').trim()) { ui.toast('请填写沟通方式、发生时间和结果摘要。', 'warn'); return; }
+            var result = S.createActivity({ channel: v.channel, at: v.at, target: v.target, content: v.content.trim(), related: [{ type: '线索', id: id }] });
+            if (!result.ok) { ui.toast(result.msg || '活动保存失败。', 'warn'); return; }
+            if (!l.lastFollowUpAt || v.at > l.lastFollowUpAt) S.updateLead(id, { lastFollowUpAt: v.at }, '更新最近跟进时间');
+            ui.close(); ui.toast('跟进已记录。', 'success'); render();
+          }); }
+        });
+      },
+      transfer: function () {
+        ui.drawer({
+          title: '转交线索', subtitle: '转交后你会失去该线索的负责人身份，保护期清除。',
+          body: ui.field('受让人', ui.select('target', S.all('users').filter(function (x) { return x.role === 'R1' || x.role === 'R2'; }).map(function (x) { return { value: x.id, label: x.name }; })), '', true) +
+            ui.field('转交说明', ui.textarea('note', '', '将写入审计')),
+          footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ld-tf">确认转交</button>',
+          onOpen: function (el) {
+            ui.qs('#ld-tf', el).addEventListener('click', function () {
+              var v = ui.formValues(el);
+              var r = S.leadAction(id, 'transfer', { target: v.target, note: v.note });
+              if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+              ui.close(); ui.toast('已转交给 ' + S.userName(v.target) + '。', 'success'); render();
+            });
+          }
+        });
+      },
+      returnPool: function () {
+        ui.confirm({
+          title: '退回池内',
+          message: '<p>线索 ' + l.id + ' 将回到所属池，你不再是负责人，保护期清除；业务状态保持不变。</p>' +
+            '<p class="ry-hint">退回只改变当前归属，不改变线索内容与历史跟进记录。</p>',
+          confirmText: '确认退回', requireReason: true, reasonLabel: '退回原因',
+          onConfirm: function (reason) {
+            var r = S.leadAction(id, 'returnPool', { note: reason });
+            if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+            ui.toast('已退回池内。', 'success'); render();
+          }
+        });
+      },
+      nurture: function () {
+        ui.drawer({
+          title: '转入培育',
+          subtitle: '培育是可逆的暂缓状态：线索离开跟进节奏，按复查日期重新进入。',
+          body: ui.field('培育原因', ui.textarea('reason', '', '如：客户预算未批复，暂无采购时间'), '', true) +
+            ui.field('复查日期', ui.input('review', S.addDays(S.today(), 30), '默认 30 天后'), '', true) +
+            ui.field('培育方式', ui.input('method', '', '如：季度电话复查')) +
+            ui.banner('转入培育会清除保护期。培育复查后回到「跟进中」，由你继续跟进；培育不改变线索当前负责人。', 'info'),
+          footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ld-nu">转入培育</button>',
+          onOpen: function (el) {
+            ui.qs('#ld-nu', el).addEventListener('click', function () {
+              var v = ui.formValues(el);
+              if (!v.reason) { ui.toast('请填写培育原因。', 'warn'); return; }
+              S.leadAction(id, 'nurture', { reason: v.reason, review: v.review, method: v.method });
+              ui.close(); ui.toast('已转入培育，复查日期 ' + v.review + '。', 'success'); render();
+            });
+          }
+        });
+      },
+      nurtureReview: function () {
+        ui.confirm({
+          title: '培育复查通过',
+          message: '<p>线索 ' + l.id + ' 将回到「跟进中」，并重新进入跟进节奏。</p>' +
+            '<p class="ry-hint">复查只改变状态，不会自动创建商机或转换。</p>',
+          confirmText: '确认复查通过',
+          onConfirm: function () {
+            S.leadAction(id, 'nurtureReview', {});
+            ui.toast('已回到跟进中。', 'success'); render();
+          }
+        });
+      },
+      invalid: function () {
+        ui.drawer({
+          title: '标记无效',
+          subtitle: '把线索置为终态「无效」。无效可由销售主管或有权限人员纠错后恢复。',
+          body: ui.field('无效原因', ui.select('reason', D.leadInvalidReason, ''), '', true) +
+            ui.field('补充说明', ui.textarea('note', '', '')) +
+            ui.field('重复线索指向（如适用）', ui.select('dup', [{ value: '', label: '不适用' }].concat(S.all('leads').filter(function (x) { return x.id !== id; }).map(function (x) { return { value: x.id, label: x.id + ' ' + x.raw.slice(0, 16) }; })))) +
+            ui.banner('标记无效会清除当前负责人与池归属。无效是终态，但<b>不是不可逆</b>：纠错后按纠错前的归属恢复。', 'warn'),
+          footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--danger" id="ld-iv">确认标记无效</button>',
+          onOpen: function (el) {
+            ui.qs('#ld-iv', el).addEventListener('click', function () {
+              var v = ui.formValues(el);
+              if (!v.reason) { ui.toast('请选择无效原因。', 'warn'); return; }
+              l.ownerBeforeInvalid = l.owner; l.statusBeforeInvalid = l.status;
+              l.protectUntilBeforeInvalid = l.protectUntil; l.poolBeforeInvalid = l.currentPool;
+              S.leadAction(id, 'invalid', { reason: v.reason, note: v.note });
+              if (v.dup) { var ll = S.lead(id); ll.duplicateOf = v.dup; S.save(); }
+              ui.close(); ui.toast('已标记无效。', 'success'); render();
+            });
+          }
+        });
+      },
+      correctInvalid: function () {
+        ui.drawer({
+          title: '无效线索纠错',
+          subtitle: '纠错会撤销「无效」并恢复纠错前的负责人与池归属。',
+          body: ui.kv([['线索', l.id], ['无效原因', l.invalidReason || '—'], ['纠错前状态', l.statusBeforeInvalid || '—'], ['纠错前负责人', l.ownerBeforeInvalid ? S.userName(l.ownerBeforeInvalid) : '—']]) +
+            ui.field('纠错原因', ui.textarea('reason', '', '必填，将写入审计'), '', true) +
+            ui.banner('纠错后线索按纠错前归属恢复；如果纠错前负责人已失去该业务线数据范围，恢复后会提示由主管重新分派。', 'warn'),
+          footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ld-ci">确认纠错</button>',
+          onOpen: function (el) {
+            ui.qs('#ld-ci', el).addEventListener('click', function () {
+              var v = ui.formValues(el);
+              if (!v.reason) { ui.toast('请填写纠错原因。', 'warn'); return; }
+              S.leadAction(id, 'correctInvalid', { reason: v.reason });
+              ui.close(); ui.toast('已纠错，线索状态恢复为「' + (l.statusBeforeInvalid || '跟进中') + '」。', 'success'); render();
+            });
+          }
+        });
+      },
+      convert: function () {
+        if (l.status === '已转化') { ui.toast('该线索已转化，不允许重复转换。', 'warn'); return; }
+        window.location.href = 'convert.html?id=' + l.id + '&from=' + scope;
+      },
+      edit: function () {
+        ui.drawer({
+          title: '编辑线索（普通字段）',
+          subtitle: '线索创建门槛低，编辑也同样宽松；但来源与来源记录不可改。',
+          body: ui.field('原始内容', ui.textarea('raw', l.raw, '客户原话、需求描述、来龙去脉', 3), '', true) +
+            ui.grid2(
+              ui.field('候选业务线', '<div style="display:flex;gap:12px;flex-wrap:wrap">' + S.all('businessLines').map(function (x) {
+                return '<label class="ry-check"><input type="checkbox" name="line" value="' + x.code + '"' + (l.candidateLines.indexOf(x.code) >= 0 ? ' checked' : '') + '> ' + x.name + '</label>';
+              }).join('') + '</div>', '可多选'),
+              ui.field('联系电话', ui.input('phone', l.phone, ''))
+            ) +
+            ui.grid2(
+              ui.field('下一步动作', ui.input('nextAction', l.nextAction, '')),
+              ui.field('下次跟进时间', ui.input('nextFollowUp', l.nextFollowUp.slice(0, 10), ''))
+            ) +
+            ui.field('来源', ui.input('__src', l.source + '（不可修改）', '')),
+          footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ld-ed">保存</button>',
+          onOpen: function (el) {
+            ui.qs('#ld-ed', el).addEventListener('click', function () {
+              var v = ui.formValues(el);
+              if (!v.raw) { ui.toast('原始内容不能为空。', 'warn'); return; }
+              var lines = ui.qsa('input[name=line]', el).filter(function (x) { return x.checked; }).map(function (x) { return x.value; });
+              S.updateLead(id, { raw: v.raw, candidateLines: lines, phone: v.phone, nextAction: v.nextAction, nextFollowUp: v.nextFollowUp, updatedAt: S.now() }, '线索普通编辑');
+              ui.close(); ui.toast('已保存。', 'success'); render();
+            });
+          }
+        });
+      },
+      view: function () { window.location.href = 'detail.html?id=' + l.id + '&from=' + scope; }
+    };
+    (R[a] || R.view)();
+  }
+
+  function moreMenuHtml(l, acts) {
+    return '<div class="ld-more-menu" id="ld-menu-' + l.id + '" data-ld-more-menu="' + l.id + '">' +
+      acts.map(function (a) { return '<button type="button" data-ld-menu-op="' + a + '" data-id="' + l.id + '">' + ACTION_NAME[a] + '</button>'; }).join('') +
+      '<div class="ld-more-menu__divider"></div>' +
+      '<a href="detail.html?id=' + l.id + '&from=' + scope + '">打开线索详情</a>' +
+      '<a href="detail.html?id=' + l.id + '&from=' + scope + '#history">查看历史与异常</a></div>';
+  }
+  function moreMenu(id) {
+    openMenuId = openMenuId === id ? '' : id;
+    render();
+  }
+  document.addEventListener('click', function (e) {
+    if (openMenuId && !e.target.closest('[data-ld-more],[data-ld-more-menu]')) { openMenuId = ''; render(); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && openMenuId) { openMenuId = ''; render(); }
+  });
+
+  /* --------------------------------------------------------------- 批量 */
+
+  bar.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-ld-batch]');
+    if (!b) return;
+    var ids = ui.selected('lead.list');
+    if (!ids.length) { ui.toast('请先选择线索。', 'warn'); return; }
+    var kind = b.getAttribute('data-ld-batch');
+    var title = { transfer: '批量转交线索', assign: '批量分派线索', returnPool: '批量退回池内', recycle: '批量回收线索' }[kind];
+    var needTarget = (kind === 'transfer' || kind === 'assign');
+    var needPool = (kind === 'returnPool' || kind === 'recycle');
+
+    ui.modal({
+      title: title + '（逐条预检）', size: 'lg',
+      body: ui.banner('共 ' + ids.length + ' 条。批量动作异步执行并逐条预检：<b>已成功项不会重复执行</b>，失败项可单独重试；终态线索（已转化／无效）会被跳过且计入失败原因。', 'info') +
+        (needTarget ? ui.field('目标负责人', ui.select('target', S.all('users').filter(function (x) { return x.role === 'R1' || x.role === 'R2'; }).map(function (x) { return { value: x.id, label: x.name }; })), '', true) : '') +
+        (needPool ? ui.field('目标线索池', ui.select('pool', [{ value: '', label: '请选择' }].concat(S.all('leadPools').filter(function (p) { return p.status === '启用'; }).map(function (p) { return { value: p.code, label: p.name }; })), ''), '', true) + ui.field('操作原因', ui.textarea('note', '', '必填，将写入审计'), '', true) : '') +
+        '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr><th>线索</th><th>当前状态</th><th>预检</th><th>说明</th></tr></thead><tbody>' +
+        ids.map(function (lid) {
+          var x = S.lead(lid);
+          if (!x) return '<tr><td>' + lid + '</td><td>—</td><td>' + ui.tag('失败', 'bad') + '</td><td class="ry-hint">对象不可用</td></tr>';
+          var terminal = x.status === '已转化' || x.status === '无效';
+          return '<tr><td>' + lid + '<div class="ld-row-m">' + ui.esc(x.raw.slice(0, 20)) + '…</div></td>' +
+            '<td>' + ui.statusTag(x.status) + '</td>' +
+            '<td>' + (terminal ? ui.tag('跳过', 'warn') : ui.tag('可执行', 'ok')) + '</td>' +
+            '<td class="ry-hint">' + (terminal ? '终态线索不允许该动作，跳过并记录原因' : '按当前归属执行') + '</td></tr>';
+        }).join('') + '</tbody></table></div>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ldb-ok">确认执行</button>',
+      onOpen: function (el) {
+        ui.qs('#ldb-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (needTarget && !v.target) { ui.toast('请选择目标负责人。', 'warn'); return; }
+          if (needPool && (!v.pool || !v.note)) { ui.toast('请选择目标池并填写操作原因。', 'warn'); return; }
+          ui.close();
+          var job = S.addJob({ type: '批量', action: title, object: '线索', status: '处理中', total: ids.length });
+          ui.asyncRun({ title: '正在执行批量操作', total: ids.length, processId: job.processId, onDone: function () {
+            var okn = 0, items = [];
+            ids.forEach(function (lid) {
+              var x = S.lead(lid);
+              if (!x) { items.push({ key: lid, name: lid, result: '失败', reason: '对象不可用' }); return; }
+              if (x.status === '已转化' || x.status === '无效') { items.push({ key: lid, name: x.raw.slice(0, 16), result: '失败', reason: '对象已处于终态，允许动作不符合' }); return; }
+              var actionResult = S.leadAction(lid, kind, { target: v.target, pool: v.pool, note: v.note });
+              if (!actionResult.ok) { items.push({ key: lid, name: x.raw.slice(0, 16), result: '失败', reason: actionResult.reason }); return; }
+              okn++; items.push({ key: lid, name: x.raw.slice(0, 16), result: '成功', reason: '' });
+            });
+            var fails = items.filter(function (x) { return x.result === '失败'; }).length;
+            S.updateJob(job.id, { status: fails ? (okn ? '部分成功' : '失败') : '已完成', success: okn, failed: fails, items: items });
+            ui.closeAll(); ui.syncSel('lead.list', []);
+            if (fails) ui.jobResult(S.job(job.id)); else ui.toast(title + '完成，共 ' + okn + ' 条。', 'success');
+            render();
+          } });
+        });
+      }
+    });
+  });
+
+  /* --------------------------------------------------------------- 导出 */
+
+  var ex = ui.qs('#ld-exp');
+  if (ex) ex.addEventListener('click', function (e) {
+    ui.modal({
+      title: '导出线索', size: 'sm',
+      body: '<p>将导出当前范围与筛选结果 <b>' + filtered().length + '</b> 条。</p>' +
+        ui.banner('评审原型可直接演示导出；正式系统仍按按钮权限与当前数据范围执行。导出为异步任务，记录保留 7 天且仅本人可见。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ld-exp-ok">提交导出</button>',
+      onOpen: function (el) {
+        ui.qs('#ld-exp-ok', el).addEventListener('click', function () {
+          ui.close();
+          var n = filtered().length;
+          var job = S.addJob({ type: '导出', action: '线索导出', object: '线索', status: '处理中', total: n, fields: ['线索编号', '来源', '状态', '当前负责人', '候选业务线', '保护期'], fileName: '线索_' + S.today().replace(/-/g, '') + '.xlsx' });
+          ui.asyncRun({ title: '正在生成导出文件', total: n, processId: job.processId, onDone: function () {
+            S.updateJob(job.id, { status: '已完成', success: n, failed: 0 });
+            ui.closeAll(); ui.toast('导出已完成，可在处理记录下载。', 'success');
+          } });
+        });
+      }
+    });
+  });
+
+  /* --------------------------------------------------------------- 新增 */
+
+  var nn = ui.qs('#ld-new');
+  if (nn) nn.addEventListener('click', function (e) {
+    window.location.href = 'create.html';
+  });
+
+  ui.qs('#ld-apply').addEventListener('click', function () {
+    var v = ui.formValues(ui.qs('#ld-filter'));
+    flt.kw = v.kw; flt.owner = v.owner; flt.pool = v.pool; flt.sourcePool = v.sourcePool; flt.status = v.status; flt.source = v.source;
+    flt.line = v.line; flt.protect = v.protect; flt.createdFrom = v.createdFrom; flt.createdTo = v.createdTo;
+    flt.followFrom = v.followFrom; flt.followTo = v.followTo;
+    page = 1; st.page = 1; st.flt = flt; S.save(); render();
+  });
+  ui.qs('#ld-reset').addEventListener('click', function () {
+    Object.keys(flt).forEach(function (k) { flt[k] = ''; });
+    page = 1; st.page = 1; S.save();
+    ui.qs('#ld-filter').querySelectorAll('input,select').forEach(function (x) { if (x.tagName === 'SELECT') x.selectedIndex = 0; else x.value = ''; });
+    render();
+  });
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

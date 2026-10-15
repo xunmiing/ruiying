@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>指标版本 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：指标版本（轻量 B 类：草稿 → 校验 → 立即发布） */
+  .mv-cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+  .mv-diff { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; font-size: 12.5px; line-height: 1.9; }
+  .mv-diff > span { color: var(--muted); }
+  .mv-cmp { border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; }
+  .mv-cmp__r { display: grid; grid-template-columns: 130px 1fr 1fr; gap: 8px; padding: 7px 11px; font-size: 12px; border-bottom: 1px solid var(--line-soft); }
+  .mv-cmp__r:last-child { border-bottom: none; }
+  .mv-cmp__r > span:first-child { color: var(--muted); }
+  .mv-cmp__h { background: #FBFCFC; font-weight: 600; }
+  @media (max-width: 1180px) { .mv-cols { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="mv-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var PAGE = 'metric.version';
+  var canEdit = RY.perm.can('metric.draft');
+  var canPublish = RY.perm.can('metric.publish');
+
+  RY.nav.shell({
+    nav: 'metric.version',
+    title: '指标版本',
+    subtitle: '<b>草稿 → 校验 → 立即发布</b>。版本历史可追溯，<b>历史数据不自动重算</b>，跨版本不计算环比。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '指标配置' }, { label: '指标版本' }],
+    actions: '<a class="ry-btn" href="def.html">指标定义</a>'
+  });
+
+  var g = RY.perm.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#mv-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入指标版本',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示指标名称、版本与变更说明。</p>'
+    });
+    return;
+  }
+
+  var curCode = ui.q('code') || '';
+
+  function defs() { return S.metricDefList(); }
+  function defOf(code) { return defs().filter(function (m) { return m.code === code; })[0]; }
+  function vers(code) {
+    return S.metricVersionList(code).slice().sort(function (a, b) {
+      return parseInt(String(b.version).replace(/^V/i, ''), 10) - parseInt(String(a.version).replace(/^V/i, ''), 10);
+    });
+  }
+  function active(code) { return vers(code).filter(function (v) { return v.status === '生效'; })[0]; }
+  function draft(code) { return vers(code).filter(function (v) { return v.status === '草稿'; })[0]; }
+  function withVersions() {
+    return defs().filter(function (m) { return S.metricVersionList(m.code).length; });
+  }
+
+  function render() {
+    var ws = withVersions();
+    if (!ws.length) { ui.qs('#mv-host').innerHTML = ui.stateCard('empty', { title: '没有指标版本记录' }); return; }
+    if (!curCode) curCode = ws[0].code;
+    var m = defOf(curCode);
+    var act = active(curCode), dr = draft(curCode);
+
+    ui.qs('#mv-host').innerHTML =
+      ui.banner('指标口径变更走<b>轻量 B 类</b>流程：保存草稿 → 校验 → 立即发布。' +
+        '发布只影响后续取数口径，<b>历史数据不自动重算</b>；' +
+        '跨版本<b>不计算环比</b>（口径不同时环比没有意义，系统直接不展示而不是给一个错误数字）。' +
+        '版本历史<b>只增不改</b>，用于回答「这个数当时是按什么口径算出来的」。', 'info') +
+
+      '<div class="mv-cols" style="margin-top:12px">' +
+        '<div>' +
+          ui.section('已有版本记录的指标',
+            '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+              '<th>指标</th><th>主题</th><th>生效版本</th><th>草稿</th><th>版本数</th><th>最近发布</th><th style="width:150px">操作</th></tr></thead><tbody>' +
+              ws.map(function (x) {
+                var a = active(x.code), d = draft(x.code), vs = vers(x.code);
+                return '<tr' + (x.code === curCode ? ' style="background:var(--brand-soft)"' : '') + '>' +
+                  '<td><a class="ry-cellname" href="version.html?code=' + x.code + '">' + ui.esc(x.name) + '</a>' +
+                    '<div class="ry-hint">' + ui.esc(x.code) + '</div></td>' +
+                  '<td>' + ui.esc(x.theme) + '</td>' +
+                  '<td><span class="ry-code">' + ui.esc(a ? a.version : '—') + '</span></td>' +
+                  '<td>' + (d ? ui.tag(d.version, 'warn') : '<span class="ry-faint">无</span>') + '</td>' +
+                  '<td>' + vs.length + '</td>' +
+                  '<td>' + ui.esc(a ? a.publishedAt : '—') + '</td>' +
+                  '<td class="ry-tbl-act"><a class="ry-btn ry-btn--sm" href="version.html?code=' + x.code + '">版本管理</a></td></tr>';
+              }).join('') +
+            '</tbody></table></div>' +
+            '<p class="ry-hint" style="margin-top:8px">只有已建立版本记录的指标出现在这里；' +
+              '其余指标沿用首个发布版本的默认口径，可在「指标定义」查看。</p>',
+            ws.length + ' 个指标') +
+
+          ui.section('当前指标：' + m.name,
+            '<div class="mv-diff">' +
+              '<span>指标编码</span><b>' + ui.esc(m.code) + '　' + ui.esc(m.theme) + '　' + ui.esc(m.type) + '　单位 ' + ui.esc(m.unit) + '</b>' +
+              '<span>生效版本</span><b>' + ui.esc(act ? act.version : '无') + '　' + ui.esc(act ? act.change : '') + '</b>' +
+              '<span>当前口径</span><b>' + ui.esc(m.formula) + '</b>' +
+              '<span>草稿版本</span><b>' + (dr ? ui.esc(dr.version) + '　' + ui.esc(dr.change) + '　<span class="ry-hint">' + ui.esc(dr.note || '未发布') + '</span>' : '无') + '</b>' +
+            '</div>' +
+            '<div class="ry-divider"></div>' +
+            '<div class="ry-acts-row">' +
+              (canEdit ? '<button class="ry-btn" id="mv-draft">' + (dr ? '编辑草稿' : '新建草稿') + '</button>' : '') +
+              '<button class="ry-btn" id="mv-val">校验</button>' +
+              '<button class="ry-btn' + (canPublish ? ' ry-btn--primary' : '') + '" id="mv-pub">立即发布</button>' +
+              '<button class="ry-btn" id="mv-drill">查看下钻契约</button>' +
+            '</div>' +
+            '<div id="mv-out" style="margin-top:10px"></div>') +
+
+          ui.section('版本历史（只增不改）',
+            '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+              '<th>版本</th><th>状态</th><th>变更说明</th><th>发布人</th><th>发布／生效时间</th><th>转历史时间</th></tr></thead><tbody>' +
+              vers(curCode).map(function (v) {
+                return '<tr><td><span class="ry-code">' + ui.esc(v.version) + '</span></td>' +
+                  '<td>' + ui.statusTag(v.status) + '</td>' +
+                  '<td class="ry-hint">' + ui.esc(v.change || '—') + '</td>' +
+                  '<td>' + ui.esc(S.userName(v.publisher) || v.publisher || '—') + '</td>' +
+                  '<td>' + ui.esc(v.effectiveAt || v.publishedAt || '—') + '</td>' +
+                  '<td>' + ui.esc(v.retiredAt || '—') + '</td></tr>';
+              }).join('') +
+            '</tbody></table></div>') +
+        '</div>' +
+
+        '<div>' +
+          ui.section('生效 vs 草稿',
+            '<div class="mv-cmp">' +
+              '<div class="mv-cmp__r mv-cmp__h"><span>字段</span><span>生效 ' + ui.esc(act ? act.version : '—') + '</span><span>草稿 ' + ui.esc(dr ? dr.version : '—') + '</span></div>' +
+              '<div class="mv-cmp__r"><span>变更说明</span><span>' + ui.esc(act ? act.change : '—') + '</span>' +
+                '<span' + (dr && act && dr.change !== act.change ? ' style="color:var(--brand-ink);font-weight:600"' : '') + '>' + ui.esc(dr ? dr.change : '—') + '</span></div>' +
+              '<div class="mv-cmp__r"><span>口径正文</span><span>以「指标定义」为准</span><span>本页只维护变更说明与生效时点</span></div>' +
+            '</div>' +
+            '<p class="ry-hint" style="margin-top:8px">' + (dr
+              ? '草稿未发布：管理分析<b>仍按 ' + ui.esc(act ? act.version : '—') + ' 口径</b>取数。'
+              : '当前没有草稿；新建草稿不会影响正在使用中的口径。') + '</p>') +
+
+          ui.section('版本与历史数据',
+            ui.kv([
+              ['历史是否重算', '不自动重算'],
+              ['跨版本环比', '不计算（直接不展示）'],
+              ['版本可追溯', '是，版本记录只增不改'],
+              ['下钻一致性', '下钻沿用指标版本，不重新计算口径']
+            ]) +
+            ui.banner('合并旧版、回拨版本都会让「当时那个数是怎么算的」无法回答，因此 0.1 不提供版本回拨与历史重算。', 'warn')) +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-METRICVER</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-METRICVER · PC · 指标配置</b></li>' +
+        '<li><span>配置分类</span><b>轻量 B 类：草稿｜校验｜立即发布｜版本历史可追溯</b></li>' +
+        '<li><span>依据</span><b>prd/00 §5.4；prd/06 §6 §8</b></li>' +
+        '<li><span>可进入角色</span><b>管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-60 AC-61</b></li>' +
+        '<li><span>校验项</span><b>变更说明必填</b></li>' +
+        '<li><span>历史口径</span><b>历史数据不自动重算；跨版本不计算环比；版本记录只增不改</b></li>' +
+        '<li><span>明确不做</span><b>不做版本回拨、不做历史重算、不新增删除指标</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    ui.qs('#mv-val').addEventListener('click', function () { out(S.metricValidate(curCode)); });
+    ui.qs('#mv-pub').addEventListener('click', function (e) {
+      if (e.target.closest('[data-denied]')) return;
+      if (!canPublish) { ui.toast('当前身份没有配置发布能力项。', 'warn'); return; }
+      var dr = draft(curCode);
+      if (!dr) { ui.toast('没有待发布的草稿版本。', 'warn'); return; }
+      var v = S.metricValidate(curCode);
+      if (!v.ok) { out(v); ui.toast('校验未通过，发布被阻断。', 'warn'); return; }
+      ui.confirm({
+        title: '立即发布 ' + dr.version,
+        message: '<p>将把「' + ui.esc(defOf(curCode).name) + '」的 ' + ui.esc(dr.version) + ' 发布为生效口径，原生效版本转为历史。</p>' +
+          '<p class="ry-hint">发布只影响之后的取数口径；<b>历史数据不自动重算</b>，跨版本不计算环比。' +
+          '下钻明细同样沿用发布后的口径与版本。</p>',
+        confirmText: '立即发布',
+        onConfirm: function () {
+          var r = S.metricPublish(curCode);
+          if (!r.ok) { out({ ok: false, errors: r.errors || [], msg: r.msg }); ui.toast('发布失败：' + r.msg, 'danger'); return; }
+          ui.toast(r.msg, 'success'); render();
+        }
+      });
+    });
+    var db = ui.qs('#mv-draft');
+    if (db) db.addEventListener('click', function () { editor(); });
+    ui.qs('#mv-drill').addEventListener('click', function () {
+      var m = defOf(curCode);
+      ui.modal({
+        title: '下钻契约', size: 'md',
+        body: ui.kv([['指标', m.name], ['下钻契约', m.drill],
+          ['导出模板', m.unit === '%' ? '固定模板：指标值、分子、完整分母、纳入标记、未纳入原因' : '固定模板：按指标口径确定的列'],
+          ['导出权限', '指标导出为独立能力项，且不突破数据范围与字段权限']]) +
+          ui.banner('下钻明细不做自由 BI：不支持自定义列、自定义维度与任意交叉分析。' +
+            '跳转源对象时仍然按源对象页面权限与数据范围重新鉴权。', 'info'),
+        footer: '<button class="ry-btn ry-btn--primary" data-close>关闭</button>'
+      });
+    });
+  }
+
+  function editor() {
+    var m = defOf(curCode), dr = draft(curCode);
+    ui.drawer({
+      title: (dr ? '编辑草稿 ' : '新建草稿 ') + m.name,
+      subtitle: '轻量 B 类：保存草稿不影响正在使用的口径；发布后才生效。',
+      size: 'md',
+      body:
+        ui.kv([['指标编码', m.code], ['主题', m.theme], ['类型', m.type], ['单位', m.unit],
+          ['当前生效版本', active(curCode) ? active(curCode).version : '无'],
+          ['当前口径', m.formula]]) +
+        ui.field('变更说明', ui.textarea('change', dr ? dr.change : '', '说明本次口径调整内容与原因（校验必填）', 4), '写入版本历史', true) +
+        ui.field('备注', ui.textarea('note', dr ? dr.note : '', '可选，如生效范围说明', 3)) +
+        ui.banner('口径正文不在本页编辑：本页只维护版本与变更说明，' +
+          '目的是让「这个数当时按什么口径算的」可追溯。<b>历史数据不自动重算</b>。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="mv-save">保存草稿</button>',
+      onOpen: function (el) {
+        ui.qs('#mv-save', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!v.change || !v.change.trim()) { ui.toast('变更说明必填。', 'warn'); return; }
+          var r = S.metricDraftSave(curCode, { change: v.change.trim(), note: v.note || '' }, v.change.trim());
+          if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+          ui.close(); ui.toast('草稿已保存（' + r.draft.version + '），发布后才会生效。', 'success'); render();
+        });
+      }
+    });
+  }
+
+  function out(v) {
+    var el = ui.qs('#mv-out');
+    if (!el) return;
+    el.innerHTML = v.ok
+      ? ui.banner('校验通过：变更说明已填写。可以立即发布。', 'brand')
+      : ui.banner('<b>校验未通过</b>：' + ((v.errors || []).length ? (v.errors || []).join('；') : v.msg) +
+        '<br>发布被阻断；<b>草稿保留</b>，修正后可重新校验。', 'danger');
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

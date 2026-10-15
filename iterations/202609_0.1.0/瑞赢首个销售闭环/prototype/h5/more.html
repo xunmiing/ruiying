@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>工作入口 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../assets/css/common.css">
+<link rel="stylesheet" href="../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：工作入口聚合（按角色与页面权限过滤，无权限入口保留位置并标注原因）。 */
+  .mr-id { display: flex; flex-direction: column; gap: 4px; }
+  .mr-id__n { font-size: 15px; font-weight: 600; }
+  .mr-id__m { font-size: 11.5px; color: var(--muted); line-height: 1.7; }
+  .mr-grp { margin-bottom: 12px; }
+  .mr-grp__h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 2px 2px 6px; }
+  .mr-grp__h b { font-size: 13px; }
+  .mr-grp__h span { font-size: 11px; color: var(--faint); }
+  .mr-sub { display: block; font-size: 10.5px; color: var(--muted); line-height: 1.35; margin-top: 3px; }
+  .mr-off { display: block; font-style: normal; font-size: 10px; color: var(--warn); margin-top: 2px; }
+</style>
+</head>
+<body class="ry-app" data-root="../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+
+  <div id="mr-host"></div>
+
+  <div id="mr-main">
+
+    <div class="ry-hcard">
+      <div class="ry-hcard__body">
+        <div class="mr-id">
+          <div class="mr-id__n">工作入口 <span class="h5-sec-note" id="mr-who">—</span></div>
+          <div class="mr-id__m" id="mr-scope">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="mr-groups"></div>
+
+    <!-- 本页契约 -->
+    <div class="ry-hcard ry-hcard--flat" style="margin-top:14px">
+      <div class="ry-hcard__head"><h3>本页契约</h3><div class="ry-hcard__extra"><span class="h5-sec-note" id="mr-contract-no">PG-HOME-TODAY</span></div></div>
+      <div class="ry-hcard__body">
+        <ul class="ry-kv ry-kv--tight" id="mr-contract"></ul>
+        <p class="ry-hint">本页聚合工作入口，不重复首页的待办摘要与「今日三件事」，也不直接承载业务操作。</p>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../assets/js/demo-data.js"></script>
+<script src="../assets/js/prototype-store.js"></script>
+<script src="../assets/js/permissions.js"></script>
+<script src="../assets/js/common-actions.js"></script>
+<script src="../assets/js/navigation.js"></script>
+<script src="../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.more';
+  var PATH = 'h5/more.html';
+  var me = S.currentUser();
+
+  RY.nav.h5shell({
+    title: '工作入口',
+    sub: '按角色与页面权限过滤',
+    back: false,
+    nav: 'more',
+    tabbar: true
+  });
+
+  /* ---------------------------------------------------------- 本页契约 */
+
+  function contractRows(extra) {
+    var e = (RY.manifest && RY.manifest.byPath && RY.manifest.byPath[PATH]) || {};
+    function clean(list) {
+      return (list || []).map(function (x) { return String(x).trim(); }).filter(Boolean);
+    }
+    var rows = [
+      ['页面契约', (e.contract || 'PG-HOME-TODAY') + ' · ' + (e.end || 'H5') + ' · ' + (e.module || '首页和工作入口')],
+      ['可进入角色', e.roles || 'ALL5'],
+      ['PRD 来源', e.prd || 'prd/00 §1.1；prd/05 §3.1'],
+      ['覆盖验收', clean(e.ac).join(' ') || 'AC-02'],
+      ['本页视图', clean(e.views).join('、') || '工作入口聚合（客户／联系人／线索／商机／任务／活动／拜访／日程／日报／知识／消息／瑞赢 AI）、按角色与页面权限过滤']
+    ];
+    return rows.concat(extra || []);
+  }
+
+  function renderContract(extra) {
+    ui.qs('#mr-contract').innerHTML = contractRows(extra).map(function (r) {
+      return '<li><span>' + ui.esc(r[0]) + '</span><b>' + ui.esc(r[1]) + '</b></li>';
+    }).join('');
+    var e = (RY.manifest && RY.manifest.byPath && RY.manifest.byPath[PATH]) || {};
+    if (e.contract) ui.qs('#mr-contract-no').textContent = e.contract;
+  }
+
+  /* 进入页面即重新鉴权：无权限时不展示任何入口与数量。 */
+  if (!P.page(PAGE)) {
+    ui.qs('#mr-main').style.display = 'none';
+    ui.qs('#mr-host').innerHTML = ui.stateCard('no-permission', {
+      title: '没有工作入口页面的访问权限',
+      body: '<p>' + ui.esc(P.whyNot('home') || '当前身份没有工作入口页面权限。') + '</p>' +
+            '<p class="ry-hint">工作入口本身也是页面权限的一部分：没有权限时不展示入口清单与数量。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('index.html') + '">返回工作台</a>'
+    });
+    return;
+  }
+
+  /* ---------------------------------------------------------------- 入口清单 */
+
+  /* 清单与清单顺序对齐 page-manifest 的 PG-HOME-TODAY 视图口径；
+     path 必须是在清单中登记过的真实页面，不新增未登记入口。 */
+  var GROUPS = [
+    {
+      n: '客户与联系人', note: '主数据',
+      items: [
+        { n: '客户', ico: '客', path: 'h5/customer/list.html', page: 'h5.customer.list', sub: '搜索 · 卡片列表 · 底部筛选' },
+        { n: '联系人', ico: '联', path: 'h5/contact/list.html', page: 'h5.contact.list', sub: '列表 · 搜索 · 默认脱敏' },
+        { n: '全国公海', ico: '海', path: 'h5/customer/pool.html', page: 'h5.customer.pool', sub: '最小摘要 · 单条认领／释放' }
+      ]
+    },
+    {
+      n: '销售过程', note: '线索到拜访',
+      items: [
+        { n: '线索', ico: '线', path: 'h5/lead/list.html', page: 'h5.lead.list', sub: '我的｜团队｜池内' },
+        { n: '商机', ico: '机', path: 'h5/opportunity/list.html', page: 'h5.opp.list', sub: '列表 · 筛选 · 无批量' },
+        { n: '销售活动', ico: '活', path: 'h5/activity/list.html', page: 'h5.activity.list', sub: '我的｜团队 · 只做单条' },
+        { n: '正式拜访', ico: '访', path: 'h5/activity/list.html?tab=visit', page: 'h5.visit.list', sub: '互动 · 我的拜访' }
+      ]
+    },
+    {
+      n: '工作与日程', note: '执行',
+      items: [
+        { n: '任务', ico: '任', path: 'h5/task/list.html', page: 'h5.task.list', sub: '待确认｜我的｜团队' },
+        { n: '日程', ico: '程', path: 'h5/calendar/index.html', page: 'h5.calendar', sub: '独立日程 · 企微同步状态' },
+        { n: '日报', ico: '报', path: 'h5/activity/list.html?tab=report', page: 'h5.report.daily', sub: '互动 · 我的日报' },
+        { n: '团队处理', ico: '队', path: 'h5/team/index.html', page: 'h5.team.index', sub: '线索 · 任务 · 日报 · 拜访' }
+      ]
+    },
+    {
+      n: '知识与消息', note: '支撑',
+      items: [
+        { n: '知识', ico: '知', path: 'h5/knowledge/list.html', page: 'h5.knowledge.list', sub: '仅已发布且在授权范围内' },
+        { n: '消息', ico: '消', path: 'h5/message/list.html', page: 'h5.message', sub: '已读未读 · 来源深链' }
+      ]
+    },
+    {
+      n: '瑞赢 AI', note: '辅助',
+      items: [
+        { n: '瑞赢 AI', ico: 'AI', path: 'h5/agent/index.html', page: 'h5.agent.index', sub: '六项能力 · 线索 AI 创建试点' }
+      ]
+    }
+  ];
+
+  /* 入口级拒绝原因：页面权限按角色集合判定，与动作权限、数据范围、字段规则分别成立。 */
+  function pageReason(pageKey) {
+    var allow = (P.PAGES && P.PAGES[pageKey]) || [];
+    var names = allow.map(function (r) { return P.ROLES[r] ? P.ROLES[r].name : r; }).join('、');
+    return '当前模拟身份为「' + me.name + '（' + (P.ROLES[me.role] ? P.ROLES[me.role].name : me.role) + '）」，该入口仅对 ' +
+      names + ' 开放。权限由「角色页面权限 ∩ 动作权限 ∩ 数据范围 ∩ 字段规则 ∩ 当前对象状态」共同决定，多角色时取并集。';
+  }
+
+  function item(it) {
+    var ok = P.page(it.page);
+    var ico = '<span class="ry-grid__ico">' + ui.esc(it.ico) + '</span>';
+    var tx = '<span class="ry-grid__tx">' + ui.esc(it.n) + '</span>' +
+      (ok ? '<span class="mr-sub">' + ui.esc(it.sub) + '</span>'
+          : '<i class="mr-off">无权限</i>');
+    if (ok) {
+      return '<a class="ry-grid__it" href="' + RY.nav.href(it.path) + '">' + ico + tx + '</a>';
+    }
+    /* 无权限入口保留位置并标注原因，不用隐藏代替权限表达。 */
+    return '<span class="ry-grid__it is-off" data-entry="' + ui.esc(it.n) + '" data-reason="' +
+      ui.esc(pageReason(it.page)) + '">' + ico + tx + '</span>';
+  }
+
+  function render() {
+    ui.qs('#mr-who').textContent = me.name + '（' + (P.ROLES[me.role] ? P.ROLES[me.role].name : me.role) + '）';
+
+    var total = 0, allowed = 0;
+    GROUPS.forEach(function (g) {
+      g.items.forEach(function (it) { total++; if (P.page(it.page)) allowed++; });
+    });
+
+    ui.qs('#mr-scope').textContent =
+      '数据范围：' + P.dataScope(me).label + '。本页共 ' + total + ' 个入口，其中 ' + allowed +
+      ' 个对你的角色开放；未开放的入口保留位置并标注原因，不以隐藏代替权限表达。';
+
+    ui.qs('#mr-groups').innerHTML = GROUPS.map(function (g) {
+      var on = g.items.filter(function (it) { return P.page(it.page); }).length;
+      return '<div class="mr-grp"><div class="mr-grp__h"><b>' + ui.esc(g.n) + '</b>' +
+        '<span>' + ui.esc(g.note) + ' · 开放 ' + on + ' / ' + g.items.length + '</span></div>' +
+        '<div class="ry-grid">' + g.items.map(item).join('') + '</div></div>';
+    }).join('');
+
+    ui.qsa('#mr-groups [data-entry]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        ui.modal({
+          title: '该入口对你的角色未开放',
+          size: 'sm',
+          body: '<p>入口：<b>' + ui.esc(el.getAttribute('data-entry')) + '</b></p>' +
+            '<p>' + ui.esc(el.getAttribute('data-reason')) + '</p>' +
+            '<p class="ry-hint">入口位置保留用于表达权限，不隐藏；再次进入本页时会重新鉴权。</p>',
+          footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+        });
+      });
+    });
+  }
+
+  /* ---------------------------------------------------------- 初始化 */
+
+  renderContract([
+    ['聚合口径', '工作入口聚合（客户／联系人／线索／商机／任务／活动／拜访／日程／日报／知识／消息／瑞赢 AI）'],
+    ['过滤口径', '按角色页面权限过滤；无权限入口保留位置并标注原因，不用隐藏代替权限表达'],
+    ['权限口径', '角色页面权限 ∩ 动作权限 ∩ 数据范围 ∩ 字段规则 ∩ 当前对象状态；多角色取并集，不做显式拒绝'],
+    ['不在本页', '不重复首页的待办摘要与「今日三件事」；本页不含批量、不含导出、不含管理配置'],
+    ['H5 边界', 'H5 面向一线执行与查看；导出、批量白名单、分析与管理配置只在 PC 提供']
+  ]);
+
+  render();
+})();
+</script>
+</body>
+</html>

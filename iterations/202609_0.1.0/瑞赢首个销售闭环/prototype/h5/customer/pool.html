@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>全国公海 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：全国公海（最小摘要 + 授权范围内单条操作，不提供批量）。 */
+  .cp-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .cp-summary { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line-soft); }
+  .cp-summary__it { padding: 9px 4px; text-align: center; border-right: 1px solid var(--line-soft); }
+  .cp-summary__it:last-child { border-right: 0; }
+  .cp-summary__v { display: block; font-size: 15px; font-weight: 600; font-family: var(--mono); }
+  .cp-summary__k { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .cp-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 9px; }
+  .cp-acts .ry-btn { min-height: 34px; justify-content: center; }
+  .cp-mini { font-size: 11px; color: var(--faint); line-height: 1.6; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<!-- H5 外壳：顶部条与底部五入口由 navigation.js 渲染，本页不重复实现 -->
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+
+  <div id="cp-host"></div>
+
+  <div id="cp-main">
+
+    <!-- 口径条：全国公海是唯一固定对象，不区分区域公海 -->
+    <div class="cp-bar">
+      <button class="ry-chip" id="cp-scope">当前数据范围</button>
+      <button class="ry-chip" id="cp-rule">公海与保护期规则</button>
+      <button class="ry-chip" id="cp-limit">我的持有量</button>
+    </div>
+
+    <div class="ry-hcard">
+      <div class="ry-hcard__head">
+        <h3>公海客户</h3>
+        <div class="ry-hcard__extra"><span class="h5-sec-note">全国唯一公海</span></div>
+      </div>
+      <div class="ry-hcard__body" style="padding-bottom:0">
+        <p class="ry-hint">全国公海只收纳当前零条有效经营关系的客户主档。公海摘要不展示经营单位、区域或业务线；认领或分派时再创建初始经营关系。</p>
+      </div>
+      <div class="cp-summary" id="cp-summary"></div>
+      <div class="ry-hcard__body" style="padding-top:10px">
+        <p class="cp-mini" id="cp-summary-note">—</p>
+      </div>
+    </div>
+
+    <div id="cp-list"></div>
+
+    <!-- 本页契约：评审对照用，列出页面契约编号与边界，不承载业务事实 -->
+    <div class="ry-hcard ry-hcard--flat" style="margin-top:14px">
+      <div class="ry-hcard__head"><h3>本页契约</h3><div class="ry-hcard__extra"><span class="h5-sec-note" id="cp-contract-no">PG-CUS-POOL</span></div></div>
+      <div class="ry-hcard__body">
+        <ul class="ry-kv ry-kv--tight" id="cp-contract"></ul>
+        <p class="ry-hint">公海摘要固定展示：客户名称、类型、价值、最近活动日期、入池时间与原因、是否可认领和上限提示。</p>
+        <p class="ry-hint">不展示：联系人、联系方式、详细地址、金额、报价／合同、历史责任、其他经营关系与无权客户关系。</p>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.customer.pool';
+  var PATH = 'h5/customer/pool.html';
+  var me = S.currentUser();
+
+  RY.nav.h5shell({
+    title: '全国公海',
+    sub: '最小摘要 · 授权范围内单条操作',
+    back: false,
+    nav: 'customer',
+    tabbar: true
+  });
+
+  /* ---------------------------------------------------------- 本页契约 */
+
+  function contractRows(extra) {
+    var e = (RY.manifest && RY.manifest.byPath && RY.manifest.byPath[PATH]) || {};
+    var rows = [
+      ['页面契约', (e.contract || 'PG-CUS-POOL') + ' · ' + (e.end || 'H5') + ' · ' + (e.module || '客户和联系人')],
+      ['可进入角色', e.roles || 'R1 销售｜R2 销售主管｜R4 客户数据管理｜R5 系统管理员'],
+      ['PRD 来源', e.prd || 'prd/01 §11'],
+      ['覆盖验收', (e.ac || []).join(' ') || 'AC-42'],
+      ['本页视图', (e.views || []).join('、') || '全国公海最小摘要、授权范围内单条操作']
+    ];
+    return rows.concat(extra || []);
+  }
+
+  function renderContract(extra) {
+    ui.qs('#cp-contract').innerHTML = contractRows(extra).map(function (r) {
+      return '<li><span>' + ui.esc(r[0]) + '</span><b>' + ui.esc(r[1]) + '</b></li>';
+    }).join('');
+    var e = (RY.manifest && RY.manifest.byPath && RY.manifest.byPath[PATH]) || {};
+    if (e.contract) ui.qs('#cp-contract-no').textContent = e.contract;
+  }
+
+  /* 进入页面即重新鉴权：无权限时不展示任何客户名称、经营单元与数量。 */
+  if (!P.page(PAGE)) {
+    ui.qs('#cp-main').style.display = 'none';
+    ui.qs('#cp-host').innerHTML = ui.stateCard('no-permission', {
+      title: '没有全国公海页面的访问权限',
+      body: '<p>' + ui.esc(P.whyNot('pool.view') || '当前身份没有「全国公海」页面权限。') + '</p>' +
+            '<p class="ry-hint">公海只展示最小摘要。没有权限时不返回任何客户名称、数量与经营单元，也不展示被隐藏的关系数量。' +
+            '公海页面权限与认领、分派动作权限相互独立。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/customer/list.html') + '">返回客户列表</a>'
+    });
+    return;
+  }
+
+  var canClaim = P.can('pool.claim');
+  var canAssign = P.can('pool.assign');
+  var rule = S.all('cusPoolRule') || {};
+
+  /* ------------------------------------------------------------ 池内列表 */
+
+  /* 只取当前仍在池内的有效占用记录：已认领／已分派／已回收的记录不再出现在公海。 */
+  function inPool() {
+    return S.poolRecords().filter(function (p) { return p.status === '有效'; });
+  }
+
+  /* 公海是无有效经营关系的客户主档，认领时再指定区域与业务线。
+     页面只做展示与预检，真正判定以认领提交时的原子校验为准。 */
+  function claimState(p) {
+    var hold = S.relationHoldCount(me.id);
+    if (hold >= S.RELATION_HOLD_LIMIT) {
+      return { ok: false, why: '你的主负责有效经营关系已达上限（' + hold + ' / ' + S.RELATION_HOLD_LIMIT + ' 条），需先停止不再经营的关系或由主管转派。' };
+    }
+    return { ok: true };
+  }
+
+  function summary() {
+    var list = inPool();
+    var claimable = list.filter(function (p) { return claimState(p).ok; }).length;
+    var mine = S.relationHoldCount(me.id);
+    ui.qs('#cp-summary').innerHTML =
+      '<div class="cp-summary__it"><span class="cp-summary__v">' + list.length + '</span><span class="cp-summary__k">公海客户</span></div>' +
+      '<div class="cp-summary__it"><span class="cp-summary__v">' + claimable + '</span><span class="cp-summary__k">我满足认领资格</span></div>' +
+      '<div class="cp-summary__it"><span class="cp-summary__v">' + mine + ' / ' + S.RELATION_HOLD_LIMIT + '</span><span class="cp-summary__k">我的持有量</span></div>';
+    ui.qs('#cp-summary-note').textContent =
+      '持有量按本人主负责的有效经营关系计算，协作、停止经营、入池与历史不计。最后一条有效关系停止后客户自动入池，不提供主动释放或主管回收入口。' +
+      'H5 只做授权范围内单条认领与主管分派，不提供主动释放或批量；批量分派、导出与公海规则配置只在 PC 提供。';
+  }
+
+  function poolRow(p) {
+    var cs = claimState(p);
+
+    var acts = '';
+    if (cs.ok) {
+      if (canClaim) {
+        acts += '<button class="ry-btn ry-btn--primary" data-claim="' + ui.esc(p.id) + '">认领</button>';
+      } else {
+        acts += ui.actionBtn('pool.claim', '认领', ' data-noop="1"');
+      }
+    } else {
+      acts += '<span class="ry-btn is-off" data-denied="1" data-action="pool.claim" title="' +
+        ui.esc(cs.why) + '">认领<i class="ry-btn__lock">不可认领</i></span>';
+    }
+    if (canAssign) {
+      acts += '<button class="ry-btn" data-assign="' + ui.esc(p.id) + '">主管分派</button>';
+    } else {
+      acts += ui.actionBtn('pool.assign', '主管分派', ' data-noop="1"');
+    }
+    acts += '<a class="ry-btn" href="' + RY.nav.href('h5/customer/detail.html?id=' + encodeURIComponent(p.customerId)) + '">客户详情</a>';
+
+    return '<div class="ry-hcard"><div class="ry-hcard__body">' +
+      '<div class="ry-hrow__top"><span class="ry-hrow__t">' + ui.esc(p.customerName) + '</span>' +
+        '<span class="ry-hrow__tags">' + ui.tag(p.customerType, 'muted') + ' ' + ui.valueTag(p.customerValue) +
+        (cs.ok ? ' ' + ui.tag('可认领', 'ok') : ' ' + ui.tag('不可认领', 'warn')) + '</span></div>' +
+      '<ul class="ry-kv ry-kv--tight" style="margin-top:8px">' +
+        '<li><span>当前经营状态</span><b>无有效经营关系</b></li>' +
+        '<li><span>最近活动日期</span><b>' + ui.esc(p.lastActivityAt || '暂无销售活动') + '</b></li>' +
+        '<li><span>入池时间</span><b>' + ui.esc(p.entryAt) + '</b></li>' +
+        '<li><span>入池原因</span><b>' + ui.esc(p.entryReason) + '</b></li>' +
+      '</ul>' +
+      (cs.ok ? '' : '<p class="ry-hint">不可认领原因：' + ui.esc(cs.why) + '</p>') +
+      '<p class="cp-mini">摘要不含联系人、联系方式、详细地址、金额、报价／合同、历史责任、其他经营关系与无权客户关系。</p>' +
+      '<div class="cp-acts">' + acts + '</div>' +
+    '</div></div>';
+  }
+
+  function renderPool() {
+    var list = inPool();
+    if (!list.length) {
+      ui.qs('#cp-list').innerHTML = ui.empty(
+        '全国公海当前没有待分配客户。',
+        '<a class="ry-btn" href="' + RY.nav.href('h5/customer/list.html') + '">返回客户列表</a>');
+      return;
+    }
+    ui.qs('#cp-list').innerHTML = '<div class="ry-sec-title">公海客户 <span class="h5-sec-note">共 ' + list.length + ' 条</span></div>' +
+      list.map(poolRow).join('');
+  }
+
+  /* -------------------------------------------------------------- 动作 */
+
+  function doClaim(recordId) {
+    var p = S.poolRecords().filter(function (x) { return x.id === recordId; })[0];
+    if (!p) { ui.toast('该公海记录已不在池内。', 'warn'); renderPool(); summary(); return; }
+    if (S.relationHoldCount(me.id) >= S.RELATION_HOLD_LIMIT) {
+      ui.modal({
+        title: '已达持有上限', size: 'sm',
+        body: '<p>你的主负责有效经营关系已达上限 ' + S.RELATION_HOLD_LIMIT + ' 条，不能继续认领。</p>' +
+          '<p class="ry-hint">持有量按本人主负责的有效经营关系计算；可停止不再经营的关系，或请主管分派给其他同事。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+      });
+      return;
+    }
+    if (!claimState(p).ok) { ui.toast(claimState(p).why, 'warn'); return; }
+    RY.nav.sheet({
+      title: '认领客户', sub: ui.esc(p.customerName),
+      body: ui.field('经营区域', ui.select('region', (me.region || []).map(function (x) { return { value: x, label: S.regionName(x) }; }), (me.region || [])[0] || ''), '', true) +
+        ui.field('业务线', ui.select('line', [{ value: 'BL-UNSPECIFIED', label: '未明确业务线' }].concat((me.businessLine || []).map(function (x) { return { value: x, label: S.businessLineName(x) }; })), 'BL-UNSPECIFIED'), '', true) +
+        '<p class="ry-hint">认领成功后结束公海记录，并以当前用户为主负责人新建经营关系。并发时仅首人成功。</p>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="claim-ok">确认认领</button>',
+      onOpen: function (host, close) { ui.qs('#claim-ok', host).addEventListener('click', function () { var v = ui.formValues(host);
+        var r = S.claimPool(recordId, me.id, { region: v.region, businessLine: v.line });
+        if (!r.ok) { ui.toast(r.reason, 'warn'); renderPool(); summary(); return; }
+        close();
+        ui.toast('认领成功，已生成新的主负责人责任；保护期自服务端事务时间起算。', 'success');
+        renderAll();
+      }); }
+    });
+  }
+
+  function doAssign(recordId) {
+    var p = S.poolRecords().filter(function (x) { return x.id === recordId; })[0];
+    if (!p) { ui.toast('该公海记录已不在池内。', 'warn'); renderPool(); summary(); return; }
+    var cands = S.all('users').filter(function (u) { return u.role === 'R1' || u.role === 'R2'; });
+    RY.nav.sheet({
+      title: '主管分派', sub: '单条 · 全国公海',
+      body: '<p class="ry-hint">分派成功后结束公海记录，并以所选区域、业务线和负责人新建有效经营关系。</p>' +
+        ui.field('经营区域', ui.select('region', S.activeRegions().map(function (x) { return { value: x.code, label: x.name }; }), 'RG-EAST'), '', true) +
+        ui.field('业务线', ui.select('line', S.all('businessLines').filter(function (x) { return x.status === '启用'; }).map(function (x) { return { value: x.code, label: x.name }; }), 'BL-UNSPECIFIED'), '', true) +
+        '<div class="ry-field__label">分派给</div>' +
+        cands.map(function (u) {
+          return '<div class="ry-hrow__meta" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line-soft)">' +
+            '<span><b>' + ui.esc(u.name) + '</b> · ' + ui.esc(u.dept) + '<br><span class="cp-mini">持有 ' +
+            S.relationHoldCount(u.id) + ' / ' + S.RELATION_HOLD_LIMIT + '</span></span>' +
+            '<button class="ry-btn ry-btn--sm" data-target="' + ui.esc(u.id) + '">分派</button></div>';
+        }).join(''),
+      footer: '<button class="ry-btn" data-close>取消</button>',
+      onOpen: function (host, close) {
+        host.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-target]');
+          if (!b) return;
+          var tid = b.getAttribute('data-target');
+          var v = ui.formValues(host);
+          var r = S.assignPool(recordId, tid, { region: v.region, businessLine: v.line });
+          close();
+          if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+          ui.toast('已分派给 ' + S.userName(tid) + '，并生成保护期。', 'success');
+          renderAll();
+        });
+      }
+    });
+  }
+
+  function renderAll() { summary(); renderPool(); bind(); }
+
+  function bind() {
+    ui.qsa('[data-claim]').forEach(function (b) {
+      b.addEventListener('click', function () { doClaim(b.getAttribute('data-claim')); });
+    });
+    ui.qsa('[data-assign]').forEach(function (b) {
+      b.addEventListener('click', function () { doAssign(b.getAttribute('data-assign')); });
+    });
+  }
+
+  /* ------------------------------------------------------------ 说明抽屉 */
+
+  ui.qs('#cp-scope').addEventListener('click', function () {
+    RY.nav.sheet({
+      title: '数据范围', sub: '当前身份',
+      body: '<p class="ry-read">' + ui.esc(P.dataScope(me).label) + '</p>' +
+        '<ul class="ry-kv ry-kv--tight" style="margin-top:10px">' +
+        '<li><span>公海可见</span><b>所有销售可查看固定最小摘要，但不因此获得完整客户或敏感业务数据权限</b></li>' +
+        '<li><span>认领校验</span><b>动作权限、区域资格、业务线资格、持有上限、保护规则、仍在池内且无其他有效主负责人</b></li>' +
+        '<li><span>并发</span><b>认领使用原子更新，仅首人成功；重复提交返回首次结果</b></li>' +
+        '<li><span>无权数据</span><b>不返回结果、数量、摘要与标题，也不展示被隐藏的关系数量</b></li>' +
+        '</ul>'
+    });
+  });
+
+  ui.qs('#cp-rule').addEventListener('click', function () {
+    RY.nav.sheet({
+      title: '公海与保护期规则', sub: 'A 类业务配置（只读）',
+      body: '<ul class="ry-kv ry-kv--tight">' +
+        '<li><span>唯一池</span><b>0.1 只建设一个全国公海，不建设区域公海、区域优先路由、多池或跨池转移</b></li>' +
+        '<li><span>保护期</span><b>' + ui.esc(rule.protectNote || '保护期只在从公海认领或分派成功时生成，活动不自动续期，到期不自动回收') + '</b></li>' +
+        '<li><span>持有上限</span><b>' + ui.esc(String(rule.holdLimit || S.RELATION_HOLD_LIMIT)) + ' 条 · ' + ui.esc(rule.holdLimitNote || '主管默认不能突破') + '</b></li>' +
+        '<li><span>入池方式</span><b>' + ui.esc(rule.recycleMode || '最后一条有效经营关系停止后自动入池') + '；' + ui.esc(rule.recycleNote || '不提供主动释放或主管回收入口') + '</b></li>' +
+        '</ul>' +
+        '<p class="ry-hint">配置页只有编辑／保存，无新建、无复制、无删除、无停用；全国公海是唯一固定对象。</p>'
+    });
+  });
+
+  ui.qs('#cp-limit').addEventListener('click', function () {
+    var mine = S.relationHoldCount(me.id);
+    RY.nav.sheet({
+      title: '我的持有量', sub: '主负责的有效经营关系',
+      body: '<ul class="ry-kv ry-kv--tight">' +
+        '<li><span>当前持有</span><b>' + mine + ' / ' + S.RELATION_HOLD_LIMIT + '</b></li>' +
+        '<li><span>统计口径</span><b>仅本人主负责的「有效」经营关系；协作、停止经营、入池与历史不计</b></li>' +
+        '<li><span>校验时机</span><b>主动建关系、认领、分派、转派均校验；未配置不限，主管默认不能突破</b></li>' +
+        '</ul>'
+    });
+  });
+
+  /* ---------------------------------------------------------- 初始化 */
+
+  renderContract([
+    ['唯一池', '全国公海是唯一固定客户主档池，只包含零条有效经营关系的客户'],
+    ['H5 边界', '只做授权范围内单条认领与主管分派；不提供主动释放、批量或导出'],
+    ['摘要边界', '不展示联系人、联系方式、详细地址、金额、报价／合同、历史责任、其他经营关系与无权客户关系'],
+    ['入池口径', '停止最后一条有效经营关系后系统自动入池，不提供主动释放'],
+    ['保护期', '只由公海认领或公海分派产生；主动建关系与直接转派不产生'],
+    ['PC 专属', '批量白名单、复杂筛选、全国公海规则配置、历史与审计只在 PC 提供']
+  ]);
+
+  renderAll();
+  /* 委托绑定只做一次：动作后重建列表，重复绑定会叠加弹层。 */
+  ui.bindDenied(document.body);
+})();
+</script>
+</body>
+</html>

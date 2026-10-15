@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>管理分析 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：管理分析（六主题 × 24 正式指标） */
+  .an-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .an-cut { font-size: 12.5px; color: var(--muted); line-height: 1.9; }
+  .an-theme { margin-bottom: 18px; }
+  .an-theme__h { display: flex; align-items: center; gap: 10px; margin: 0 0 9px; }
+  .an-theme__h h3 { font-size: 15px; margin: 0; }
+  .an-sec { font-size: 11.5px; color: var(--muted); font-weight: 400; letter-spacing: .02em; }
+  .an-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .an-card { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); padding: 12px 13px; display: flex; flex-direction: column; gap: 7px; min-height: 132px; }
+  .an-card.is-failed { border-color: var(--danger-line); background: var(--danger-soft); }
+  .an-card.is-unknown { background: var(--surface-2); }
+  .an-card__t { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .an-card__v { font-size: 26px; font-weight: 650; line-height: 1.15; letter-spacing: -.01em; }
+  .an-card__v small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 3px; }
+  .an-card__v.is-dash { color: var(--faint); }
+  .an-card__m { font-size: 11.5px; color: var(--muted); line-height: 1.7; margin-top: auto; }
+  .an-card__f { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .an-dist { display: flex; flex-direction: column; gap: 5px; }
+  .an-dist__r { display: grid; grid-template-columns: 76px 1fr 52px; gap: 7px; align-items: center; font-size: 11.5px; }
+  .an-dist__b { height: 7px; border-radius: 4px; background: var(--line-soft); overflow: hidden; }
+  .an-dist__b i { display: block; height: 100%; background: var(--brand); }
+  .an-filter { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+  @media (max-width: 1320px) { .an-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 1080px) { .an-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="an-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var PAGE = 'analysis.dashboard';
+  var PRESETS = ['本月', '上月', '本季度', '近 30 天'];
+
+  var st = S.listState('analysis.dashboard');
+  var flt = st.flt || (st.flt = { range: '本月', region: '', line: '', owner: '' });
+
+  RY.nav.shell({
+    nav: 'analysis.dashboard',
+    title: '管理分析',
+    subtitle: '六主题 24 个正式指标。<b>未知显示「—」而不是 0</b>；单卡失败不扩散到其他卡；本页不提供直接导出。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '分析' }, { label: '管理分析' }],
+    actions: '<a class="ry-btn" href="../state.html">指标口径说明</a>'
+  });
+
+  var g = RY.perm.guard(PAGE, 'analysis', {});
+  if (!g.ok) {
+    ui.qs('#an-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可查看管理分析',
+      body: '<p>' + ui.esc(g.reason) + '</p>' +
+        '<p class="ry-hint">分析类页面只对销售主管、销售运营与系统管理员开放；销售角色不进入本页，也不展示任何指标名称、数量或摘要。</p>'
+    });
+    return;
+  }
+  if (!RY.perm.page(PAGE)) {
+    ui.qs('#an-host').innerHTML = ui.stateCard('no-permission', { title: '没有分析页面权限', body: '<p>' + ui.esc(RY.perm.whyNot('analysis.view')) + '</p>' });
+    return;
+  }
+
+  var FILTERS = {};
+  function build() {
+    FILTERS = {};
+    if (flt.region) FILTERS.region = flt.region;
+    if (flt.line) FILTERS.line = flt.line;
+    if (flt.owner) FILTERS.owner = flt.owner;
+    FILTERS.range = flt.range;
+  }
+
+  function filterBar() {
+    var regions = S.arr('regionRules');
+    var lines = S.all('businessLines');
+    return '<div class="ry-filter__row an-filter">' +
+        ui.field('统计范围', ui.select('range', PRESETS, flt.range), '', false) +
+        ui.field('区域', ui.select('region', [{ value: '', label: '全部（按我的数据范围）' }].concat(
+          regions.map(function (r) { return { value: r.name || r.code, label: r.name || r.code }; })), flt.region), '', false) +
+        ui.field('业务线', ui.select('line', [{ value: '', label: '全部' }].concat(
+          lines.map(function (l) { return { value: l.code, label: l.name }; })), flt.line), '', false) +
+        ui.field('负责人', ui.select('owner', [{ value: '', label: '全部' }].concat(
+          S.all('users').map(function (x) { return { value: x.id, label: x.name }; })), flt.owner), '', false) +
+      '</div>' +
+      '<div class="ry-filter__act"><button class="ry-btn" id="an-reset">重置</button>' +
+        '<button class="ry-btn ry-btn--primary" id="an-apply">应用筛选</button></div>';
+  }
+
+  /* 指标卡：数值、值域说明、环比与下钻入口。未知与失败都只影响本卡。 */
+  function card(v) {
+    var cls = v.status === 'failed' ? ' an-card is-failed' : (v.status === 'unknown' || v.status === 'nomapping' || v.status === 'undefined' ? ' an-card is-unknown' : ' an-card');
+    var isDash = v.status !== 'ok';
+    var body;
+    if (v.code === 'MET-OPP-STAGE' && v.status === 'ok' && v.extra && v.extra.distribution) {
+      var total = Object.keys(v.extra.distribution).reduce(function (n, k) { return n + v.extra.distribution[k]; }, 0) || 1;
+      body = '<div class="an-dist">' + Object.keys(v.extra.distribution).map(function (k) {
+        var n = v.extra.distribution[k];
+        return '<div class="an-dist__r"><span>' + ui.esc(k) + '</span>' +
+          '<span class="an-dist__b"><i style="width:' + Math.round(n / total * 100) + '%"></i></span>' +
+          '<span>' + n + ' 个</span></div>';
+      }).join('') + '</div>' +
+      '<div class="an-card__m">仅统计进行中商机</div>';
+    } else if (v.code === 'MET-OPP-WINRATE' && v.status === 'ok') {
+      body = '<div class="an-card__v">' + v.display + '<small>' + ui.esc(v.unit) + '</small></div>' +
+        '<div class="an-card__m">分子 ' + v.extra.numerator + ' ÷ 分母 ' + v.extra.denominator + '；关闭不进分母</div>';
+    } else if (v.status === 'ok') {
+      body = '<div class="an-card__v">' + v.display + '<small>' + ui.esc(v.unit) + '</small></div>' +
+        (v.trend ? '<div class="an-card__m">环比 ' + ui.esc(v.trend.display) +
+          (v.trend.reason ? '（' + ui.esc(v.trend.reason) + '）' : '') + '</div>' : '') +
+        (v.extra && v.extra.denominator !== undefined ? '<div class="an-card__m">分母 ' + v.extra.denominator + '　分子 ' + v.extra.numerator + '</div>' : '');
+    } else {
+      body = '<div class="an-card__v is-dash">—</div>' +
+        '<div class="an-card__m">' + ui.esc(v.reason || '暂无可用数据') + '</div>';
+    }
+    var drillDisabled = v.status !== 'ok' || !RY.perm.can('analysis.drill');
+    return '<div class="' + cls + '">' +
+      '<div class="an-card__t"><span>' + ui.esc(v.name) + '</span>' + ui.tag('V' + String(v.version || '1').replace(/^V/, ''), 'muted') + '</div>' +
+      body +
+      '<div class="an-card__f">' +
+        (drillDisabled
+          ? '<button class="ry-btn ry-btn--sm" data-denied="1"' + (v.status !== 'ok' ? '' : ' data-action="analysis.drill"') + '>下钻明细</button>'
+          : '<a class="ry-btn ry-btn--sm" href="drill.html?code=' + encodeURIComponent(v.code) + '&range=' + encodeURIComponent(flt.range) + '">下钻明细</a>') +
+        '<span class="ry-hint">' + ui.esc(v.refresh || '') + '　截止 ' + ui.esc(v.dataAt || '—') + '</span>' +
+      '</div></div>';
+  }
+
+  function render() {
+    build();
+    var board = S.metricBoard(FILTERS);
+    var all = board.reduce(function (a, t) { return a.concat(t.period, t.current); }, []);
+    var failed = all.filter(function (x) { return x.status === 'failed'; }).length;
+    var unknown = all.filter(function (x) { return x.status !== 'ok'; }).length;
+
+    ui.qs('#an-host').innerHTML =
+      '<div class="ry-card"><div class="ry-card__body">' +
+        '<div class="an-head"><div class="an-cut">' +
+          '统计范围 <b>' + ui.esc((all[0] && all[0].range && all[0].range.label) || flt.range) + '</b>　' +
+          '周期 ' + ui.esc((all[0] && all[0].range ? (all[0].range.from + ' ~ ' + all[0].range.to) : '—')) + '<br>' +
+          '数据截止时间 <b>' + ui.esc((all[0] && all[0].dataAt) || '—') + '</b>　' +
+          '指标版本 ' + all.filter(function (x, i) { return all.map(function (y) { return y.code; }).indexOf(x.code) === i; })
+            .map(function (x) { return x.code + ' ' + x.version; }).length + ' 个已发布版本<br>' +
+          '数据范围 ' + ui.esc(RY.perm.dataScope(u).label) + '　当前身份 ' + ui.esc((RY.perm.ROLES[u.role] || {}).code || u.role) +
+        '</div><div class="an-card__f">' + ui.tag('正式指标 ' + all.length + ' 个', 'brand') +
+          ui.tag('未知／不可计算 ' + unknown + ' 个', unknown ? 'warn' : 'muted') +
+          (failed ? ui.tag('单卡失败 ' + failed + ' 个', 'bad') : '') + '</div></div>' +
+        '<div class="ry-divider"></div>' + filterBar() +
+        ui.banner('未知、不可计算、无分母的指标一律显示「<b>—</b>」，只有确定为零才显示 0。' +
+          '单卡数据获取失败只影响该卡，其他指标继续可用。<b>本页不提供导出</b>：导出只能从下钻明细按固定模板发起。', 'info') +
+      '</div></div>' +
+
+      board.map(function (t) {
+        return '<section class="an-theme"><div class="an-theme__h"><h3>' + ui.esc(t.theme) + '</h3>' +
+          '<span class="an-sec">' + (t.period.length + t.current.length) + ' 个指标</span>' +
+          '<span class="ry-hint">按「本期表现」与「当前状态」分区，不同口径不混排</span></div>' +
+          (t.period.length ? '<div class="an-sec" style="margin:2px 0 6px">本期表现（发生型，受统计范围控制）</div>' +
+            '<div class="an-grid">' + t.period.map(card).join('') + '</div>' : '') +
+          (t.current.length ? '<div class="an-sec" style="margin:12px 0 6px">当前状态（不受统计范围控制，受区域／团队／负责人／业务线筛选影响）</div>' +
+            '<div class="an-grid">' + t.current.map(card).join('') + '</div>' : '') +
+        '</section>';
+      }).join('') +
+
+      '<section class="ry-card ry-card--flat"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ANALYSIS</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ANALYSIS · PC · 分析</b></li>' +
+        '<li><span>依据</span><b>prd/00 §5.4；prd/06 §4～§6</b></li>' +
+        '<li><span>可进入角色</span><b>销售主管/经理｜管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-50 AC-51</b></li>' +
+        '<li><span>指标口径</span><b>六主题 24 个正式指标；本期表现与当前状态分区展示，不做等权平铺</b></li>' +
+        '<li><span>空值口径</span><b>未知／不可计算／无分母显示「—」；只有确定为零才显示 0</b></li>' +
+        '<li><span>失败隔离</span><b>单卡失败只影响该卡，其他卡继续可用，不整页拒绝</b></li>' +
+        '<li><span>明确不做</span><b>排名、红黑榜、绩效评分、收入预测、自由 BI、自定义看板；本页不提供直接导出</b></li>' +
+        '<li><span>权限边界</span><b>无分析权限时不展示指标名称、数量与摘要；下钻跳转仍受源对象权限约束</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+  }
+
+  function bind() {
+    ui.qs('#an-apply').addEventListener('click', function () {
+      var v = ui.formValues(ui.qs('#an-host'));
+      flt.range = v.range; flt.region = v.region; flt.line = v.line; flt.owner = v.owner;
+      st.flt = flt; S.save(); render();
+    });
+    ui.qs('#an-reset').addEventListener('click', function () {
+      flt.range = '本月'; flt.region = ''; flt.line = ''; flt.owner = '';
+      st.flt = flt; S.save(); render();
+    });
+    ui.bindDenied('#ry-page');
+  }
+
+  render();
+  /* 评审模拟：在控制台执行 RY.store.metricInjectFail('MET-CUS-TOTAL', true) 可验证单卡失败隔离。 */
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

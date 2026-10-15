@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>会议确认 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：会议确认（会议候选 / 人工勾选批量确认 / 逐条结果）。 */
+  .am-row { border: 1px solid var(--line); border-radius: 12px; padding: 10px 11px; margin-bottom: 8px; background: var(--surface); }
+  .am-row.is-off { opacity: .6; }
+  .am-row__t { display: flex; align-items: flex-start; gap: 8px; }
+  .am-row__t b { font-size: 13px; }
+  .am-row__m { font-size: 11.5px; color: var(--muted); line-height: 1.85; margin-top: 5px; padding-left: 24px; }
+  .am-row__m code { font-family: var(--mono); font-size: 11px; }
+  .am-check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+  .am-res { border: 1px solid var(--line); border-radius: 12px; padding: 10px 11px; margin-bottom: 8px; background: var(--surface); }
+  .am-res__m { font-size: 11.5px; color: var(--muted); line-height: 1.8; margin-top: 4px; }
+  .am-bar { position: sticky; bottom: 0; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+  <div id="am-host"></div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.agent.meeting';
+
+  RY.nav.h5shell({
+    title: '会议确认',
+    sub: '会议纪要只生成任务候选 · 人工勾选批量确认',
+    back: 'h5/agent/index.html',
+    nav: 'more',
+    tabbar: true
+  });
+
+  /* ---------------------------------------------------------- 鉴权 */
+  if (!P.page(PAGE)) {
+    ui.qs('#am-host').innerHTML = ui.stateCard('no-permission', {
+      title: '没有会议确认的访问权限',
+      body: '<p>' + ui.esc(P.whyNot('agent.candidateBatch') || '当前身份没有「会议确认」页面权限。') + '</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/agent/index.html') + '">返回瑞赢 AI</a>'
+    });
+    return;
+  }
+
+  var u = S.currentUser();
+  var state = { pick: {}, result: null };
+
+  /* ---------------------------------------------------------- 数据 */
+
+  /* 会议候选：来源为会议纪要的候选任务。会议纪要只生成候选任务，不生成销售活动候选。 */
+  function meetingCandidates() {
+    return S.candidateList({}).filter(function (c) { return c.origin === '会议纪要'; });
+  }
+
+  function pending() {
+    return meetingCandidates().filter(function (c) { return c.kind === '候选任务' && c.status === '待确认'; });
+  }
+
+  function picked() {
+    return pending().filter(function (c) { return state.pick[c.id]; });
+  }
+
+  function fieldTag(c, k) {
+    var e = (c.fieldEvidence || []).filter(function (x) { return x.k === k; })[0];
+    if (!e) return ui.tag('未标注确定性', 'muted');
+    return e.certainty === '事实' ? ui.tag('事实', 'ok') : e.certainty === '推断' ? ui.tag('推断', 'warn') : ui.tag('缺失', 'bad');
+  }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function rowHtml(c) {
+    var s = state.pick[c.id] ? ' is-on' : '';
+    var on = c.status === '待确认';
+    var v = c.aiSuggestion || {};
+    return '<div class="am-row' + s + (!on ? ' is-off' : '') + '">' +
+      '<div class="am-row__t">' +
+        (on
+          ? '<label class="am-check"><input type="checkbox" data-pick="' + ui.esc(c.id) + '"' + (state.pick[c.id] ? ' checked' : '') + '><span></span></label>'
+          : '<label class="am-check"><input type="checkbox" disabled><span></span></label>') +
+        '<div style="flex:1;min-width:0"><b>' + ui.esc(v['任务名称'] || '（任务名称缺失）') + '</b></div>' +
+        ui.statusTag(c.status) + (c.writeStatus === '写入失败' ? ' ' + ui.tag('写入失败', 'bad') : '') +
+      '</div>' +
+      '<div class="am-row__m">' +
+        '截止时间 ' + (v['截止时间'] ? ui.esc(v['截止时间']) : '<span class="ry-hint">缺失</span>') + ' ' + fieldTag(c, '截止时间') + '<br>' +
+        '业务类型 ' + ui.esc(v['业务类型'] || '—') + '　责任人 ' +
+          (v['责任人'] ? ui.esc(v['责任人']) + (S.user(v['责任人']) ? '' : '（无法解析为在职用户）') : '<span class="ry-hint">缺失</span>') + '<br>' +
+        '来源版本 ' + ui.esc(c.sourceVersion) + '<br>' +
+        '候选 ' + ui.esc(c.id) + '　Run ID <code>' + ui.esc(c.runId) + '</code>　幂等键 <code>' + ui.esc(c.idemKey) + '</code>' +
+        (c.failReason ? '<br>失败分类 ' + ui.esc(c.failKind) + '：' + ui.esc(c.failReason) : '') +
+        (c.ignoreReason !== undefined ? '<br>已忽略：' + ui.esc(c.ignoreReason || '未填写原因') : '') +
+      '</div>' +
+      '<div class="ry-acts-row" style="margin-top:8px">' +
+        (on ? '<a class="ry-btn ry-btn--sm" href="' + RY.nav.href('h5/agent/confirm.html') + '">单独修改后确认</a>' : '') +
+        '<a class="ry-btn ry-btn--sm" href="' + RY.nav.href('h5/agent/confirm.html') + '">候选详情</a>' +
+      '</div></div>';
+  }
+
+  function resultHtml() {
+    if (!state.result) return '';
+    var rows = state.result;
+    var ok = rows.filter(function (r) { return r.ok; }).length;
+    var bad = rows.length - ok;
+    var html = '<div class="ry-hcard"><div class="ry-hcard__head"><h3>批量确认结果</h3>' +
+      '<div class="ry-hcard__extra">' + ui.tag('成功 ' + ok + ' 条', ok ? 'ok' : 'muted') + ' ' + ui.tag('未成功 ' + bad + ' 条', bad ? 'bad' : 'muted') + '</div></div>' +
+      '<div class="ry-hcard__body">' + ui.banner('批量确认逐条处理、逐条返回结果：成功项创建正式任务，失败项不影响其他项。' +
+        '部分成功时已成功项保留，不整体回滚。', ok && bad ? 'warn' : (ok ? 'info' : 'bad')) +
+      rows.map(function (r) {
+        var c = S.candidate(r.id);
+        return '<div class="am-res">' +
+          '<div class="am-row__t"><div style="flex:1;min-width:0"><b>' + ui.esc(c ? (c.aiSuggestion['任务名称'] || c.id) : r.id) + '</b></div>' +
+            (r.ok ? ui.tag('成功', 'ok') : ui.tag('未成功', 'bad')) + '</div>' +
+          '<div class="am-res__m">' + ui.esc(r.id) + '　' + ui.esc(r.msg) +
+            (c && c.writtenObjectId ? '<br>已创建正式任务 <a href="' +
+              RY.nav.href('h5/task/detail.html?id=' + encodeURIComponent(c.writtenObjectId)) + '">' + ui.esc(c.writtenObjectId) + '</a>' : '') +
+            (c && c.writeStatus === '写入失败' ? '<br>该条候选已确认、写入失败（合法组合），可在 AI 待处理按原参数重试或手工接管' : '') +
+          '</div></div>';
+      }).join('') +
+      '<div class="ry-acts-row" style="margin-top:8px">' +
+        '<a class="ry-btn" href="' + RY.nav.href('h5/agent/pending.html') + '">到 AI 待处理跟踪失败项</a>' +
+        '<a class="ry-btn" href="' + RY.nav.href('h5/task/list.html') + '">到任务列表查看正式任务</a></div>' +
+      '</div></div>';
+    return html;
+  }
+
+  function render() {
+    var all = meetingCandidates();
+    var pend = pending();
+    var sel = picked();
+
+    var html = '';
+    html += '<div class="ry-brief">' +
+      '<div class="ry-brief__row"><span class="ry-brief__k">会议候选（来源：会议纪要）</span>' +
+        '<span>' + ui.tag('待确认 ' + pend.length + ' 条', 'warn') + ' ' + ui.tag('共 ' + all.length + ' 条', 'muted') + '</span></div>' +
+      '<p class="ry-hint">0.1 会议内容通过文字上传或粘贴进入纪要；录音能力留待后续。会议纪要只生成<b>候选任务</b>：一次会议可生成多条、可涉及多个责任人，但不会生成候选销售活动，' +
+      '也不会直接创建正式客户、联系人、线索或商机。批量确认必须由人勾选，系统不自动确认。</p></div>';
+
+    html += ui.banner('会议候选的批量确认路径：人工勾选 → 批量确认为正式任务 → 逐项返回成功、失败、重复，只有成功项创建正式任务。' +
+      '需修改字段的候选请先单独修改后确认；批量确认使用候选已保存的最终值或 AI 原建议，不在批量过程中改写字段。', 'info');
+
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>会议候选清单</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">人工勾选</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+      (all.length ? all.map(rowHtml).join('') : ui.empty('当前没有来自会议纪要的候选。')) +
+      '</div></div>';
+
+    /* 批量动作条 */
+    html += '<div class="am-bar">' + (pend.length ?
+      '<div class="ry-acts-row"><button class="ry-btn ry-btn--sm" id="am-all">全选待确认（' + pend.length + '）</button>' +
+      '<button class="ry-btn ry-btn--sm" id="am-none">清空选择</button></div>' +
+      '<div class="ry-acts-row" style="margin-top:8px"><button class="ry-btn ry-btn--primary" id="am-go"' + (sel.length ? '' : ' disabled') + '>' +
+        '批量确认为正式任务（已选 ' + sel.length + ' 条）</button></div>' +
+      '<p class="ry-hint">逐条校验：缺必填或责任人无法解析的该条失败，其余继续；状态不是待确认（重复／已忽略／已失效）的该条被阻止，不影响其他；' +
+      '成功项立即创建正式任务，失败项保留为可重试或手工接管。</p>'
+      : '<p class="ry-hint">当前没有可批量确认的会议候选。</p>') + '</div>';
+
+    html += resultHtml();
+
+    /* 批量规则 */
+    html += '<div class="ry-hcard" style="margin-top:12px"><div class="ry-hcard__head"><h3>批量确认规则</h3></div>' +
+      '<div class="ry-hcard__body">' + ui.kv([
+        ['可否多责任人', '允许：一次会议可生成多条不同责任人的候选任务；每条确认后直接进入待处理'],
+        ['部分成功', '允许：一条缺必填、一条无权限、一条重复都只影响该条，其余继续；已确认并写入成功的项保留'],
+        ['活动与任务关系', '会议场景只涉及候选任务；沟通整理场景中活动写入失败时派生任务不得继续创建，活动成功后部分任务失败则保留成功项'],
+        ['阻止项', '状态不是待确认的候选不参与确认（重复／已忽略／已失效），逐条返回原因'],
+        ['幂等', '同一候选同一幂等键只允许一次有效写入，批量重试只处理失败项']
+      ]) + '</div></div>';
+
+    /* 本页契约 */
+    html += '<div class="ry-hcard ry-hcard--flat" style="margin-top:14px">' +
+      '<div class="ry-hcard__head"><h3>本页契约</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">PG-AI-MEETING</span></div></div>' +
+      '<div class="ry-hcard__body">' + ui.kv([
+        ['页面契约', 'PG-AI-MEETING · 会议确认'],
+        ['所属模块', 'Agent（05 Agent 候选与人工确认）'],
+        ['端', '企业微信 H5'],
+        ['可进入角色', 'ALL5：R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员（仅本人候选；主管不代销售确认）'],
+        ['PRD 来源', 'prd/05 §5（会议候选与人工批量确认）'],
+        ['覆盖 AC', 'AI-25 AI-29'],
+        ['本页视图', '会议候选｜人工批量确认｜只生成任务候选'],
+        ['关键边界', '批量确认必须人工勾选；逐条返回成功／失败／重复；只有成功项创建正式任务；会议纪要只生成任务候选；已失效与已忽略不参与']
+      ]) + '</div></div>';
+
+    ui.qs('#am-host').innerHTML = html;
+    bind();
+  }
+
+  /* ---------------------------------------------------------- 交互 */
+
+  function bind() {
+    ui.qsa('[data-pick]').forEach(function (b) {
+      b.addEventListener('change', function () {
+        var id = b.getAttribute('data-pick');
+        if (b.checked) state.pick[id] = true; else delete state.pick[id];
+        render();
+      });
+    });
+    var all = ui.qs('#am-all');
+    if (all) all.addEventListener('click', function () {
+      pending().forEach(function (c) { state.pick[c.id] = true; });
+      render();
+    });
+    var none = ui.qs('#am-none');
+    if (none) none.addEventListener('click', function () { state.pick = {}; state.result = null; render(); });
+
+    var go = ui.qs('#am-go');
+    if (go) go.addEventListener('click', function () {
+      var sel = picked();
+      if (!sel.length) { ui.toast('请先勾选要确认的会议候选。', 'warn'); return; }
+      var ids = sel.map(function (c) { return c.id; });
+      ui.confirm({
+        title: '批量确认为正式任务',
+        message: ui.kv([
+          ['确认条数', ids.length + ' 条'],
+          ['确认对象', ids.join('、')],
+          ['写入对象', '每条成功项各创建 1 条正式任务（不创建其他对象）'],
+          ['字段值', '使用各候选已保存的最终值或 AI 原建议，勾选前请在候选详情核对'],
+          ['结果返回', '逐条返回成功、失败或阻止原因；失败项不影响其他项']
+        ]) + '<p class="ry-hint">批量确认不等于全部通过：任何一条的必填、权限、状态或幂等问题都只影响该条。</p>',
+        confirmText: '确认写入',
+        onConfirm: function () {
+          var rows = S.candidateBatchConfirm(ids);
+          state.result = rows;
+          state.pick = {};
+          render();
+          var ok = rows.filter(function (r) { return r.ok; }).length;
+          ui.toast('批量确认完成：成功 ' + ok + ' 条，未成功 ' + (rows.length - ok) + ' 条（逐条结果见下方）。', ok === rows.length ? 'ok' : 'warn');
+        }
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

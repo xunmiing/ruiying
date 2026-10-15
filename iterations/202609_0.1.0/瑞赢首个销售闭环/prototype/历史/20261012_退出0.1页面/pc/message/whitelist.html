@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>企微事件白名单 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：企微事件白名单（收敛的推送清单；用户不能自行配置） */
+  .mw-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+  .mw-src { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 6px; font-size: 12.5px; line-height: 1.85; }
+  .mw-src > span { color: var(--muted); }
+  .mw-chan { display: inline-flex; gap: 4px; align-items: center; }
+  @media (max-width: 1180px) { .mw-cols { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="mw-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'msg.whitelist';
+  /* 渠道开关属「消息配置编辑」，取已注册能力项 msg.template.edit，不新增未注册能力项 */
+  var canEdit = P.can('msg.template.edit');
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '企微事件白名单',
+    subtitle: '白名单是<b>收敛的推送清单</b>；<b>用户不能自行配置</b>，也不建设消息静默、合并与个人偏好。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '消息投递' }, { label: '企微事件白名单' }],
+    actions: '<a class="ry-btn" href="delivery.html">投递记录</a><a class="ry-btn" href="template.html">消息模板</a>'
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#mw-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入企微事件白名单',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示事件清单、渠道配置与推送结果。</p>'
+    });
+    return;
+  }
+
+  function events() { return S.all('messageTemplates'); }
+  function channel() {
+    return S.extSystems().filter(function (x) { return x.name === '企微消息提醒渠道'; })[0] || null;
+  }
+  function deliveriesOf(code) {
+    return S.deliveryList().filter(function (m) { return m.template === code && m.channel === '企业微信'; });
+  }
+  /* 该事件最近一次企微投递结果 */
+  function lastPush(code) {
+    var d = deliveriesOf(code);
+    if (!d.length) return null;
+    return d.slice().sort(function (a, b) { return a.at < b.at ? 1 : -1; })[0];
+  }
+
+  function render() {
+    var list = events(), ch = channel();
+    var on = list.filter(function (t) { return t.wecom; });
+    var off = list.filter(function (t) { return !t.wecom; });
+    var failed = S.deliveryList().filter(function (m) { return m.channel === '企业微信' && m.deliveryStatus === '失败'; });
+
+    ui.qs('#mw-host').innerHTML =
+      ui.banner('站内消息是<b>基础通道</b>：由业务事件产生的消息一律先落到站内。' +
+        '本页维护的是<b>「哪些事件额外推送到企业微信」</b>——' +
+        '这是一个<b>白名单</b>，不是全量推送开关：默认不推送，逐个事件显式打开。' +
+        '之所以按白名单收敛，是因为推送到企微会打断人的工作节奏，' +
+        '只有确实需要「马上知道」的事件才配得上这种打扰。' +
+        '<b>用户不能自行配置</b>这一页：销售侧没有「关闭某类通知」的入口，' +
+        '也没有消息静默、合并与个人偏好设置。' +
+        '如果允许个人静默，那么「这条通知有没有发出去」将取决于每个接收人的本机设置，' +
+        '管理侧与审计都无法给出确定结论——通知的收敛必须由<b>统一的事件规则</b>决定。', 'info') +
+
+      (ch && ch.health !== '正常'
+        ? ui.banner('当前企微消息提醒渠道健康状态为 <b>' + ui.esc(ch.health) + '</b>（最近巡检 ' + ui.esc(ch.lastHealthAt) + '）。' +
+          '渠道不可用时企微推送会失败，但<b>站内消息不受影响</b>，' +
+          '业务对象也不会因为推送失败而回滚——投递失败只产生投递记录与异常事项。', 'warn')
+        : '') +
+
+      '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0">' +
+        [
+          ['事件总数', list.length, ''],
+          ['额外推送企微', on.length, 'color:var(--brand)'],
+          ['仅站内', off.length, ''],
+          ['企微投递失败', failed.length, failed.length ? 'color:var(--danger)' : '']
+        ].map(function (k) {
+          return '<div class="ry-card ry-card--flat"><div class="ry-card__body"><div class="ry-hint">' + k[0] + '</div>' +
+            '<div style="font-size:22px;font-weight:600;' + k[2] + '">' + k[1] + '</div></div></div>';
+        }).join('') + '</div>' +
+
+      '<div class="mw-cols">' +
+        '<div>' +
+          ui.section('事件与渠道（' + list.length + ' 个事件）',
+            '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+              '<th style="width:180px">事件</th><th style="width:170px">消息模板</th>' +
+              '<th style="width:180px">通道</th><th>最近企微推送</th>' +
+              '<th style="width:120px">操作</th>' +
+              '</tr></thead><tbody>' + list.map(function (t) {
+                var l = lastPush(t.code);
+                return '<tr>' +
+                  '<td><span class="ry-cellname">' + ui.esc(t.event) + '</span>' +
+                    '<div class="ry-hint">' + ui.esc(t.name) + '</div></td>' +
+                  '<td><span class="ry-code">' + ui.esc(t.code) + '</span>' +
+                    '<div class="ry-hint">' + (t.status === '启用' ? '启用' : '停用') + '</div></td>' +
+                  '<td><span class="mw-chan">' + ui.tag('站内', 'info') +
+                    (t.wecom ? ui.tag('企业微信', 'brand') : ui.tag('不推送企微', 'muted')) + '</span></td>' +
+                  '<td>' + (l
+                    ? '<span class="ry-hint">' + ui.esc(l.at) + '　' + ui.esc(l.receiverSnapshot) + '</span> ' +
+                      ui.statusTag(l.deliveryStatus) +
+                      (l.failReason ? '<div class="ry-hint" style="color:var(--danger)">' + ui.esc(l.failReason) + '</div>' : '') +
+                      (l.retryCount ? '<div class="ry-hint">已重试 ' + l.retryCount + ' 次</div>' : '')
+                    : '<span class="ry-faint">暂无企微投递记录</span>') + '</td>' +
+                  '<td class="ry-tbl-act">' +
+                    (canEdit
+                      ? '<button class="ry-btn ry-btn--sm' + (t.wecom ? '' : ' ry-btn--primary') + '" data-mw-t="' + ui.esc(t.id) + '">' +
+                        (t.wecom ? '关闭企微推送' : '开启企微推送') + '</button>'
+                      : '<span class="ry-faint">—</span>') +
+                  '</td></tr>';
+              }).join('') + '</tbody></table></div>' +
+            '<p class="ry-hint" style="margin-top:8px">关闭企微推送<b>不会关闭站内消息</b>：' +
+              '业务事件照常产生站内消息，只是不再额外推送。' +
+              '反之，开启推送也<b>不改变事件的触发条件与接收人</b>——接收人仍由业务规则与数据范围决定。</p>') +
+
+          ui.section('推送结果与失败处理',
+            failed.length
+              ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+                '<th style="width:150px">消息编号</th><th style="width:150px">事件</th><th>接收人</th>' +
+                '<th>失败原因</th><th style="width:90px">重试</th><th style="width:100px">操作</th>' +
+                '</tr></thead><tbody>' + failed.map(function (m) {
+                  return '<tr>' +
+                    '<td><span class="ry-code">' + ui.esc(m.msgId) + '</span>' +
+                      '<div class="ry-hint">' + ui.esc(m.at) + '</div></td>' +
+                    '<td>' + ui.esc(m.event) + '</td>' +
+                    '<td>' + ui.esc(m.receiverSnapshot) + '</td>' +
+                    '<td class="ry-hint" style="color:var(--danger)">' + ui.esc(m.failReason || '—') + '</td>' +
+                    '<td>' + m.retryCount + '</td>' +
+                    '<td class="ry-tbl-act"><a class="ry-btn ry-btn--sm" href="delivery.html">去投递记录</a></td>' +
+                  '</tr>';
+                }).join('') + '</tbody></table></div>'
+              : '<p class="ry-hint">当前没有失败的企微投递。</p>') +
+        '</div>' +
+
+        '<div>' +
+          ui.section('渠道口径',
+            '<div class="mw-src">' +
+              '<span>站内消息</span><b>基础通道，业务事件一律产生</b>' +
+              '<span>企微推送</span><b>白名单事件额外追加</b>' +
+              '<span>默认策略</span><b>默认不推送，逐事件显式打开</b>' +
+              '<span>接收人</span><b>由业务规则与数据范围决定，不由渠道决定</b>' +
+              '<span>送达保证</span><b>不承诺；失败记投递记录并转异常事项</b>' +
+              '<span>失败影响</span><b>不回滚来源业务对象</b>' +
+            '</div>') +
+
+          ui.section('明确不做',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>用户自行配置</span><b>不提供（销售侧无此入口）</b></li>' +
+              '<li><span>消息静默</span><b>不建设</b></li>' +
+              '<li><span>消息合并／摘要</span><b>不建设</b></li>' +
+              '<li><span>个人偏好设置</span><b>不建设</b></li>' +
+              '<li><span>自定义推送时段</span><b>不提供</b></li>' +
+              '<li><span>按人配置渠道</span><b>不提供</b></li>' +
+            '</ul>' +
+            ui.banner('如果确实觉得某类通知太吵，正确的做法是<b>回到事件规则</b>去调整触发频率与条件，' +
+              '而不是给每个人开一个静默开关。前者全公司一致、可审计；' +
+              '后者会把「通知是否触达」变成一件因人而异、不可核对的事。', 'warn')) +
+
+          ui.section('相关页面',
+            ui.kv([
+              ['投递记录', '<a href="delivery.html">投递状态与阅读状态（完全独立）</a>'],
+              ['消息模板', '<a href="template.html">事件对应的文案与变量</a>'],
+              ['外部系统', '<a href="../integration/system.html">企微消息提醒渠道的能力与健康</a>'],
+              ['异常事项', '<a href="../exception/list.html">投递失败超过上限后的事项</a>']
+            ])) +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-MSGWHITELIST</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-MSGWHITELIST · PC · 消息投递</b></li>' +
+        '<li><span>依据</span><b>prd/08 §16</b></li>' +
+        '<li><span>可进入角色</span><b>管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-76</b></li>' +
+        '<li><span>必须展示</span><b>事件｜模板｜通道｜最近企微推送结果</b></li>' +
+        '<li><span>明确不做</span><b>用户不能自行配置；不建设消息静默、合并与个人偏好</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    ui.qsa('[data-mw-t]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]')) return;
+        var id = b.getAttribute('data-mw-t');
+        var t = events().filter(function (x) { return x.id === id; })[0];
+        if (!t) return;
+        var next = !t.wecom;
+        ui.confirm({
+          title: (next ? '开启企微推送　' : '关闭企微推送　') + t.event,
+          message: next
+            ? '<p>开启后，该事件在产生站内消息的同时<b>额外推送企业微信</b>。</p>' +
+              '<p class="ry-hint">接收人仍由业务规则与数据范围决定；推送失败不回滚来源业务。</p>'
+            : '<p>关闭后该事件<b>只产生站内消息</b>，不再额外推送企业微信。</p>' +
+              '<p class="ry-hint">站内消息不受影响；历史投递记录保留，不会被回写。</p>',
+          confirmText: next ? '确认开启' : '确认关闭',
+          danger: !next,
+          onConfirm: function () {
+            t.wecom = next;
+            S.audit('消息事件白名单', t.id, next ? '开启企微推送' : '关闭企微推送', t.code, next ? '推送' : '不推送');
+            S.save();
+            ui.toast(next ? '已开启企微推送。' : '已关闭企微推送，站内消息不受影响。', 'success');
+            render();
+          }
+        });
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

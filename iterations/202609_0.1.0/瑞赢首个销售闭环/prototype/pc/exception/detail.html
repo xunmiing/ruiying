@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>异常事项详情 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：异常事项详情（不直接修改正式业务事实） */
+  .ed-cols { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; align-items: start; }
+  .ed-flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+  .ed-flow__s { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); padding: 9px 11px; }
+  .ed-flow__n { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .ed-flow__d { font-size: 11.5px; color: var(--muted); line-height: 1.65; margin-top: 3px; }
+  .ed-flow__s.is-on { border-color: var(--brand); background: var(--brand-soft); }
+  .ed-flow__s.is-on .ed-flow__n { color: var(--brand-ink); }
+  .ed-tl { border-left: 2px solid var(--line); margin-left: 6px; padding-left: 14px; }
+  .ed-tl__i { position: relative; padding-bottom: 12px; }
+  .ed-tl__i:last-child { padding-bottom: 0; }
+  .ed-tl__i::before { content: ''; position: absolute; left: -21px; top: 3px; width: 9px; height: 9px; border-radius: 50%; background: var(--brand); }
+  .ed-tl__h { font-size: 12.5px; font-weight: 600; }
+  .ed-tl__m { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+  @media (max-width: 1180px) { .ed-cols { grid-template-columns: minmax(0, 1fr); } .ed-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="ed-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'exception.list';
+  var id = ui.q('id') || '';
+  var e = id ? S.find('exceptions', id) : null;
+  var canClaim = P.can('exception.claim');
+  var canComplete = P.can('exception.complete');
+  var canReturn = P.can('exception.return');
+  var canReject = P.can('exception.reject');
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '异常事项详情',
+    subtitle: '当前事项：<span class="ry-code">' + ui.esc(id || '未指定') + '</span>　' +
+      '本页<b>不直接修改正式业务事实</b>：必须跳转源对象使用正式动作。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '异常事项', href: 'pc/exception/list.html' }, { label: id || '详情' }],
+    actions: '<a class="ry-btn" href="list.html">返回异常事项</a>'
+  });
+
+  /* 源对象权限也参与判定：看不到源对象，就看不到它产生的异常。 */
+  var kindMap = { '客户': 'customers', '商机': 'opportunities', '线索': 'leads', '正式拜访': 'visits', '独立日程': 'schedules', '任务': 'tasks' };
+  var g = P.guard(PAGE, null, null);
+  if (!e) g = { ok: false, kind: 'unavailable', reason: '异常事项不存在，或已被关闭并归档。' };
+  else {
+    var kind = kindMap[e.objectType];
+    if (kind) {
+      var src = S.find(kind, e.objectId);
+      if (!src) g = { ok: false, kind: 'unavailable', reason: '源对象已不可用（已删除或已失效）。' };
+      else if (!P.inScope(kind, src)) g = { ok: false, kind: 'no-permission', reason: '源对象不在当前账号的数据范围内，因此该异常事项也不可见。' };
+    }
+  }
+
+  function srcName() {
+    var kind = kindMap[e.objectType];
+    var src = kind ? S.find(kind, e.objectId) : null;
+    return src ? (src.name || src.title || e.objectId) : '—';
+  }
+  function srcHref() {
+    if (e.objectType === '客户') return '../customer/detail.html?id=' + encodeURIComponent(e.objectId);
+    if (e.objectType === '商机') return '../opportunity/detail.html?id=' + encodeURIComponent(e.objectId);
+    if (e.objectType === '线索') return '../lead/detail.html?id=' + encodeURIComponent(e.objectId);
+    if (e.objectType === '正式拜访') return '../visit/detail.html?id=' + encodeURIComponent(e.objectId);
+    if (e.objectType === '独立日程') return '../schedule/detail.html?id=' + encodeURIComponent(e.objectId);
+    if (e.objectType === '任务') return '../task/detail.html?id=' + encodeURIComponent(e.objectId);
+    return '';
+  }
+  /* 正式动作提示：不同治理类型对应源对象上的不同动作，页面上明确写出，避免「在异常里直接改」。 */
+  function formalAction() {
+    if (e.type.indexOf('高影响') >= 0) return '客户详情 → 「申请高影响资料变更」提交，由管理员（运营）审核执行';
+    if (e.type.indexOf('客户关系') >= 0) return '客户详情 → 「客户关系网」';
+    if (e.type.indexOf('完整度') >= 0) return '客户详情 → 「编辑」补齐关键字段（普通字段编辑，无需治理）';
+    if (e.type.indexOf('重复') >= 0) return '客户详情 → 核对疑似重复记录；需要修正资料时按编辑权限维护。本期不提供客户合并';
+    if (e.type.indexOf('同步') >= 0 || e.type.indexOf('投递') >= 0) return '到「同步任务」或「投递记录」对失败项执行重试';
+    if (e.type.indexOf('拜访') >= 0) return '正式拜访详情 → 「异常复核」给出复核结论';
+    return '跳转源对象，使用该对象页面上的正式动作';
+  }
+
+  function render() {
+    if (!g.ok) {
+      ui.qs('#ed-host').innerHTML = ui.stateCard(g.kind, {
+        title: g.kind === 'no-permission' ? '当前身份不可查看该异常事项' : '异常事项不可用',
+        body: '<p>' + ui.esc(g.reason) + '</p>' +
+          '<p class="ry-hint">异常事项<b>不扩大源对象的可见范围</b>：看不到源对象时，' +
+          '这里不展示对象名称、异常详情与处理记录，也不透露是否存在该事项。</p>',
+        extra: '<a class="ry-btn" href="list.html">返回异常事项</a>'
+      });
+      return;
+    }
+
+    var hist = e.history || [];
+    var done = ['已完成', '不采纳'].indexOf(e.status) >= 0;
+    var mine = e.handler === S.currentUser().id;
+    var href = srcHref();
+
+    ui.qs('#ed-host').innerHTML =
+      ui.banner('异常事项是<b>治理动作的唯一入口</b>，但它<b>不是修改业务事实的地方</b>。' +
+        '处理路径固定为四步：<b>领取 → 跳转源对象 → 执行源对象的正式动作 → 回到本页填写处理说明并关闭</b>。' +
+        '这样做的好处是：业务事实的变更发生在它自己的页面上，受它自己的权限、数据范围与字段规则约束，' +
+        '异常事项只是「这件事需要有人处理」的工作流载体，<b>不能绕过源业务权限</b>。', 'info') +
+
+      '<div class="ed-flow" style="margin-top:12px">' +
+        '<div class="ed-flow__s' + (e.status === '待处理' ? ' is-on' : '') + '"><div class="ed-flow__n">1 领取</div>' +
+          '<div class="ed-flow__d">原子占用，同一时间只有一个人能处理</div></div>' +
+        '<div class="ed-flow__s' + (e.status === '处理中' ? ' is-on' : '') + '"><div class="ed-flow__n">2 跳转源对象</div>' +
+          '<div class="ed-flow__d">按源对象页面权限与数据范围重新鉴权</div></div>' +
+        '<div class="ed-flow__s' + (e.status === '处理中' ? ' is-on' : '') + '"><div class="ed-flow__n">3 执行正式动作</div>' +
+          '<div class="ed-flow__d">' + ui.esc(formalAction()) + '</div></div>' +
+        '<div class="ed-flow__s' + (done ? ' is-on' : '') + '"><div class="ed-flow__n">4 填写说明并关闭</div>' +
+          '<div class="ed-flow__d">写入处理记录与审计</div></div>' +
+      '</div>' +
+
+      '<div class="ed-cols">' +
+        '<div>' +
+          ui.section('事项信息',
+            ui.kv([
+              ['事项编号', e.id],
+              ['异常类型', e.type],
+              ['关涉字段／关系', e.target || '—'],
+              ['源对象', e.objectType + '　' + e.objectId],
+              ['源对象名称', srcName()],
+              ['来源', e.source || '系统'],
+              ['创建时间', e.createdAt || e.at || '—'],
+              ['更新时间', e.updatedAt || '—'],
+              ['当前状态', e.status],
+              ['处理人', e.handler ? S.userName(e.handler) : '未领取']
+            ]) +
+            '<p class="ry-hint" style="margin-top:8px">' + ui.esc(e.detail || e.note || '') + '</p>' +
+            '<div class="ry-acts-row" style="margin-top:10px">' +
+              (href ? '<a class="ry-btn ry-btn--primary" href="' + href + '">打开源对象执行正式动作</a>'
+                : '<span class="ry-hint">该类型没有独立源页面，请在对应列表页处理</span>') +
+              (e.status === '待处理' && canClaim ? '<button class="ry-btn" id="ed-claim">领取事项</button>' : '') +
+              (e.status === '处理中' && mine && canComplete ? '<button class="ry-btn ry-btn--primary" id="ed-done">填写说明并完成</button>' : '') +
+              (e.status === '处理中' && mine && canReturn ? '<button class="ry-btn" id="ed-back">退回</button>' : '') +
+              (!done && canReject ? '<button class="ry-btn" id="ed-reject">不采纳</button>' : '') +
+            '</div>' +
+            (e.status === '处理中' && !mine
+              ? ui.banner('该事项已由 <b>' + ui.esc(S.userName(e.handler)) + '</b> 领取。' +
+                  '同一事项同一时间只有一个人能处理；如需接手，请让当前处理人退回后再领取。', 'warn')
+              : '')) +
+
+          ui.section('处理记录（' + hist.length + ' 条）',
+            hist.length
+              ? '<div class="ed-tl">' + hist.map(function (x) {
+                  return '<div class="ed-tl__i"><div class="ed-tl__h">' + ui.esc(x.action || '变更') +
+                    '　' + ui.tag((x.from || '') + ' → ' + (x.to || ''), 'muted') + '</div>' +
+                    '<div class="ed-tl__m">' + ui.esc(x.at || '') + '　' + ui.esc(x.actor || '系统') +
+                    (x.reason ? '　原因：' + ui.esc(x.reason) : '') + '</div></div>';
+                }).join('') + '</div>'
+              : '<p class="ry-hint">还没有处理记录。领取、退回、完成与不采纳都会留下记录。</p>') +
+
+          ui.section('关联记录',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>源对象页面</span><b>' + (href ? '<a href="' + href + '">' + ui.esc(e.objectType) + '详情</a>' : '无独立源页面') + '</b></li>' +
+              '<li><span>审计记录</span><b>由技术人员按事项编号查看分析与处理</b></li>' +
+              (e.sourceMsgId ? '<li><span>关联消息</span><b>' + ui.esc(e.sourceMsgId) + '　投递日志由技术人员查看</b></li>' : '') +
+              (S.qualityIssueList().some(function (q) { return q.exceptionId === e.id; })
+                ? '<li><span>质量问题</span><b>关联质量问题由技术人员核查，业务处理回本事项</b></li>' : '') +
+            '</ul>') +
+        '</div>' +
+
+        '<div>' +
+          ui.section('为什么不能在这里直接改',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>权限</span><b>异常处理不突破源对象页面权限与数据范围</b></li>' +
+              '<li><span>字段规则</span><b>字段明文与可编辑性仍按源对象判定</b></li>' +
+              '<li><span>对象状态</span><b>源对象状态不允许的动作，这里也不能执行</b></li>' +
+              '<li><span>留痕</span><b>变更落在源对象历史与审计中，异常只是载体</b></li>' +
+              '<li><span>一致口径</span><b>客户资料变更统一从客户详情的授权编辑入口执行</b></li>' +
+            '</ul>' +
+            ui.banner('如果允许在异常事项里直接改，就会出现「同一个客户名称有两个修改入口、两套权限」的局面，' +
+              '审计也无法回答改动的真实来源。因此 0.1 只保留源对象这一条正式路径。', 'warn')) +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-EXC-DETAIL</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-EXC-DETAIL · PC · 异常事项</b></li>' +
+        '<li><span>依据</span><b>prd/07 §6；prd/08 §9</b></li>' +
+        '<li><span>可进入角色</span><b>销售主管/经理｜管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-71 AC-72</b></li>' +
+        '<li><span>处理路径</span><b>领取 → 跳转源对象 → 执行正式动作 → 填写说明并关闭</b></li>' +
+        '<li><span>深度链接</span><b>直接打开本页同样重新鉴权；源对象不可见则事项不可见</b></li>' +
+        '<li><span>明确不做</span><b>不直接修改正式业务事实、不绕过源业务权限、不提供异常台账导出</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    var c = ui.qs('#ed-claim');
+    if (c) c.addEventListener('click', function () {
+      var r = S.exceptionClaim(e.id);
+      ui.toast(r.ok ? '领取成功。请跳转源对象执行正式动作，再回来完成。' : r.msg, r.ok ? 'success' : 'warn');
+      render();
+    });
+    var d = ui.qs('#ed-done');
+    if (d) d.addEventListener('click', function () {
+      ui.confirm({
+        title: '完成异常事项',
+        message: '<p>请确认<b>源对象上的正式动作已经执行</b>，或问题已由外部系统修正。</p>' +
+          '<p class="ry-hint">本页不会代你修改业务事实。如果源对象还没改，请先点「打开源对象执行正式动作」。' +
+          '处理说明必填，会写入处理记录与审计。</p>' +
+          (srcHref() ? '<p class="ry-hint">源对象：<a href="' + srcHref() + '">' + ui.esc(e.objectType + ' ' + e.objectId) + '</a></p>' : ''),
+        requireReason: true, reasonLabel: '处理说明', confirmText: '确认完成',
+        onConfirm: function (reason) {
+          var r = S.exceptionComplete(e.id, reason);
+          ui.toast(r.ok ? '已完成。' : r.msg, r.ok ? 'success' : 'warn');
+          render();
+        }
+      });
+    });
+    var b = ui.qs('#ed-back');
+    if (b) b.addEventListener('click', function () {
+      ui.confirm({
+        title: '退回异常事项',
+        message: '<p>退回后事项回到「待处理」，其他人可以重新领取。</p>',
+        requireReason: true, reasonLabel: '退回原因', confirmText: '确认退回',
+        onConfirm: function (reason) {
+          var r = S.exceptionReturn(e.id, reason);
+          ui.toast(r.ok ? '已退回。' : r.msg, r.ok ? 'success' : 'warn');
+          render();
+        }
+      });
+    });
+    var j = ui.qs('#ed-reject');
+    if (j) j.addEventListener('click', function () {
+      ui.confirm({
+        title: '不采纳异常事项',
+        message: '<p>不采纳表示该异常不再需要处理，事项关闭为「不采纳」。</p>' +
+          '<p class="ry-hint">不采纳必须填写原因，原因会写入审计。</p>',
+        requireReason: true, reasonLabel: '不采纳原因', confirmText: '确认不采纳', danger: true,
+        onConfirm: function (reason) {
+          var r = S.exceptionReject(e.id, reason);
+          ui.toast(r.ok ? '已标记不采纳。' : r.msg, r.ok ? 'success' : 'warn');
+          render();
+        }
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

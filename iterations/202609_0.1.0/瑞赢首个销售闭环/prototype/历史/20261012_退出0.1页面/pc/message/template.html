@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>消息模板 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：消息模板与变量（模板只决定文案，不决定发给谁） */
+  .mt-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+  .mt-var { display: inline-block; padding: 0 5px; border-radius: 4px; background: var(--brand-soft); color: var(--brand-ink); font-family: var(--mono); font-size: 11.5px; }
+  .mt-txt { font-size: 12.5px; line-height: 1.95; white-space: pre-wrap; }
+  .mt-vars { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+  .mt-v { font-family: var(--mono); font-size: 11.5px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: #FBFCFC; }
+  .mt-prev { border: 1px dashed var(--line); border-radius: var(--r-card); padding: 9px 11px; background: #FBFCFC; }
+  @media (max-width: 1180px) { .mt-cols { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="mt-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'msg.template';
+  /* 动作权限取已注册的能力项 msg.template.edit（消息配置编辑），不新增未注册能力项 */
+  var canEdit = P.can('msg.template.edit');
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '消息模板',
+    subtitle: '模板只决定<b>文案与变量</b>；<b>发不发、发给谁是业务事件决定的</b>，不由模板决定。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '消息投递' }, { label: '消息模板' }],
+    actions: '<a class="ry-btn" href="delivery.html">投递记录</a><a class="ry-btn" href="whitelist.html">企微事件白名单</a>'
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#mt-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入消息模板',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示事件清单、变量口径与模板正文。</p>'
+    });
+    return;
+  }
+
+  var kw = '', stF = '';
+
+  function list() { return S.all('messageTemplates'); }
+  function filtered() {
+    var k = kw.trim().toLowerCase();
+    return list().filter(function (t) {
+      if (stF && t.status !== stF) return false;
+      if (k && (t.name + t.code + t.event + t.title).toLowerCase().indexOf(k) < 0) return false;
+      return true;
+    });
+  }
+
+  /* 变量高亮：先整体转义，再把 ${变量} 替换成标签，避免注入 */
+  function vars(body) {
+    return ui.esc(body).replace(/\$\{([^}]+)\}/g, function (_, name) {
+      return '<span class="mt-var">' + name + '</span>';
+    });
+  }
+  function plain(body) { return String(body).replace(/\$\{([^}]+)\}/g, '$1'); }
+
+  function render() {
+    var all = list(), rows = filtered();
+    ui.qs('#mt-host').innerHTML =
+      ui.banner('模板是<b>通知的文案层</b>，不是通知的规则层。' +
+        '一个事件要不要产生消息、发给谁、是否额外推送到企业微信，由<b>业务事件本身</b>决定；' +
+        '模板只回答「这条消息写什么」。' +
+        '因此这一页<b>不提供「新建模板」「自定义事件」</b>：' +
+        '如果能够自由新增事件，通知就变成了可以任意配置的推送系统，' +
+        '接收人会被不可预期的消息打扰，而每个事件背后的数据范围与权限也无从校验。' +
+        '模板正文中的变量只能从<b>该事件确定的上下文</b>取——' +
+        '变量列表是模板契约的一部分，改文案不能凭空引入上下文里没有的字段。' +
+        '模板改动<b>只影响之后的投递</b>：历史投递记录里保存的是当时发出的内容，不会被回写。', 'info') +
+
+      '<div class="ry-card" style="margin:12px 0"><div class="ry-card__body">' +
+        '<div class="ry-filter__row">' +
+          ui.field('关键词', ui.input('mt-kw', kw, '模板名称／编号／事件／标题'), '', false) +
+          ui.field('状态', ui.select('mt-st', [{ value: '', label: '全部' }, { value: '启用', label: '启用' },
+            { value: '停用', label: '停用' }], stF), '', false) +
+        '</div>' +
+        '<div class="ry-filter__act"><button class="ry-btn" id="mt-reset">重置</button>' +
+          '<button class="ry-btn ry-btn--primary" id="mt-apply">查询</button></div>' +
+      '</div></div>' +
+
+      '<div class="mt-cols">' +
+        '<div>' +
+          ui.section('模板清单（' + rows.length + ' 条）',
+            rows.length
+              ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+                '<th style="width:170px">模板编号</th><th style="width:170px">事件</th><th>标题</th>' +
+                '<th style="width:200px">变量</th><th style="width:90px">企微推送</th>' +
+                '<th style="width:90px">状态</th><th style="width:110px">操作</th>' +
+                '</tr></thead><tbody>' + rows.map(function (t) {
+                  return '<tr>' +
+                    '<td><span class="ry-cellname">' + ui.esc(t.name) + '</span>' +
+                      '<div class="ry-hint ry-code">' + ui.esc(t.code) + '</div></td>' +
+                    '<td>' + ui.esc(t.event) + '</td>' +
+                    '<td>' + ui.esc(plain(t.title)) +
+                      '<div class="ry-hint">' + ui.esc(plain(t.body)) + '</div></td>' +
+                    '<td><div class="mt-vars">' + (t.vars || []).map(function (v) {
+                      return '<span class="mt-v">' + ui.esc(v) + '</span>';
+                    }).join('') + '</div></td>' +
+                    '<td>' + (t.wecom ? ui.tag('推送', 'brand') : ui.tag('不推送', 'muted')) + '</td>' +
+                    '<td>' + ui.statusTag(t.status) + '</td>' +
+                    '<td class="ry-tbl-act">' +
+                      '<button class="ry-btn ry-btn--sm" data-mt-view="' + ui.esc(t.id) + '">查看</button>' +
+                      (canEdit ? '<button class="ry-btn ry-btn--sm" data-mt-edit="' + ui.esc(t.id) + '">编辑</button>' : '') +
+                    '</td></tr>';
+                }).join('') + '</tbody></table></div>'
+              : ui.stateCard('empty', { title: '没有匹配的消息模板' })) +
+        '</div>' +
+
+        '<div>' +
+          ui.section('模板与规则的分工',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>决定发不发</span><b>业务事件（非模板）</b></li>' +
+              '<li><span>决定发给谁</span><b>业务规则与数据范围（非模板）</b></li>' +
+              '<li><span>决定写什么</span><b>模板</b></li>' +
+              '<li><span>决定渠道</span><b>企微事件白名单（非模板）</b></li>' +
+              '<li><span>变量取值</span><b>事件上下文，模板不能凭空引入</b></li>' +
+              '<li><span>改动生效</span><b>只影响之后的投递</b></li>' +
+            '</ul>') +
+
+          ui.section('明确不做',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>新建模板</span><b>不提供</b></li>' +
+              '<li><span>自定义事件</span><b>不提供</b></li>' +
+              '<li><span>变量表达式／条件块</span><b>不提供</b></li>' +
+              '<li><span>富文本编辑器</span><b>不提供（纯文本＋换行）</b></li>' +
+              '<li><span>用户个性化偏好</span><b>不建设</b></li>' +
+              '<li><span>静默与合并策略</span><b>不建设</b></li>' +
+            '</ul>' +
+            ui.banner('「不建设消息静默、合并与个人偏好」是<b>有意为之</b>：' +
+              '一旦允许个人关闭某类通知，「这条通知有没有发出去」就取决于每个接收人的本机设置，' +
+              '管理侧与审计都将无法给出确定结论。通知的收敛应由<b>事件规则</b>统一决定，而不是由个人偏好分散决定。', 'warn')) +
+
+          ui.section('相关页面',
+            ui.kv([
+              ['投递记录', '<a href="delivery.html">实际发出的消息与投递结果</a>'],
+              ['企微事件白名单', '<a href="whitelist.html">哪些事件额外推送企微</a>'],
+              ['处理记录', '<a href="../processing/list.html">异步导出完成等后台动作</a>']
+            ])) +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-MSGTEMPLATE</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-MSGTEMPLATE · PC · 消息投递</b></li>' +
+        '<li><span>依据</span><b>prd/08 §16</b></li>' +
+        '<li><span>可进入角色</span><b>管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-76</b></li>' +
+        '<li><span>必须展示</span><b>模板编号｜事件｜标题与正文｜变量｜是否企微推送｜状态</b></li>' +
+        '<li><span>明确不做</span><b>不做新建模板与自定义事件、不做变量表达式、不做用户偏好与静默合并</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function pick(id) {
+    var r = list().filter(function (t) { return t.id === id; });
+    return r[0] || null;
+  }
+
+  function detail(t) {
+    ui.drawer({
+      title: '模板详情　' + t.name,
+      subtitle: t.code + '　事件：' + t.event,
+      size: 'lg',
+      body:
+        ui.kv([
+          ['模板编号', t.code],
+          ['事件', t.event],
+          ['企微推送', t.wecom ? '推送' : '不推送'],
+          ['状态', t.status]
+        ]) +
+        '<div class="ry-divider"></div>' +
+        '<div class="ry-hint">标题</div>' +
+        '<div class="mt-prev" style="margin-top:4px"><div class="mt-txt">' + vars(t.title) + '</div></div>' +
+        '<div class="ry-hint" style="margin-top:10px">正文</div>' +
+        '<div class="mt-prev" style="margin-top:4px"><div class="mt-txt">' + vars(t.body) + '</div></div>' +
+        '<div class="ry-hint" style="margin-top:10px">变量（' + (t.vars || []).length + ' 个）</div>' +
+        '<div class="mt-vars">' + (t.vars || []).map(function (v) { return '<span class="mt-v">' + ui.esc(v) + '</span>'; }).join('') + '</div>' +
+        ui.banner('变量只能从该事件确定的上下文取值。变量列表是模板契约的一部分：' +
+          '改文案不能凭空引入上下文里没有的字段——否则运行时无法取值，' +
+          '系统只能要么留空、要么用兜底值，两种都会让接收人看到不完整的信息。', 'warn'),
+      footer: canEdit
+        ? '<button class="ry-btn" data-close>关闭</button><button class="ry-btn ry-btn--primary" id="mt-go">编辑模板</button>'
+        : '<button class="ry-btn" data-close>关闭</button>',
+      onOpen: function (el) {
+        var b = ui.qs('#mt-go', el);
+        if (b) b.addEventListener('click', function () { ui.close(); edit(t); });
+      }
+    });
+  }
+
+  function edit(t) {
+    ui.drawer({
+      title: '编辑模板　' + t.name,
+      subtitle: '改动只影响之后的投递，不回写历史记录。',
+      size: 'lg',
+      body:
+        ui.field('模板名称', ui.input('mt-t-n', t.name), '', true) +
+        ui.field('标题', ui.input('mt-t-t', t.title), '支持 ${变量} 占位', true) +
+        ui.field('正文', ui.textarea('mt-t-b', t.body, '支持 ${变量} 占位与换行', 6), '', true) +
+        ui.field('变量清单', ui.input('mt-t-v', (t.vars || []).join('、'), '以、分隔；只能使用该事件上下文已有的字段'), '变量清单是模板契约，保存时会与正文占位逐一比对', true) +
+        ui.grid2(
+          ui.field('额外推送企业微信', ui.select('mt-t-w', [{ value: '1', label: '推送' }, { value: '0', label: '不推送' }], t.wecom ? '1' : '0'),
+            '渠道开关的完整口径见「企微事件白名单」页'),
+          ui.field('状态', ui.select('mt-t-s', [{ value: '启用', label: '启用' }, { value: '停用', label: '停用' }], t.status),
+            '停用后该事件不再产生消息，但历史投递记录保留')
+        ) +
+        ui.banner('修改模板<b>不会改变历史投递内容</b>：已经发出的消息记录里保存的是当时的内容快照。' +
+          '如果希望「从某时起改用新文案」，直接改即可——记录会自然分成两段，' +
+          '审计与投递记录都能看出来是何时切换的。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="mt-save">保存</button>',
+      onOpen: function (el) {
+        ui.qs('#mt-save', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!v['mt-t-t'] || !v['mt-t-t'].trim()) { ui.toast('标题必填。', 'warn'); return; }
+          if (!v['mt-t-b'] || !v['mt-t-b'].trim()) { ui.toast('正文必填。', 'warn'); return; }
+
+          var declared = String(v['mt-t-v'] || '').split(/[、,，]/).map(function (x) { return x.trim(); })
+            .filter(function (x) { return x; });
+          var used = [];
+          var re = /\$\{([^}]+)\}/g, m;
+          var text = v['mt-t-t'] + '\n' + v['mt-t-b'];
+          while ((m = re.exec(text))) { if (used.indexOf(m[1]) < 0) used.push(m[1]); }
+
+          var undeclared = used.filter(function (x) { return declared.indexOf(x) < 0; });
+          var unused = declared.filter(function (x) { return used.indexOf(x) < 0; });
+
+          if (undeclared.length) {
+            ui.toast('正文占位未在变量清单中声明：' + undeclared.join('、') + '。请补齐清单或改用已声明变量。', 'warn');
+            return;
+          }
+          if (unused.length) {
+            ui.toast('变量清单中的「' + unused.join('、') + '」未在标题或正文中使用，请确认后再保存。', 'warn');
+            return;
+          }
+
+          t.name = v['mt-t-n'].trim() || t.name;
+          t.title = v['mt-t-t'];
+          t.body = v['mt-t-b'];
+          t.vars = declared;
+          t.wecom = v['mt-t-w'] === '1';
+          t.status = v['mt-t-s'];
+          S.audit('消息模板', t.id, '编辑模板', '', t.code);
+          S.save();
+          ui.close();
+          ui.toast('模板已保存。改动只影响之后的投递。', 'success');
+          render();
+        });
+      }
+    });
+  }
+
+  function bind() {
+    ui.qs('#mt-apply').addEventListener('click', function () {
+      var v = ui.formValues(ui.qs('#mt-host')); kw = v['mt-kw'] || ''; stF = v['mt-st'] || ''; render();
+    });
+    ui.qs('#mt-reset').addEventListener('click', function () { kw = ''; stF = ''; render(); });
+    ui.qsa('[data-mt-view]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var t = pick(b.getAttribute('data-mt-view')); if (t) detail(t);
+      });
+    });
+    ui.qsa('[data-mt-edit]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]')) return;
+        var t = pick(b.getAttribute('data-mt-edit')); if (t) edit(t);
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

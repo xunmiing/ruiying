@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>任务详情 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：任务详情 */
+  .td-cols { display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; align-items: start; }
+  .td-flow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .td-node { padding: 3px 10px; border-radius: var(--r-tag); border: 1px solid var(--line); font-size: 12px; color: var(--muted); background: var(--surface); }
+  .td-node.is-on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+  .td-node.is-term { background: var(--line-soft); }
+  button.td-node { cursor:pointer; font-family:inherit; }
+  button.td-node:hover { border-color:var(--brand); color:var(--brand-ink); }
+  .td-tip { border:1px solid #e6bb5a; background:#fff8e8; color:#8c6215; border-radius:6px; padding:3px 8px; font-size:12px; cursor:pointer; font-family:inherit; }
+  .td-tip:hover { background:#fff0c8; }
+  .td-note { color:var(--muted); font-size:12px; }
+  #td-head-acts { display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .td-arrow { color: var(--faint); }
+  .td-read { white-space: pre-wrap; line-height: 1.9; font-size: 13px; margin: 0; }
+  .td-more { position: relative; display: inline-block; }
+  .td-more__menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 176px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: 0 8px 24px rgba(16,32,40,.10); padding: 6px; display: none; }
+  .td-more__menu.is-open { display: block; }
+  .td-more__menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; border: 0; background: transparent; border-radius: 6px; font-size: 12.5px; font-family: inherit; color: var(--ink); cursor: pointer; }
+  .td-more__menu button:hover { background: var(--line-soft); }
+  .td-more__menu button[disabled] { color: var(--faint); cursor: not-allowed; }
+  .td-block { margin:0 0 18px; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-card); padding:16px 18px; }
+  .td-block > h3 { font-size:15px; margin:0 0 14px; padding:0 0 10px; border-bottom:1px solid var(--line-soft); }
+  .td-subhead { font-size:12px; font-weight:600; color:var(--muted); margin:0 0 8px; }
+  .td-info-line { font-size:13px; line-height:1.8; overflow-wrap:anywhere; }
+  .td-info-line + .td-info-line { margin-top:5px; }
+  .td-softline { border-top:1px solid var(--line-soft); margin-top:14px; padding-top:13px; }
+  .td-head-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 20px; margin-top:12px; }
+  #td-objhead .ry-objhead__top > div { flex:1; min-width:0; }
+  .td-head-fact { min-width:0; padding:9px 0; border-bottom:1px solid var(--line-soft); }
+  .td-head-label { display:block; color:var(--muted); font-size:12px; margin-bottom:5px; }
+  .td-head-value { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:13px; font-weight:600; line-height:1.6; overflow-wrap:anywhere; }
+  .td-head-sub { color:var(--muted); font-size:11px; line-height:1.5; margin-top:3px; }
+  .td-inline-edit { border:0; background:transparent; color:var(--brand-ink); padding:0 2px; font:inherit; font-size:12px; font-weight:500; cursor:pointer; }
+  .td-inline-edit:hover { text-decoration:underline; }
+  .td-head-foot { display:flex; flex-wrap:wrap; gap:4px 18px; padding-top:12px; color:var(--muted); font-size:11.5px; line-height:1.6; }
+  .td-demo { margin:0 0 16px; border:1px solid var(--line); border-radius:var(--r-card); background:var(--surface); padding:12px 16px; }
+  .td-demo__head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+  .td-demo__head strong { font-size:13px; }
+  .td-demo__head span { color:var(--muted); font-size:11px; }
+  .td-log-rules { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  body.td-embedded .ry-side, body.td-embedded .ry-top, body.td-embedded .ry-head, body.td-embedded .pcn-trigger { display:none !important; }
+  body.td-embedded .ry-app, body.td-embedded .ry-main { display:block; width:100%; min-width:0; }
+  body.td-embedded .ry-page { padding:18px; max-width:none; }
+  body.td-embedded .td-embedded-acts { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 16px; }
+  @media (max-width: 760px) { .td-cols, .td-head-grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="td-guard"></div>
+      <div id="td-body" style="display:none">
+        <div class="ry-objhead" id="td-objhead"></div>
+        <div class="td-embedded-acts" id="td-embedded-acts"></div>
+        <div id="td-flow"></div>
+        <div id="td-detail">
+          <section class="td-block"><h3>任务内容与关联</h3><div class="td-cols"><div id="td-ov-l"></div><div id="td-ov-r"></div></div></section>
+          <section class="td-block"><h3>执行结果</h3><div class="td-cols"><div id="td-rs-l"></div><div id="td-rs-r"></div></div></section>
+          <section class="td-block"><h3>日志</h3><div id="td-history"></div></section>
+        </div>
+      </div>
+
+
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm, u = S.currentUser();
+  var embedded = ui.q('drawer') === '1';
+  var renderCount = 0;
+  if (embedded) document.body.classList.add('td-embedded');
+  var PAGE = 'task.detail';
+
+  var id = ui.q('id');
+  var from = ui.q('from') || 'mine';
+  if (!embedded) {
+    location.replace('list.html' + (id ? '?openTask=' + encodeURIComponent(id) : ''));
+    return;
+  }
+  /* 详情页必须先判空对象，再 guard，否则空对象会抛未捕获错误。 */
+  var t = id ? S.task(id) : null;
+  var g = t ? P.guard(PAGE, 'tasks', id)
+            : { ok: false, kind: t === null ? 'unavailable' : 'unavailable', reason: '缺少任务标识，或该任务不存在、已被取消／失效，或已不在你的数据范围内。' };
+
+  if (!g.ok) {
+    RY.nav.shell({
+      nav: 'task.list', title: '任务详情',
+      crumbs: [{ label: '首页', href: 'pc.html' }, { label: '工作管理' }, { label: '任务', href: 'pc/task/list.html' }, { label: '任务详情' }],
+      actions: '<a class="ry-btn" href="list.html">返回任务列表</a>'
+    });
+    ui.renderState('#td-guard', g.kind || 'unavailable', {
+      body: '<p>' + ui.esc(g.reason || '该任务不存在，或已不在你的数据范围内。') + '</p>' +
+        '<p class="ry-hint">失去权限后不展示任务标题、负责人、参与人、截止时间与任何成果内容。</p>',
+      actions: '<a class="ry-btn" href="list.html">返回任务列表</a><a class="ry-btn" href="../search.html">改用全局搜索</a>'
+    });
+    return;
+  }
+
+  var fromList = ui.q('scope') || from;
+  function owner() { return t.owner === u.id; }
+  function creator() { return t.createdBy === u.id; }
+  function participant() { return (t.collaborators || []).indexOf(u.id) >= 0; }
+  function row(k, v) { return [k, v == null || v === '' ? '—' : v]; }
+  function render() {
+    var flags = ui.statusTag(t.status) + ' ' + ui.tag('来源：' + t.source, 'muted') +
+      (t.stageTask ? ' ' + ui.tag('阶段任务', 'brand') : '') +
+      (S.taskOverdue(t) ? ' ' + ui.tag('已逾期', 'bad') : '');
+    ui.qs('#td-objhead').innerHTML =
+      '<div class="ry-objhead__top"><div><div class="ry-objhead__name">' + ui.esc(t.name) + '</div>' +
+      '<div class="ry-flags">' + flags + '</div><div class="td-head-grid">' +
+      '<div class="td-head-fact"><span class="td-head-label">责任人</span><div class="td-head-value">' + ui.esc(S.userName(t.owner)) + '</div></div>' +
+      '<div class="td-head-fact"><span class="td-head-label">参与人</span><div class="td-head-value">' +
+      ui.esc((t.collaborators && t.collaborators.length ? t.collaborators :
+        (t.meeting && t.meeting.attendeeIds) || []).map(S.userName).join('、') ||
+        (t.meeting && t.meeting.attendees) || '无') + '</div></div>' +
+      '<div class="td-head-fact"><span class="td-head-label">' + (t.meeting ? '会议时间' : '截止时间') + '</span><div class="td-head-value">' +
+      ui.esc(t.meeting ? ((t.meeting.at || '—') + (t.meeting.endAt ? ' — ' + t.meeting.endAt : '')) : (t.dueAt || '—')) + '</div></div>' +
+      '<div class="td-head-fact"><span class="td-head-label">创建人</span><div class="td-head-value">' + ui.esc(t.createdBy ? S.userName(t.createdBy) : '系统') + '</div></div>' +
+      '</div><div class="td-head-foot"><span>任务编号：<code>' + ui.esc(t.id) + '</code></span><span>创建：' + ui.esc(t.createdAt || '—') + '</span></div></div></div>';
+    ui.qs('#td-flow').innerHTML =
+      '<div class="td-demo"><div class="td-demo__head"><strong>正式任务状态</strong><span>逾期是截止时间标记</span></div>' +
+      '<div class="td-flow"><span class="td-node' + (t.status === '待处理' ? ' is-on' : '') + '">待处理</span>' +
+      '<span class="td-node' + (t.status === '已完成' ? ' is-on' : '') + '">已完成</span>' +
+      '<span class="td-node' + (t.status === '已取消' ? ' is-on' : '') + '">已取消</span></div></div>';
+    var acts = [];
+    if (t.status === '待处理') {
+      if (owner()) acts.push('<button class="ry-btn ry-btn--primary" data-task-act="完成">标记完成</button>');
+      if (creator()) {
+        acts.push('<button class="ry-btn" data-task-act="改期">' + (t.meeting ? '修改会议结束时间' : '修改截止时间') + '</button>');
+        acts.push('<button class="ry-btn" data-task-act="取消">取消任务</button>');
+        if (!owner()) acts.push('<button class="ry-btn" data-task-act="催办">催办责任人</button>');
+      }
+    }
+    if (owner() || participant()) acts.push('<button class="ry-btn" data-task-act="记录">新增参与记录</button>');
+    ui.qs('#td-embedded-acts').innerHTML = acts.join('');
+    ui.qs('#td-ov-l').innerHTML = '<h4 class="td-subhead">任务说明</h4><p class="td-read">' + ui.esc(t.description || '暂无任务说明') + '</p>' +
+      (t.meeting ? '<div class="td-softline"><h4 class="td-subhead">会议安排</h4><div class="td-info-line">' +
+        ui.esc(t.meeting.mode || '会议方式未设置') +
+        ' · ' + ui.esc(t.meeting.mode === '线上' ? t.meeting.link || '会议链接未设置' : t.meeting.location || '会议地点未设置') + '</div></div>' : '');
+    ui.qs('#td-ov-r').innerHTML = '<h4 class="td-subhead">业务关联</h4>' + ui.kv([
+      row('来源', ui.esc(t.source)), row('业务类型', ui.esc(t.bizType || '—')),
+      row('关联对象', ui.esc(t.related && t.related.name ? t.related.type + '：' + t.related.name : '无')),
+      row('阶段与轮次', t.stageTask ? ui.esc((t.stageCode || '—') + ' · 第 ' + (t.stageRound || 1) + ' 轮') : '不适用'),
+      row('规则版本', t.stageTask ? ui.esc(t.ruleVersion || '—') : '不适用')
+    ]);
+    ui.qs('#td-rs-l').innerHTML = '<h4 class="td-subhead">成果</h4>' + ui.kv([
+      row('完成时间', ui.esc(t.doneAt || '—')), row('完成说明', ui.esc(t.result || '尚未提交')),
+      row('成果附件', ui.esc((t.resultAttachments || []).map(function (a) { return a.name; }).join('、') || '—')),
+      row('取消原因', ui.esc(t.cancelReason || '—')), row('改期原因', ui.esc(t.rescheduleReason || '—'))
+    ]);
+    var records = (t.collabRecords || []).slice().reverse();
+    ui.qs('#td-rs-r').innerHTML = '<h4 class="td-subhead">参与记录</h4>' +
+      (records.length ? '<div class="ry-timeline">' + records.map(function (r) {
+        return '<div class="td-info-line">' + ui.esc((r.at || '') + ' · ' + S.userName(r.by) + ' · ' + r.note) + '</div>';
+      }).join('') + '</div>' : '<p class="td-note">暂无参与记录</p>');
+    var history = (t.history || []).slice().reverse();
+    ui.qs('#td-history').innerHTML = history.length ? '<div class="ry-timeline">' + history.map(function (h) {
+      return '<div class="td-info-line"><b>' + ui.esc(h.action) + '</b> · ' +
+        ui.esc((h.actor || '系统') + ' · ' + (h.at || '')) + ' · ' +
+        ui.esc((h.from || '—') + ' → ' + (h.to || '—')) +
+        (h.note ? ' · ' + ui.esc(h.note) : '') + '</div>';
+    }).join('') + '</div>' : '<p class="td-note">暂无日志记录</p>';
+    ui.qsa('[data-task-act]', ui.qs('#td-body')).forEach(function (b) {
+      b.addEventListener('click', function () { openAction(b.getAttribute('data-task-act')); });
+    });
+    if (embedded && renderCount++ > 0 && window.parent !== window) {
+      window.parent.postMessage({ type: 'ry-task-detail-changed' }, '*');
+    }
+  }
+  function openAction(action) {
+    if (action === '催办') {
+      var reminder = S.remindTask(t.id);
+      ui.toast(reminder.msg, reminder.ok ? 'success' : 'warn');
+      if (reminder.ok) { t = S.task(id); render(); }
+      return;
+    }
+    var spec = {
+      '完成': ['标记完成', '完成说明', 'result', '说明交付成果', false],
+      '改期': [t.meeting ? '修改会议结束时间' : '修改截止时间', '改期原因', 'reason', '说明改期原因', true],
+      '取消': ['取消任务', '取消原因', 'reason', '说明取消原因', false],
+      '记录': ['新增参与记录', '参与内容', 'note', '记录本人进展或成果', false]
+    }[action];
+    if (!spec) return;
+    ui.drawer({
+      title: spec[0], subtitle: '每次提交均重新校验当前任务状态与操作权限。',
+      body: (spec[4] ? ui.field(t.meeting ? '新的会议结束时间' : '新的截止时间', ui.input('dueAt', '', 'YYYY-MM-DD HH:mm'), '', true) : '') +
+        ui.field(spec[1], ui.textarea(spec[2], '', spec[3], 3), '', action !== '完成') +
+        (action === '完成' ? '<div class="ry-field"><label>成果附件（图片、文件或视频）</label><input type="file" id="td-attachments" multiple><p class="ry-hint">原型仅记录文件元信息。</p></div>' : ''),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="td-save">确认</button>',
+      onOpen: function (el) {
+        ui.qs('#td-save', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          var r = action === '记录' ? S.addTaskCollabRecord(t.id, v.note) :
+            S.taskAct(t.id, action, { result: v.result || '', reason: v.reason || '', dueAt: v.dueAt || '',
+              attachments: action === '完成' ? Array.from((ui.qs('#td-attachments', el).files || [])).map(function (f) { return { name: f.name, size: f.size, type: f.type }; }) : [] });
+          if (!r.ok) { ui.toast(r.msg || '操作未完成', 'warn'); return; }
+          t = S.task(id); ui.close(); ui.toast(r.msg || '已保存', 'success'); render();
+        });
+      }
+    });
+  }
+  RY.nav.shell({
+    nav: 'task.list', title: '任务详情',
+    subtitle: '当前对象：<code>' + ui.esc(t.id) + '</code>　来源入口：' + ui.esc(from),
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '工作管理' }, { label: '任务', href: 'pc/task/list.html' }, { label: t.id }],
+    actions: '<a class="ry-btn" href="list.html?scope=' + ui.esc(fromList) + '">返回任务列表</a>'
+  });
+  ui.qs('#td-body').style.display = '';
+  render();
+  if (embedded && ui.q('action') === 'complete' && owner() && t.status === '待处理') openAction('完成');
+  ui.bindDenied('#ry-page');
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

@@ -1,0 +1,182 @@
+/* ==========================================================================
+ * 原型说明层（prd-notes）
+ * --------------------------------------------------------------------------
+ * 用途：在 0.1 原型页面上就地标注「业务规则 / 注解 / 待修 / 不做」四类信息，
+ *       让团队在页面上直接看到规则依据、阅读提示和已登记的待修项。
+ * 边界：本文件只做展示与定位，不承载业务事实；规则事实源是 prd/ 下的 PRD。
+ *       类名统一使用 ryn- 前缀，避免与业务样式冲突。
+ * 三模式：off 纯原型 / mark 编号批注（默认）/ full 完整说明。
+ * ========================================================================== */
+
+/* ---------------------------------------------------------------- 编号 */
+.ryn-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 17px; height: 17px; padding: 0 5px; margin-left: 6px;
+  background: #FFE08A; color: #5A4200; border: 1px solid #E4C25C;
+  border-radius: 6px; font-family: var(--sans); font-size: 11px; font-weight: 700;
+  line-height: 1; cursor: pointer; vertical-align: middle; user-select: none;
+}
+.ryn-badge:hover { background: #FFD35C; border-color: #D3AC37; }
+.ryn-badge:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.ryn-badge.is-on { background: #F2C33C; border-color: #C9A02B; box-shadow: 0 0 0 2px rgba(242, 195, 60, .32); }
+/* 含待修项的编号用红色描边，便于一眼定位问题 */
+.ryn-badge.has-todo { border-color: var(--danger-line); box-shadow: inset 0 0 0 1px rgba(180, 66, 58, .28); }
+.ryn-badge.has-todo::after { content: "!"; font-size: 10px; margin-left: 3px; color: #93332C; }
+body.ryn-off .ryn-badge, body.ryn-off .ryn-pagecard, body.ryn-off .ryn-panel, body.ryn-off .ryn-card { display: none !important; }
+
+/* ------------------------------------------------------------ 工具条 */
+.ryn-toolbar {
+  position: fixed; right: 16px; bottom: 16px; z-index: 900;
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 999px; box-shadow: var(--sh); font-family: var(--sans);
+}
+body.ryn-h5 .ryn-toolbar { bottom: 74px; right: 12px; padding: 5px 7px; }
+body.ryn-full .ryn-toolbar { right: 376px; }
+body.ryn-full.ryn-h5 .ryn-toolbar { right: 12px; }
+.ryn-toolbar__t { font-size: 11.5px; color: var(--muted); padding: 0 2px 0 4px; }
+.ryn-toolbar__btn {
+  height: 26px; padding: 0 9px; border: 1px solid var(--line); background: var(--surface);
+  border-radius: 999px; font-family: inherit; font-size: 12px; color: var(--muted); cursor: pointer;
+}
+.ryn-toolbar__btn:hover { border-color: var(--brand-line); color: var(--brand-ink); }
+.ryn-toolbar__btn.is-on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.ryn-toolbar__btn.is-todo.is-on { background: var(--danger); border-color: var(--danger); }
+
+/* -------------------------------------------------------- 页面说明卡 */
+.ryn-pagecard {
+  border: 1px solid var(--warn-line); background: var(--warn-soft);
+  border-radius: var(--r-card); padding: 11px 13px; margin: 0 0 12px;
+  font-family: var(--sans); font-size: 12.5px; color: var(--ink);
+}
+.ryn-pagecard__h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 7px; }
+.ryn-pagecard__h b { font-size: 13px; }
+.ryn-pagecard__hint { font-size: 11.5px; color: #8A5A12; }
+.ryn-pagecard__toggle {
+  margin-left: auto; height: 24px; padding: 0 9px; border: 1px solid var(--warn-line);
+  background: var(--surface); border-radius: 999px; font: inherit; font-size: 11.5px;
+  color: #8A5A12; cursor: pointer;
+}
+.ryn-pagecard__toggle:hover { background: #fff; border-color: #8A5A12; }
+.ryn-pagecard__sum { font-size: 12px; color: var(--muted); line-height: 1.6; margin-bottom: 2px; }
+.ryn-pagecard.is-collapsed .ryn-pagecard__grid,
+.ryn-pagecard.is-collapsed .ryn-pagecard__todos { display: none; }
+.ryn-toolbar__narrow { font-size: 11.5px; color: #8A5A12; padding: 0 4px; max-width: 190px; line-height: 1.3; }
+.ryn-pagecard__grid { display: grid; grid-template-columns: 74px 1fr; gap: 3px 10px; }
+.ryn-pagecard__grid dt { color: var(--muted); font-size: 11.5px; padding-top: 1px; }
+.ryn-pagecard__grid dd { margin: 0; line-height: 1.65; }
+.ryn-pagecard__todos { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--warn-line); }
+.ryn-pagecard__todos ol { margin: 4px 0 0; padding-left: 18px; }
+.ryn-pagecard__todos li { line-height: 1.65; margin: 2px 0; }
+
+/* ------------------------------------------------------------ 就地卡片 */
+.ryn-card {
+  position: absolute; z-index: 950; width: 344px; max-height: 62vh; overflow: auto;
+  padding: 12px 13px 13px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-card); box-shadow: var(--sh); font-family: var(--sans);
+  font-size: 12.5px; color: var(--ink); line-height: 1.65;
+}
+.ryn-card__h { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.ryn-card__code {
+  flex: none; min-width: 18px; height: 18px; padding: 0 5px; background: #FFE08A;
+  color: #5A4200; border: 1px solid #E4C25C; border-radius: 6px;
+  font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+}
+.ryn-card__t { flex: 1; font-size: 13px; font-weight: 600; }
+.ryn-card__x {
+  flex: none; width: 22px; height: 22px; border: 1px solid var(--line); background: var(--surface);
+  border-radius: 6px; cursor: pointer; color: var(--muted); font-size: 13px; line-height: 1; font-family: inherit;
+}
+.ryn-card__x:hover { border-color: var(--danger-line); color: var(--danger); }
+.ryn-card__foot { margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line-soft); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+
+/* -------------------------------------------------------------- 内容块
+ * 四类内容统一表达：浅底色 + 3px 左边线（颜色区分）+ 同色小标题。
+ * 左侧强调线颜色即语义：蓝=业务规则、黄=注解、红=待修、灰=0.1 不做。
+ * 待修额外加整框，是唯一需要动手处理的一类，视觉权重最高。
+ * 所有小标题颜色按 WCAG 4.5:1 以上选取（实测值见 CHANGELOG）。 */
+.ryn-sec { margin: 0 0 9px; padding: 8px 9px; border-left: 3px solid var(--line); border-radius: 8px; }
+.ryn-sec:last-of-type { margin-bottom: 4px; }
+.ryn-sec__t { display: block; font-size: 11.5px; font-weight: 700; letter-spacing: .02em; margin-bottom: 3px; }
+.ryn-sec__t::before { content: "■"; font-size: 9px; margin-right: 5px; vertical-align: 1px; }
+.ryn-sec--rule { background: var(--info-soft); border-left-color: #1F5490; }
+.ryn-sec--rule .ryn-sec__t { color: #1F5490; }
+.ryn-sec--note { background: var(--warn-soft); border-left-color: #8A5A12; }
+.ryn-sec--note .ryn-sec__t { color: #8A5A12; }
+.ryn-sec--todo { background: var(--danger-soft); border-left-color: #93332C; border-top: 1px solid var(--danger-line); border-right: 1px solid var(--danger-line); border-bottom: 1px solid var(--danger-line); }
+.ryn-sec--todo .ryn-sec__t { color: #93332C; }
+.ryn-sec--out { background: var(--bg); border-left-color: #5C6A72; }
+.ryn-sec--out .ryn-sec__t { color: #5C6A72; }
+.ryn-sec ul { margin: 0; padding-left: 16px; }
+.ryn-sec li { margin: 2px 0; }
+.ryn-sec--todo li { color: #7E2E28; }
+.ryn-sec--out ul { color: var(--muted); }
+.ryn-accept { margin-top: 2px; font-size: 12px; }
+.ryn-accept b { color: var(--brand-ink); }
+.ryn-sec__t--todo { color: #93332C; }
+.ryn-sec__t--brand { color: var(--brand-ink); }
+.ryn-ref { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+/* ---------------------------------------------------------- 右侧说明栏 */
+.ryn-panel {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 360px; z-index: 940;
+  overflow: auto; padding: 14px 14px 84px; background: var(--surface);
+  border-left: 1px solid var(--line); box-shadow: -8px 0 24px rgba(16, 24, 32, .05);
+  font-family: var(--sans); font-size: 12.5px; color: var(--ink); line-height: 1.65;
+}
+body.ryn-full .ry-page { padding-right: 384px; }
+body.ryn-full .ry-head, body.ryn-full .ry-top { padding-right: 368px; }
+.ryn-panel__h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.ryn-panel__h b { font-size: 13.5px; }
+.ryn-panel__sub { font-size: 11.5px; color: var(--muted); margin-bottom: 10px; }
+.ryn-panel__group { margin: 14px 0 0; }
+.ryn-panel__gt { font-size: 12px; font-weight: 700; color: var(--brand-ink); padding-bottom: 4px; border-bottom: 1px solid var(--line-soft); margin-bottom: 7px; }
+.ryn-toc { display: flex; flex-direction: column; gap: 3px; }
+.ryn-toc__it {
+  display: flex; gap: 7px; align-items: flex-start; text-align: left; width: 100%;
+  padding: 5px 7px; border: 1px solid transparent; background: var(--bg);
+  border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 12.5px; color: var(--ink); line-height: 1.55;
+}
+.ryn-toc__it:hover { border-color: var(--brand-line); background: var(--brand-soft); }
+.ryn-toc__it.is-on { border-color: var(--brand); background: var(--brand-soft); }
+.ryn-toc__code { flex: none; min-width: 18px; height: 18px; padding: 0 5px; background: #FFE08A; color: #5A4200; border: 1px solid #E4C25C; border-radius: 6px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.ryn-toc__it.has-todo .ryn-toc__code { border-color: var(--danger-line); }
+.ryn-toc__t { flex: 1; }
+.ryn-toc__it.has-todo .ryn-toc__t::after { content: " 待修"; color: var(--danger); font-size: 11px; }
+.ryn-panel .ryn-sec { margin-top: 8px; }
+.ryn-permission { padding: 9px; margin: 7px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.ryn-permission.is-on { border-color: #D8AD43; background: #FFF9E8; }
+.ryn-permission p { margin: 5px 0; }
+.ryn-permission small { color: var(--muted); }
+.ryn-perm-link { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border: 1px solid #E4C25C; border-radius: 6px; background: #FFE8A3; color: #5A4200; font: 600 11px var(--sans); cursor: pointer; vertical-align: middle; white-space: nowrap; }
+.ryn-perm-link:hover, .ryn-perm-link:focus-visible { background: #FFD77C; outline: 2px solid #B78B24; outline-offset: 1px; }
+body.ryn-lead-pc .ryn-pagecard { display: none; }
+@media (max-width: 1180px) {
+  body.ryn-lead-pc.ryn-full .ryn-panel { left: 0; width: auto; border-left: none; }
+  body.ryn-lead-pc.ryn-full .ry-page { padding-right: 24px; }
+  body.ryn-lead-pc.ryn-full .ry-head, body.ryn-lead-pc.ryn-full .ry-top { padding-right: 0; }
+}
+
+/* 待修汇总 */
+.ryn-todolist { margin: 0; padding-left: 16px; }
+.ryn-todolist li { margin: 5px 0; }
+.ryn-todolist .ryn-ref { display: block; }
+
+/* ------------------------------------------------------------ H5 适配 */
+body.ryn-h5 .ryn-pagecard { font-size: 12px; padding: 10px 11px; }
+body.ryn-h5 .ryn-pagecard__grid { grid-template-columns: 62px 1fr; }
+body.ryn-h5 .ryn-card { position: fixed; left: 10px; right: 10px; bottom: 10px; width: auto; max-height: 66vh; top: auto; }
+body.ryn-h5 .ryn-panel { left: 0; width: auto; border-left: none; padding-bottom: 150px; }
+body.ryn-h5.ryn-full .ry-body { padding-right: 12px; }
+
+/* 窄屏：说明栏不能挤压原型时改为覆盖式，并提示切回编号模式 */
+@media (max-width: 1100px) {
+  body.ryn-full .ryn-panel { left: 0; width: auto; border-left: none; }
+  body.ryn-full .ry-page { padding-right: 24px; }
+  body.ryn-full .ry-head, body.ryn-full .ry-top { padding-right: 0; }
+  body.ryn-full:not(.ryn-h5) .ryn-toolbar { right: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ryn-badge, .ryn-toolbar__btn, .ryn-toc__it { transition: none !important; }
+}

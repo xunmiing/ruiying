@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>销售活动详情 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：销售活动详情（活动信息 / 关联对象 / 内容与纪要 / AI 结果 / 原件 / 纠错历史）。 */
+  .ad-sec { display: none; }
+  .ad-sec.is-on { display: block; }
+  .ad-rel { border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px; background: var(--surface); }
+  .ad-rel__t { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .ad-rel__t b { font-size: 13.5px; }
+  .ad-warn { border: 1px solid var(--warn-line); background: var(--warn-soft); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+  .ad-warn p { margin: 0; font-size: 12.5px; line-height: 1.8; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+  <div id="ad-host"></div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.activity.detail';
+  var id = ui.q('id');
+  var a = id ? S.activity(id) : null;
+
+  RY.nav.h5shell({
+    title: a ? (a.channel || a.type || '销售活动') : '销售活动详情',
+    sub: '已发生的历史事实 · 不可删除',
+    back: 'h5/activity/list.html',
+    nav: 'home',
+    tabbar: false   /* 详情页隐藏底部五入口 */
+  });
+
+  /* 本页契约区块：任何状态下都要渲染，评审需要能对照页面边界。 */
+  function contractHtml() {
+    return '<div class="ry-hcard ry-hcard--flat" style="margin-top:14px"><div class="ry-hcard__head"><h3>本页契约</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">PG-ACT-DETAIL</span></div></div>' +
+      '<div class="ry-hcard__body">' + ui.kv([
+        ['页面契约', 'PG-ACT-DETAIL · 任务与销售活动 · H5'],
+        ['可进入角色', 'R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员（ALL5）'],
+        ['依据', 'prd/04 §3'],
+        ['覆盖验收', 'AC-30'],
+        ['本页视图', '活动信息、关联对象、内容与纪要、AI 结果、原件'],
+        ['事实边界', '销售活动是已发生的历史事实，不可删除；修改只走纠错并保留前后值与原因'],
+        ['对象边界', '正式拜访是独立业务对象，不是销售活动子类；时间线只投影，不复制记录'],
+        ['执行边界', 'H5 只做本人活动，不做他人活动；不提供通用批量修改与导出']
+      ]) +
+      '<p class="ry-hint">本页在所有状态下都展示该契约；缺少对象标识或对象不可用时，页面只渲染状态说明与契约，不渲染活动字段。</p>' +
+      '</div></div>';
+  }
+
+  /* 先判空对象再 guard：缺少 id 或对象不存在时不能按「有权限」继续渲染。 */
+  var g = a ? P.guard(PAGE, 'activities', id)
+            : { ok: false, kind: 'unavailable', reason: '缺少活动标识，或该活动不存在、已被合并到其他记录。' };
+  if (!g.ok) {
+    ui.qs('#ad-host').innerHTML = ui.stateCard(g.kind, {
+      title: g.kind === 'no-permission' ? '没有该销售活动的访问权限' : '该销售活动当前不可用',
+      body: '<p>' + ui.esc(g.reason) + '</p>' +
+        '<p class="ry-hint">销售活动是已发生的历史事实：本页不提供删除，也不在 H5 提供任何批量修改。</p>' +
+        '<p class="ry-hint">正式活动保存活动类型、发生时间、至少一个业务对象关联与内容摘要；样例中的时间线投影按同一数据范围口径过滤，无权对象不展示名称、摘要与数量。</p>' +
+        '<p class="ry-hint">AI 候选不是正式业务事实；未确认候选不得进入日报正式事实正文，也不在本页冒充已确认内容。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/activity/list.html') + '">返回销售活动列表</a>' +
+               '<a class="ry-btn" href="' + RY.nav.href('h5/activity/create.html') + '">快速记录活动</a>'
+    }) + contractHtml();
+    return;
+  }
+
+  var me = S.currentUser();
+  var ownerId = a.owner || a.actor || '';
+  var isMine = ownerId === me.id;
+  var TABS = [
+    { k: 'info', n: '活动信息' },
+    { k: 'rel', n: '关联对象' },
+    { k: 'body', n: '内容与纪要' },
+    { k: 'ai', n: 'AI 结果' },
+    { k: 'ev', n: '原件' },
+    { k: 'his', n: '纠错历史' }
+  ];
+
+  function kv(list) {
+    return ui.kv(list.map(function (r) {
+      return [r[0], (r[1] == null || r[1] === '' ? '—' : r[1])];
+    }));
+  }
+  function channel() { return a.channel || a.type || '未分类'; }
+  function related() {
+    if (a.related && a.related.length) return a.related.slice();
+    var out = [];
+    if (a.customerId) out.push({ type: '客户', id: a.customerId });
+    if (a.leadId) out.push({ type: '线索', id: a.leadId });
+    if (a.oppId) out.push({ type: '商机', id: a.oppId });
+    return out;
+  }
+  function objName(r) {
+    var o = r.type === '客户' ? S.customer(r.id) : r.type === '商机' ? S.opp(r.id)
+      : r.type === '线索' ? S.lead(r.id) : S.contact(r.id);
+    return (o && (o.name || o.raw)) || r.name || r.id;
+  }
+  function objPath(r) {
+    if (r.type === '客户') return 'h5/customer/detail.html?id=' + encodeURIComponent(r.id);
+    if (r.type === '商机') return 'h5/opportunity/detail.html?id=' + encodeURIComponent(r.id);
+    if (r.type === '线索') return 'h5/lead/detail.html?id=' + encodeURIComponent(r.id);
+    if (r.type === '联系人') return 'h5/contact/detail.html?id=' + encodeURIComponent(r.id);
+    return '';
+  }
+
+  /* ---------------------------------------------------------- 视图 */
+
+  function viewInfo() {
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>活动信息</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">历史事实，不可删除</span></div></div>' +
+      '<div class="ry-hcard__body">' + kv([
+        ['活动编号', '<code>' + ui.esc(a.id) + '</code>'],
+        ['活动类型', ui.tag(channel(), 'muted')],
+        ['发生时间', ui.esc(a.at || '—')],
+        ['发生人', ui.esc(S.userName(ownerId) || ownerId || '—')],
+        ['录入来源', ui.esc(a.origin || '系统投影（只读）')],
+        ['创建时间', ui.esc(a.createdAt || '—')],
+        ['最近纠错', ui.esc(a.correctedAt ? (a.correctedAt + ' · ' + S.userName(a.correctedBy)) : '无')]
+      ]) +
+      '<p class="ry-hint">销售活动必须至少关联一个有效业务对象；活动不改写正式事实，也不替代正式拜访。' +
+        '正式拜访是独立业务对象，在时间线中以同一 visit_id 投影，不复制拜访记录。</p>' +
+      '</div></div>' +
+      '<div class="ry-hcard ry-hcard--flat"><div class="ry-hcard__head"><h3>本页可做的动作</h3></div>' +
+      '<div class="ry-hcard__body"><div class="ry-acts-row">' +
+      (isMine
+        ? ui.actionBtn('activity.correct', '纠错', ' data-do="correct"')
+        : '<span class="ry-hint">该活动不是本人发起：只读查看。H5 只做本人活动，不做他人活动。</span>') +
+      '<span class="ry-btn is-off" data-denied="1" title="销售活动是历史事实，任何端都不提供删除；纠错保留修改前后值与原因">删除活动<i class="ry-btn__lock">不可删除</i></span>' +
+      '</div>' +
+      '<p class="ry-hint" style="margin-top:8px">活动不提供通用批量修改，H5 也不提供导出（导出属于 PC 能力）。</p>' +
+      '</div></div>';
+  }
+
+  function viewRelated() {
+    var list = related();
+    if (!list.length) return ui.empty('该活动没有关联业务对象。', '');
+    return '<div class="ry-sec-title">关联对象 <span class="h5-sec-note">关联受数据范围约束</span></div>' +
+      list.map(function (r) {
+        var path = objPath(r);
+        return '<div class="ad-rel">' +
+          '<div class="ad-rel__t"><b>' + ui.esc(r.type + '：' + objName(r)) + '</b>' + ui.tag(r.id, 'muted') + '</div>' +
+          (path ? '<div class="ry-acts-row" style="margin-top:8px"><a class="ry-btn" href="' + RY.nav.href(path) + '">打开对象</a></div>'
+                : '<p class="ry-hint" style="margin:6px 0 0">该类型对象在 H5 未提供详情入口。</p>') +
+        '</div>';
+      }).join('') +
+      '<p class="ry-hint">活动与正式拜访互相独立：拜访不是销售活动的子类，两者各自维护状态，状态不自动联动。</p>';
+  }
+
+  function viewBody() {
+    var out = '<div class="ry-hcard"><div class="ry-hcard__head"><h3>内容与纪要</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">已发生事实</span></div></div>' +
+      '<div class="ry-hcard__body">' + kv([
+        ['沟通对象', ui.esc(a.target || '—')],
+        ['客户诉求', ui.esc(a.request || '—')],
+        ['共识与承诺', ui.esc(a.agreement || '—')],
+        ['下一步动作', ui.esc(a.nextAction || '—')]
+      ]) +
+      '<div class="ry-field__label" style="margin-top:10px">内容摘要</div>' +
+      '<p class="ry-read">' + ui.esc(a.content || a.summary || '该记录未填写内容摘要。') + '</p>' +
+      '</div></div>';
+    return out;
+  }
+
+  function viewAI() {
+    var ai = a.aiResult;
+    if (!ai) {
+      return ui.empty('该活动没有 AI 整理结果。', '') +
+        '<p class="ry-hint">AI 候选不是正式业务事实；未确认候选不得进入日报正式事实正文。' +
+        '沟通整理由 Agent 生成候选，必须经人工确认后才写入正式活动。</p>';
+    }
+    var rows = Object.keys(ai).map(function (k) { return [k, ui.esc(ai[k])]; });
+    return '<div class="ad-warn"><p><b>AI 结果不是正式事实。</b>下列内容由 Agent 从沟通原文整理，只在人工确认后写入正式字段；未确认候选不进入日报正式事实正文。</p></div>' +
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>AI 整理结果</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">候选态</span></div></div>' +
+      '<div class="ry-hcard__body">' + kv(rows) +
+      '<p class="ry-hint">主管不能代销售确认候选；技术处理人员不得修改业务内容。</p>' +
+      '</div></div>';
+  }
+
+  function viewEvidence() {
+    var list = a.evidence || [];
+    if (!list.length) return ui.empty('该活动没有上传原件。', '') +
+      '<p class="ry-hint">原件不改变活动的发生时间与事实归属；活动图片与附件不是可删除项。</p>';
+    return '<div class="ry-sec-title">原件 <span class="h5-sec-note">共 ' + list.length + ' 个</span></div>' +
+      '<div class="ry-thumbs">' + list.map(function (f) {
+        return '<div class="ry-thumb"><i>📄</i>' + ui.esc(f.name) + '<span class="h5-sec-note">' + ui.esc(f.size || '') + '</span></div>';
+      }).join('') + '</div>' +
+      '<p class="ry-hint">原件与活动记录一同保留；H5 只展示最小摘要，不提供下载与导出（下载与导出属于 PC 能力）。</p>';
+  }
+
+  function viewHistory() {
+    var out = '';
+    var corr = (a.corrections || []).slice().reverse();
+    if (corr.length) {
+      out += '<div class="ry-sec-title">纠错留痕 <span class="h5-sec-note">共 ' + corr.length + ' 次</span></div>' +
+        corr.map(function (c) {
+          return '<div class="ad-rel">' +
+            '<div class="ad-rel__t"><b>' + ui.esc(S.userName(c.by)) + '</b><span class="h5-sec-note">' + ui.esc(c.at) + '</span></div>' +
+            '<div class="h5-sec-note" style="margin-top:6px;line-height:1.8">' +
+              (c.after ? '原渠道：' + ui.esc(c.before && c.before.channel || '—') + ' → ' + ui.esc(c.after.channel || '—') + '<br>'
+                : '旧记录未保存完整前后值，请以原审计记录为准。<br>') +
+              '原因：' + ui.esc(c.reason || '—') + '</div>' +
+          '</div>';
+        }).join('');
+    } else {
+      out += ui.empty('该活动没有纠错记录。', '');
+    }
+    var hist = (a.history || []).slice().reverse();
+    if (hist.length) {
+      out += '<div class="ry-card"><div class="ry-card__head"><h3>操作历史</h3></div><div class="ry-card__body">' +
+        '<ul class="ry-tl">' + hist.map(function (h) {
+          return '<li><p class="ry-tl__t"><b>' + ui.esc(h.action) + '</b>' +
+            (h.from || h.to ? '（' + ui.esc((h.from || '—') + ' → ' + (h.to || '—')) + '）' : '') + '</p>' +
+            '<p class="ry-tl__m">' + ui.esc(h.actor) + ' · ' + ui.esc(h.at) + (h.note ? ' · ' + ui.esc(h.note) : '') + '</p></li>';
+        }).join('') + '</ul></div></div>';
+    }
+    out += '<p class="ry-hint">纠错只追加留痕，不覆盖历史；活动不可删除，作废也保留为历史事实。' +
+      'H5 不提供通用批量修改，也不提供导出。</p>';
+    return out;
+  }
+
+  var VIEWS = { info: viewInfo, rel: viewRelated, body: viewBody, ai: viewAI, ev: viewEvidence, his: viewHistory };
+
+  /* ---------------------------------------------------------- 纠错 */
+
+  function correctSheet() {
+    RY.nav.sheet({
+      title: '活动纠错', sub: '保留修改前后值与原因',
+      body: '<div class="ry-hform">' +
+        ui.field('活动类型', ui.select('channel', ['电话', '会议', '消息', '微信', '邮件', '上门', '客户面访'], a.channel || a.type || ''), '', false) +
+        ui.field('沟通对象', ui.input('target', a.target || '', '如：采购总监赵敏'), '', false) +
+        ui.field('内容摘要', ui.textarea('content', a.content || a.summary || '', '修正后的内容摘要', 4), '', false) +
+        ui.field('下一步动作', ui.input('nextAction', a.nextAction || '', '如：9 月 23 日前提交技术方案初稿'), '', false) +
+        ui.field('纠错原因', ui.textarea('reason', '', '说明纠错依据（必填），纠错原因与前后值一并留痕', 3), '', true) +
+        '</div><p class="ry-hint">销售活动是已发生的历史事实：纠错只追加留痕，不做物理删除，也不改写与之无关的正式事实。</p>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ad-do">提交纠错</button>',
+      onOpen: function (host, close) {
+        host.addEventListener('click', function (e) {
+          if (!e.target.closest('#ad-do')) return;
+          var v = ui.formValues(host);
+          if (!(v.reason || '').trim()) { ui.toast('纠错原因必填', 'warn'); return; }
+          var r = S.correctActivity(a.id, {
+            channel: v.channel, target: v.target, content: v.content,
+            nextAction: v.nextAction, reason: v.reason.trim()
+          });
+          if (!r.ok) { ui.toast(r.msg || '纠错未完成', 'warn'); return; }
+          close();
+          a = S.activity(a.id);
+          ui.toast('已提交纠错并留痕', 'ok');
+          render('his');
+        });
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function render(active) {
+    active = active || 'info';
+    ui.qs('#ad-host').innerHTML =
+      '<div class="ry-brief"><div class="ry-brief__row">' +
+        '<div><div class="ry-brief__k">活动类型</div><div class="ry-brief__v">' + ui.esc(channel()) + '</div></div>' +
+        '<div><div class="ry-brief__k">发生时间</div><div class="ry-brief__v">' + ui.esc(a.at || '—') + '</div></div>' +
+      '</div><p class="ry-brief__next">归属：<b>' + ui.esc(S.userName(ownerId) || ownerId || '—') + '</b>' +
+        (isMine ? '（本人发起，可纠错）' : '（他人发起，只读）') + '</p></div>' +
+      '<div class="ry-fbar" style="position:static;margin-bottom:10px"><div class="ry-fbar__seg" style="flex:1">' +
+        TABS.map(function (x) {
+          return '<button type="button" data-tab="' + x.k + '"' + (x.k === active ? ' class="is-on"' : '') + '>' + x.n + '</button>';
+        }).join('') + '</div></div>' +
+      '<div class="ad-sec is-on" id="ad-sec">' + VIEWS[active]() + '</div>' + contractHtml();
+
+    ui.qsa('#ad-host [data-tab]').forEach(function (b) {
+      b.addEventListener('click', function () { render(b.getAttribute('data-tab')); });
+    });
+    ui.qsa('#ad-host [data-do="correct"]').forEach(function (b) {
+      b.addEventListener('click', function () { correctSheet(); });
+    });
+    ui.bindDenied(document.body);
+  }
+
+  render('info');
+  /* 列表页「纠错」入口带 #correct：仍先渲染详情，再由本人显式提交。 */
+  if (ui.hash() === 'correct' && isMine) correctSheet();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>销售活动 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：销售活动列表 */
+  .ac-table { min-width: 1460px; white-space: nowrap; }
+  .ac-table th, .ac-table td { padding-left: 14px; padding-right: 14px; }
+  .ac-table .ac-summary { max-width: 310px; overflow: hidden; text-overflow: ellipsis; }
+  .ac-table .ry-tbl-act { min-width: 150px; }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div class="ry-tabs" role="tablist" aria-label="销售活动类型">
+        <a class="ry-tab is-on" role="tab" aria-selected="true" href="list.html">普通活动</a>
+        <a class="ry-tab" role="tab" aria-selected="false" href="../visit/list.html">正式拜访</a>
+      </div>
+      <div class="ry-actions-row" style="margin:10px 0"><button type="button" data-pcn-rule="activityScope">可见范围</button></div>
+      <div class="ry-tabs" id="ac-scopes" role="tablist" aria-label="普通活动范围"></div>
+      <div id="ac-filter"></div>
+      <div class="ry-resultbar" id="ac-resultbar"></div>
+      <div class="ry-card"><div class="ry-card__body ry-card__body--flush">
+        <div class="ry-table__wrap ry-standard-list-wrap ry-standard-list-wrap--actions" role="region" aria-label="普通活动列表，可左右滚动" tabindex="0"><table class="ry-table ry-table--tight ac-table">
+          <thead><tr id="ac-thead"></tr></thead>
+          <tbody id="ac-rows"></tbody>
+        </table></div>
+      </div></div>
+      <div id="ac-pager"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  function can(a, o) { return RY.perm.can(a, o); }
+
+  var st = S.listState('activity.list');
+  var scope = ui.q('scope') || st.scope || 'mine';
+  var flt = st.flt || (st.flt = { kw: '', channel: '', owner: '', objectType: '', from: '', to: '' });
+  var page = st.page || 1, size = 10;
+
+  var CHANNELS = ['电话', '会议', '消息', '微信', '邮件', '上门', '客户面访'];
+  var OBJECTS = ['客户', '联系人', '线索', '商机'];
+
+  /* 活动归属统一取 owner；样例中的时间线投影用 actor 表达发生人，按同一数据范围口径归一。 */
+  function ownerOf(a) { return a.owner || a.actor || ''; }
+  function channelOf(a) { return a.channel || a.type || '未分类'; }
+
+  function scopes() {
+    var list = [
+      { key: 'mine', name: '我的活动', desc: '我是活动发生人' },
+      { key: 'all', name: '全部活动', desc: '按当前数据范围' }
+    ];
+    if (RY.perm.pcRole(u) === 'R2') list.splice(1, 0, { key: 'team', name: '团队活动', desc: '我作为主管可见的团队范围' });
+    return list;
+  }
+
+  function countOf(key) {
+    return records(key).length;
+  }
+
+  function records(selectedScope) {
+    return S.arr('activities').filter(function (a) {
+      return RY.perm.page('activity.detail') && RY.perm.inScope('activity', { owner: ownerOf(a), collaborators: a.collaborators });
+    }).filter(function (a) {
+      if (selectedScope === 'mine') return ownerOf(a) === u.id;
+      if (selectedScope === 'team') return ownerOf(a) === u.id || S.inTeamOf(ownerOf(a), u.id);
+      return true;
+    });
+  }
+
+  /* 关联对象：正式活动保存 related 数组；样例投影用 customerId／leadId／oppId 表达。 */
+  function relatedOf(a) {
+    if (a.related && a.related.length) return a.related.slice();
+    var out = [];
+    if (a.customerId) out.push({ type: '客户', id: a.customerId });
+    if (a.leadId) out.push({ type: '线索', id: a.leadId });
+    if (a.oppId) out.push({ type: '商机', id: a.oppId });
+    return out;
+  }
+  function visibleRelated(r) {
+    var kind = { '客户': 'customer', '联系人': 'contact', '线索': 'lead', '商机': 'opp' }[r.type];
+    var o = kind === 'customer' ? S.customer(r.id) : kind === 'contact' ? S.contact(r.id)
+      : kind === 'lead' ? S.lead(r.id) : kind === 'opp' ? S.opp(r.id) : null;
+    var page = { customer: 'customer.detail', contact: 'contact.detail', lead: 'lead.detail', opp: 'opp.detail' }[kind];
+    return !!(o && page && RY.perm.page(page) && RY.perm.inScope(kind, o));
+  }
+
+  RY.nav.shell({
+    nav: 'activity.list',
+    title: '销售活动',
+    subtitle: '按类型查看普通活动与正式拜访。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '销售管理' }, { label: '销售活动' }],
+    actions: (can('activity.export') ? '<button class="ry-btn" id="ac-exp">导出普通活动</button>'
+        : '<button class="ry-btn" data-denied="1" data-action="activity.export">导出普通活动<i class="ry-btn__lock">无权限</i></button>') +
+      '<button type="button" data-pcn-rule="activityExport">导出口径</button>' +
+      '<a class="ry-btn" href="../../h5/activity/create.html">在 H5 记录活动</a>'
+  });
+
+  function renderScopes() {
+    ui.qs('#ac-scopes').innerHTML = scopes().map(function (s) {
+      return '<button class="ry-tab' + (scope === s.key ? ' is-on' : '') + '" role="tab" aria-selected="' + (scope === s.key) + '" data-scope="' + s.key + '" title="' + ui.esc(s.desc) + '">' +
+        ui.esc(s.name) + ' <b>' + countOf(s.key) + '</b></button>';
+    }).join('');
+    ui.qsa('[data-scope]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        scope = b.getAttribute('data-scope'); st.scope = scope; page = 1; st.page = 1; S.save(); render();
+      });
+    });
+  }
+
+  ui.qs('#ac-filter').className = 'ry-filter';
+  ui.qs('#ac-filter').innerHTML =
+    '<div class="ry-filter__row">' +
+      ui.field('关键词', ui.input('kw', flt.kw, '活动编号／内容／实际沟通人'), '', false) +
+      ui.field('沟通渠道', ui.select('channel', [{ value: '', label: '全部' }].concat(CHANNELS), flt.channel), '', false) +
+      ui.field('发生人', ui.select('owner', [{ value: '', label: '全部' }].concat(S.all('users').map(function (x) { return { value: x.id, label: x.name + '（' + RY.perm.ROLES[x.role].code + '）' }; })), flt.owner), '', false) +
+      ui.field('关联对象类型', ui.select('objectType', [{ value: '', label: '全部' }].concat(OBJECTS), flt.objectType), '', false) +
+    '</div>' +
+    '<div class="ry-filter__more" id="ac-more"><div class="ry-filter__row">' +
+      ui.field('发生时间', '<div class="ry-daterange">' + ui.input('from', flt.from, '起') + '<span>~</span>' + ui.input('to', flt.to, '止') + '</div>', '', false) +
+    '</div></div>' +
+    '<div class="ry-filter__foot"><div class="ry-resultbar__tools">' +
+      '<button class="ry-btn" id="ac-toggle-more">更多筛选</button>' +
+      '<button class="ry-btn ry-btn--primary" id="ac-apply">查询</button>' +
+      '<button class="ry-btn" id="ac-reset">重置条件</button>' +
+    '</div></div>';
+  RY.nav.bindFilterToggle('#ac-toggle-more', '#ac-more');
+
+  function filtered() {
+    var k = flt.kw.trim();
+    return records(scope).filter(function (a) {
+      if (k && a.id.indexOf(k) < 0 && (a.content || a.summary || '').indexOf(k) < 0 && (a.target || '').indexOf(k) < 0) return false;
+      if (flt.channel && channelOf(a) !== flt.channel) return false;
+      if (flt.owner && ownerOf(a) !== flt.owner) return false;
+      if (flt.objectType && !relatedOf(a).filter(visibleRelated).some(function (x) { return x.type === flt.objectType; })) return false;
+      var d = String(a.at || '').slice(0, 10);
+      if (flt.from && (!d || d < flt.from)) return false;
+      if (flt.to && (!d || d > flt.to)) return false;
+      return true;
+    }).sort(function (a, b) { return String(b.at || '').localeCompare(String(a.at || '')); });
+  }
+
+  function render() {
+    renderScopes();
+    var list = filtered();
+    var total = list.length;
+    var pages = Math.max(1, Math.ceil(total / size));
+    if (page > pages) page = pages;
+    var rows = list.slice((page - 1) * size, page * size);
+
+    ui.qs('#ac-thead').innerHTML = '<th>活动编号</th><th>内容摘要</th><th>沟通渠道</th><th>实际沟通人</th>' +
+      '<th>发生时间</th><th>发生人</th><th>可查看关联对象数</th><th>录入来源</th><th>纠错次数</th><th>操作</th>';
+
+    ui.qs('#ac-rows').innerHTML = rows.length ? rows.map(function (a) {
+      var mine = ownerOf(a) === u.id;
+      var rel = relatedOf(a).filter(visibleRelated);
+      return '<tr>' +
+        '<td><a class="ry-cellname" href="detail.html?id=' + encodeURIComponent(a.id) + '&from=' + encodeURIComponent(scope) + '">' + ui.esc(a.id) + '</a></td>' +
+        '<td class="ac-summary">' + ui.esc(a.content || a.summary || '—') + '</td>' +
+        '<td>' + ui.esc(channelOf(a)) + '</td>' +
+        '<td>' + ui.esc(a.target || '—') + '</td>' +
+        '<td>' + ui.esc(a.at || '—') + '</td>' +
+        '<td>' + ui.esc(S.userName(ownerOf(a)) || ownerOf(a) || '—') + '</td>' +
+        '<td>' + rel.length + '</td>' +
+        '<td>' + ui.esc(a.origin || '系统投影') + '</td>' +
+        '<td>' + (a.corrections || []).length + '</td>' +
+        '<td class="ry-tbl-act">' +
+          '<a class="ry-btn ry-btn--sm" href="detail.html?id=' + encodeURIComponent(a.id) + '&from=' + encodeURIComponent(scope) + '">详情</a>' +
+          (mine ? ui.actionBtn('activity.correct', '纠错', ' data-ac-correct="' + a.id + '"', 'ry-btn--sm') : '') +
+        '</td></tr>';
+    }).join('') : '<tr><td colspan="10" class="ry-hint">当前范围与筛选条件下没有普通活动。</td></tr>';
+
+    ui.qs('#ac-resultbar').innerHTML = '<span>共 ' + total + ' 条普通活动（范围：' + ui.esc(scopeName()) + '）</span>' +
+      '<span class="ry-resultbar__right"><button type="button" data-pcn-rule="activityFact">已发生事实</button></span>';
+    ui.qs('#ac-pager').innerHTML = ui.pager(total, page, size, 'activity.list');
+
+    ui.bindPager('#ac-pager', function (p) { page = p; st.page = p; S.save(); render(); });
+    ui.qsa('[data-ac-correct]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]')) return;
+        correct(b.getAttribute('data-ac-correct'));
+      });
+    });
+    ui.bindDenied('#ry-page');
+  }
+
+  function scopeName() {
+    var s = scopes().filter(function (x) { return x.key === scope; })[0];
+    return s ? s.name : scope;
+  }
+
+  function correct(id) {
+    var a = S.activity(id);
+    if (!a) { ui.toast('该活动已不可用。', 'warn'); return; }
+    if ((a.owner || a.actor) !== u.id) { ui.toast('只能纠错本人发起的活动。', 'warn'); return; }
+    ui.drawer({
+      title: '活动纠错', subtitle: '保留修改前后值与原因；纠错不删除原记录。',
+      body: ui.kv([['活动编号', a.id], ['发生时间', a.at || '—'], ['发生人', S.userName(ownerOf(a))]]) +
+        ui.grid2(
+          ui.field('活动渠道', ui.select('channel', CHANNELS, channelOf(a)), '', false),
+          ui.field('实际沟通人', ui.input('target', a.target || '', '姓名或称谓，可填写多人'), '记录实际参与沟通者；无需为保存活动而创建正式联系人。', false)
+        ) +
+        ui.field('内容摘要', ui.textarea('content', a.content || a.summary || '', '', 4), '', false) +
+        ui.field('下一步动作', ui.input('nextAction', a.nextAction || '', ''), '', false) +
+        ui.field('纠错原因', ui.textarea('reason', '', '必填，纠错原因与前后值一并写入审计', 3), '', true) +
+        '<button type="button" data-pcn-rule="activityDetailCorrection">纠错留痕</button>',
+      size: 'lg',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ac-cf">提交纠错</button>',
+      onOpen: function (el) {
+        ui.qs('#ac-cf', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!(v.reason || '').trim()) { ui.toast('纠错原因必填。', 'warn'); return; }
+          var r = S.correctActivity(id, {
+            channel: v.channel, target: v.target, content: v.content,
+            nextAction: v.nextAction, reason: v.reason.trim()
+          });
+          if (!r.ok) { ui.toast(r.msg || '纠错未完成。', 'warn'); return; }
+          ui.close(); ui.toast('已提交纠错并留痕。', 'success'); render();
+        });
+      }
+    });
+  }
+
+  ui.qs('#ac-apply').addEventListener('click', function () {
+    var v = ui.formValues(ui.qs('#ac-filter'));
+    flt.kw = v.kw; flt.channel = v.channel; flt.owner = v.owner; flt.objectType = v.objectType;
+    flt.from = v.from; flt.to = v.to;
+    page = 1; st.page = 1; st.flt = flt; S.save(); render();
+  });
+  ui.qs('#ac-reset').addEventListener('click', function () {
+    Object.keys(flt).forEach(function (k) { flt[k] = ''; });
+    page = 1; st.page = 1; S.save();
+    ui.qs('#ac-filter').querySelectorAll('input,select').forEach(function (x) { if (x.tagName === 'SELECT') x.selectedIndex = 0; else x.value = ''; });
+    render();
+  });
+
+  var ex = ui.qs('#ac-exp');
+  if (ex) ex.addEventListener('click', function (e) {
+    if (e.target.closest('[data-denied]')) return;
+    if (!filtered().length) { ui.toast('当前筛选结果中没有可导出的普通活动。', 'warn'); return; }
+    ui.modal({
+      title: '导出销售活动', size: 'sm',
+      body: '<p>将导出当前范围与筛选结果中的普通活动 <b>' + filtered().length + '</b> 条。</p>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ac-exp-ok">提交导出</button>',
+      onOpen: function (el) {
+        ui.qs('#ac-exp-ok', el).addEventListener('click', function () {
+          ui.close();
+          var n = filtered().length;
+          var job = S.addJob({ type: '导出', action: '销售活动导出', object: '销售活动', status: '处理中', total: n, fields: ['活动编号', '活动渠道', '发生时间', '发生人', '关联对象', '内容摘要'], fileName: '销售活动_' + S.today().replace(/-/g, '') + '.xlsx' });
+          ui.asyncRun({ title: '正在生成导出文件', total: n, processId: job.processId, onDone: function () {
+            S.updateJob(job.id, { status: '已完成', success: n, failed: 0 });
+            ui.closeAll(); ui.toast('导出已完成，可在处理记录下载。', 'success');
+          } });
+        });
+      }
+    });
+  });
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

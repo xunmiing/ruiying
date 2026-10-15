@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>线索 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：线索列表（我的／团队／池内 + 单条派领 + 底部动作抽屉）。 */
+  .ll-search { position: sticky; top: 0; z-index: 6; background: var(--bg); padding: 10px 0 8px; }
+  .ll-search__box { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; }
+  .ll-search__box input { flex: 1; border: 0; outline: 0; font-size: 14px; background: transparent; color: var(--ink); }
+  .ll-search__box input::placeholder { color: var(--faint); }
+  .ll-hint { font-size: 11px; color: var(--faint); margin: 7px 2px 0; line-height: 1.65; }
+  .ll-scopes { display: flex; gap: 0; margin-top: 8px; }
+  .ll-scopes button { flex: 1; }
+  .ll-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ll-acts .ry-btn { padding: 5px 9px; font-size: 12px; }
+  .ll-more { text-align: center; padding: 14px 0 4px; }
+  .ll-more.is-hidden { display: none; }
+  .ll-pool { border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px; background: var(--surface); }
+  .ll-pool__h { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .ll-pool__h b { font-size: 13px; }
+  .ll-pool__m { font-size: 11.5px; color: var(--muted); line-height: 1.8; margin-top: 6px; }
+  .ll-warn { color: var(--danger, #C0392B); }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<!-- H5 外壳：顶部条与底部五入口由 navigation.js 渲染，本页不重复实现 -->
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+
+  <!-- 搜索与范围：搜索只在当前用户有权数据范围内执行；无权线索不返回标题、摘要与数量 -->
+  <div class="ll-search">
+    <div class="ll-search__box">
+      <input id="ll-q" type="search" placeholder="搜线索编号、原始内容" autocomplete="off">
+    </div>
+    <div class="ry-fbar__seg ll-scopes" id="ll-scopes"></div>
+    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+      <button class="ry-chip" id="ll-filter">筛选</button>
+      <button class="ry-chip" id="ll-pools">池内概览</button>
+      <button class="ry-chip" id="ll-scope">数据范围</button>
+    </div>
+    <p class="ll-hint" id="ll-hint">—</p>
+  </div>
+
+  <!-- 列表本体 -->
+  <div id="ll-host"></div>
+
+  <div class="ll-more is-hidden" id="ll-more">
+    <button class="ry-btn" id="ll-more-btn">加载更多</button>
+  </div>
+
+  <!-- 本页契约：评审对照用，列出页面契约编号与边界，不承载业务事实 -->
+  <div class="ry-hcard ry-hcard--flat" style="margin-top:14px">
+    <div class="ry-hcard__head"><h3>本页契约</h3><div class="ry-hcard__extra"><span class="h5-sec-note">PG-LEAD-LIST</span></div></div>
+    <div class="ry-hcard__body">
+      <ul class="ry-kv ry-kv--tight">
+        <li><span>页面契约</span><b>PG-LEAD-LIST · H5 · 销售管理（线索）</b></li>
+        <li><span>可进入角色</span><b>R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员</b></li>
+        <li><span>依据</span><b>prd/02 §3／§9；00 §5.2</b></li>
+        <li><span>覆盖验收</span><b>AC-10 AC-11 AC-15</b></li>
+        <li><span>本页视图</span><b>我的｜团队｜池内、单条分派／认领／转交／退回／回收、不提供导出</b></li>
+        <li><span>批量边界</span><b>线索禁止批量转换；H5 只做单条动作，批量归属属 PC 白名单能力</b></li>
+        <li><span>导出边界</span><b>H5 不提供导出；导出是可独立授予的 PC 能力，与明文查看互不相等</b></li>
+        <li><span>归属约束</span><b>活跃线索：当前负责人有值 XOR 当前池 ID 有值；不建池归属状态枚举</b></li>
+      </ul>
+      <p class="ry-hint" id="ll-scope-note">—</p>
+    </div>
+  </div>
+
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var u = S.currentUser(), D = S.all('dicts');
+
+  var PAGE = 'h5.lead.list';
+  var SIZE = 20;
+  var st = S.uiState('h5.lead.list');
+  var scope = ui.q('scope') || ui.hash() || st.scope || 'mine';
+  var flt = st.flt || (st.flt = { status: '', source: '', line: '', protect: '' });
+  var state = { q: '', page: st.page || 1 };
+
+  RY.nav.h5shell({
+    title: '线索',
+    sub: '我的 · 团队 · 池内；单条行动，不提供导出',
+    back: false,
+    nav: 'lead',
+    tabbar: true
+  });
+
+  /* ---------------------------------------------------------- 鉴权 */
+  /* 进入页面即重新鉴权；无权限时不展示任何标题、摘要与数量。 */
+  if (!P.page(PAGE)) {
+    ui.qs('#ll-host').innerHTML = ui.stateCard('no-permission', {
+      title: '没有线索页面的访问权限',
+      body: '<p>' + ui.esc(P.whyNot('lead.list') || '当前身份没有「线索」页面权限。') + '</p>' +
+            '<p class="ry-hint">页面权限、动作权限、数据范围与字段规则相互独立；获得其中一个不等于获得其余。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('index.html') + '">返回工作台</a>'
+    });
+    ui.qs('.ll-search').style.display = 'none';
+    ui.qs('#ll-more').classList.add('is-hidden');
+    ui.qs('#ll-scope-note').textContent = '当前身份无该页面权限，因此不展示任何线索数量与摘要。';
+    return;
+  }
+
+  /* ---------------------------------------------------------- 数据范围 */
+
+  var ACTIVE_STATES = ['待处理', '跟进中'];
+  var TERMINAL_STATES = ['已转化', '无效'];
+
+  function isMember(code) {
+    var p = S.poolOf(code);
+    return !!(p && (p.members || []).indexOf(u.id) >= 0);
+  }
+
+  /* 数据范围：本人负责（R1）或团队范围（R2/R3/R5）。
+     池内线索没有负责人，按对象负责人计算的数据范围会恒为空，因此池内可见性由
+     「我是否为该池成员」单独判定（prd/02 §6：H5 提供本人有池成员及数据范围的线索池）。
+     两者都先于渲染过滤，绝不全量取出后再用前端隐藏。 */
+  function scoped() {
+    return S.arr('leads').filter(function (l) {
+      return P.inScope('lead', l) || (!!l.currentPool && isMember(l.currentPool));
+    });
+  }
+
+  function scopes() {
+    var list = [
+      { key: 'mine', name: '我的' },
+      { key: 'pool', name: '池内' }
+    ];
+    if (['R2', 'R3', 'R5'].indexOf(u.role) >= 0) list.splice(1, 0, { key: 'team', name: '团队' });
+    return list;
+  }
+
+  function scopesOk() {
+    return scopes().some(function (s) { return s.key === scope; });
+  }
+
+  function inScope(l) {
+    if (scope === 'mine') return l.owner === u.id;
+    if (scope === 'team') return ['R2', 'R3', 'R5'].indexOf(u.role) >= 0;
+    if (scope === 'pool') return !!l.currentPool;
+    return false;
+  }
+
+  function filtered() {
+    var q = state.q.trim().toLowerCase();
+    return scoped().filter(function (l) {
+      if (!inScope(l)) return false;
+      if (flt.status && l.status !== flt.status) return false;
+      if (flt.source && l.source !== flt.source) return false;
+      if (flt.line && (l.candidateLines || []).indexOf(flt.line) < 0) return false;
+      var pd = (l.protectUntil || '').slice(0, 10);
+      if (flt.protect === 'on' && !(pd && pd >= S.today())) return false;
+      if (flt.protect === 'expired' && !(pd && pd < S.today())) return false;
+      if (flt.protect === 'none' && pd) return false;
+      if (!q) return true;
+      /* 搜索与列表同权：只匹配有权范围内的线索编号与原始内容。 */
+      return (l.id + ' ' + (l.raw || '')).toLowerCase().indexOf(q) >= 0;
+    });
+  }
+
+  /* 持有量口径（prd/02 §3.3）：按来源池计算，只计当前由我负责、处于三种活跃状态、
+     且从该池取得的线索；终态、已退回／回收／转交及从未过池的线索不计。 */
+  function holdCountOf(poolCode) {
+    return S.arr('leads').filter(function (x) {
+      return x.owner === u.id && (x.sourcePool || '') === poolCode && ACTIVE_STATES.indexOf(x.status) >= 0;
+    }).length;
+  }
+
+  /* ---------------------------------------------------------- 池内脱敏 */
+  /* 认领前只展示来源、入池时间、候选业务线、区域／业务范围、脱敏原始摘要和业务状态。 */
+  function maskRaw(raw) {
+    return String(raw || '').replace(/[0-9]{4,}/g, '****').replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/g, '****');
+  }
+
+  /* ---------------------------------------------------------- 动作清单 */
+
+  var ACTIONS_BY_STATE = {
+    '待处理': ['claim', 'assign', 'follow', 'invalid', 'convert'],
+    '跟进中': ['transfer', 'returnPool', 'recycle', 'follow', 'invalid', 'convert'],
+        '已转化': ['view'],
+    '无效': ['correctInvalid']
+  };
+  var ACTION_NAME = {
+    claim: '认领', assign: '分派', follow: '记录活动', transfer: '转交', returnPool: '退回池内',
+    recycle: '主管回收', invalid: '标记无效',
+    correctInvalid: '无效纠错', convert: '整条转换', view: '详情'
+  };
+  /* 归属动作按「是否在池 + 是否已有负责人」判定，不能只看状态：
+     认领／分派只在池内且无负责人时可用；转交／退回／回收只在已有负责人时可用。
+     认领与分派不改变业务状态（prd/02 §3.2），因此「待处理 + 已有负责人」是正常组合。 */
+  function actsOf(lead) {
+    var acts = (ACTIONS_BY_STATE[lead.status] || []).slice();
+    if (['待处理', '跟进中'].indexOf(lead.status) < 0) return acts;
+    function rm(x) { var i = acts.indexOf(x); if (i >= 0) acts.splice(i, 1); }
+    function add(x) { if (acts.indexOf(x) < 0) acts.push(x); }
+    var inPool = !!lead.currentPool, owned = !!lead.owner;
+    if (inPool && !owned) { add('claim'); add('assign'); } else { rm('claim'); rm('assign'); }
+    if (owned) { add('transfer'); add('returnPool'); add('recycle'); } else { rm('transfer'); rm('returnPool'); rm('recycle'); }
+    var ORDER = ['claim', 'assign', 'follow', 'transfer', 'returnPool', 'recycle', 'nurture', 'invalid', 'convert', 'edit', 'view'];
+    return acts.sort(function (a, b) { var ia = ORDER.indexOf(a), ib = ORDER.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
+  }
+  var ACTION_PERM = {
+    claim: 'lead.claim', assign: 'lead.assign', follow: 'lead.edit', transfer: 'lead.transfer',
+    returnPool: 'lead.returnPool', recycle: 'lead.recycle',     nurtureReview: 'lead.nurtureReview', invalid: 'lead.invalid', correctInvalid: 'lead.correctInvalid',
+    convert: 'lead.convert', view: ''
+  };
+
+  /* 单条动作的实际可执行判定：动作权限 ∩ 数据范围 ∩ 对象归属（prd/02 §8）。 */
+  function canDo(a, l) {
+    var perm = ACTION_PERM[a];
+    if (!perm) return true;
+    if (!P.can(perm, { owner: l.owner })) return false;
+    if (a === 'claim') {
+      var p = S.poolOf(l.currentPool);
+      if (!p || !p.allowClaim) return false;
+      if (!isMember(l.currentPool)) return false;
+      if (l.claimLocked) return false;
+    }
+    return true;
+  }
+
+  function whyNotDo(a, l) {
+    if (a === 'claim') {
+      var p = S.poolOf(l.currentPool);
+      if (!p) return '该线索当前不在池内，无法认领。';
+      if (!p.allowClaim) return '池「' + p.name + '」未开放主动认领，需要由有权人员分派。';
+      if (!isMember(l.currentPool)) return '你不是池「' + p.name + '」的成员，不能认领该线索。';
+      if (l.claimLocked) return '该线索已被其他人认领，请刷新后查看最新归属。';
+    }
+    return P.whyNot(ACTION_PERM[a]) || '当前身份、数据范围或对象状态不允许该动作。';
+  }
+
+  function tagFor(a, l, cls) {
+    var ok = canDo(a, l);
+    return '<button class="ry-btn ' + (cls || '') + '" data-op="' + a + '" data-id="' + l.id + '"' +
+      (ok ? '' : ' data-denied="1" data-action="' + ui.esc(ACTION_PERM[a] || '') + '" title="' + ui.esc(whyNotDo(a, l)) + '"') + '>' +
+      ui.esc(ACTION_NAME[a]) + (ok ? '' : '<i class="ry-btn__lock">' + ui.esc(shortWhy(a, l)) + '</i>') + '</button>';
+  }
+
+  /* 锁定标签尽量短，完整原因放在 title 与点击后的说明里。 */
+  function shortWhy(a, l) {
+    if (a === 'claim') {
+      var p = S.poolOf(l.currentPool);
+      if (l.claimLocked) return '已被认领';
+      if (!p || !p.allowClaim) return '未开放';
+      if (!isMember(l.currentPool)) return '非成员';
+    }
+    return '无权限';
+  }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function poolName(code) { var p = S.poolOf(code); return p ? p.name : (code || '—'); }
+
+  function ownerCell(l) {
+    if (l.owner) return ui.esc(S.userName(l.owner));
+    if (l.currentPool) return '池内 · ' + ui.esc(poolName(l.currentPool));
+    return '无负责人';
+  }
+
+  function protectCell(l) {
+    if (!l.protectUntil) return '无保护期';
+    var day = l.protectUntil.slice(0, 10);
+    return ui.esc(day) + (day >= S.today() ? '（保护期内）' : '（已到期，不自动回收）');
+  }
+
+  function row(l) {
+    var inPool = !!l.currentPool;
+    var summary = inPool ? maskRaw(l.raw) : (l.raw || '');
+    var tags = ui.statusTag(l.status) +
+      (l.candidateLines || []).map(function (x) { return ui.tag(S.businessLineName(x), 'muted'); }).join(' ');
+
+    var acts = actsOf(l);
+    var head = acts.slice(0, 2).map(function (a) { return tagFor(a, l, a === 'convert' ? 'ry-btn--primary' : ''); }).join('');
+    var rest = acts.slice(2);
+    if (rest.length) head += '<button class="ry-btn" data-more="' + l.id + '">更多</button>';
+
+    return '<li><div class="ry-hrow">' +
+      '<div class="ry-hrow__top">' +
+        '<span class="ry-hrow__t">' + ui.esc(l.id) + '</span>' +
+        '<span class="ry-hrow__tags">' + tags + '</span>' +
+      '</div>' +
+      '<div class="ry-hrow__meta"><span>' + ui.esc(summary.slice(0, 60)) + (summary.length > 60 ? '…' : '') + '</span></div>' +
+      '<div class="ry-hrow__meta">' +
+        '<span>来源 <b>' + ui.esc(l.source) + '</b></span>' +
+        '<span>记录来源 <b>' + ui.esc(l.sourceRecord || '—') + '</b></span>' +
+      '</div>' +
+      '<div class="ry-hrow__meta">' +
+        '<span>当前归属 <b>' + ownerCell(l) + '</b></span>' +
+        '<span>保护期 <b>' + protectCell(l) + '</b></span>' +
+      '</div>' +
+      '<div class="ry-hrow__meta">' +
+        '<span>最近跟进 <b>' + ui.esc((l.lastFollowUpAt || '—').slice(0, 10)) + '</b></span>' +
+        '<span>下次跟进 <b>' + ui.esc((l.nextFollowUp || '—').slice(0, 10)) + '</b></span>' +
+      '</div>' +
+      (inPool ? '<div class="ry-hrow__meta"><span class="ll-hint" style="margin:0">池内线索认领前脱敏：不展示完整原始内容、联系方式与负责人身份</span></div>' : '') +
+      '<div class="ry-hrow__foot"><div class="ll-acts">' +
+        '<a class="ry-btn" href="' + RY.nav.href('h5/lead/detail.html?id=' + encodeURIComponent(l.id) + '&from=' + encodeURIComponent(scope)) + '">详情</a>' +
+        head +
+      '</div></div>' +
+    '</div></li>';
+  }
+
+  function renderScopes() {
+    var list = scoped();
+    ui.qs('#ll-scopes').innerHTML = scopes().map(function (s) {
+      var n = list.filter(function (l) {
+        if (s.key === 'mine') return l.owner === u.id;
+        if (s.key === 'team') return true;
+        return !!l.currentPool;
+      }).length;
+      return '<button type="button" data-scope="' + s.key + '"' + (scope === s.key ? ' class="is-on"' : '') + '>' +
+        ui.esc(s.name) + ' ' + n + '</button>';
+    }).join('');
+    ui.qsa('[data-scope]', ui.qs('#ll-scopes')).forEach(function (b) {
+      b.addEventListener('click', function () {
+        scope = b.getAttribute('data-scope');
+        st.scope = scope; state.page = 1; st.page = 1; S.save();
+        try { window.history.replaceState(null, '', '#' + scope); } catch (e) { /* file:// 下忽略 */ }
+        render();
+      });
+    });
+  }
+
+  function render() {
+    renderScopes();
+    var list = filtered();
+    var shown = list.slice(0, state.page * SIZE);
+
+    if (!list.length) {
+      ui.qs('#ll-host').innerHTML = ui.stateCard('empty', {
+        title: state.q || flt.status || flt.source || flt.line || flt.protect ? '没有符合条件的线索' : '当前范围还没有线索',
+        body: '<p class="ry-hint">本页不展示无权线索，也不返回其标题、摘要与数量；因此「没有结果」可能包含已被数据范围过滤的记录。' +
+              '池内线索只在你是该池成员时可见。</p>',
+        actions: '<a class="ry-btn ry-btn--primary" href="' + RY.nav.href('h5/lead/create.html') + '">新建线索</a>'
+      });
+      ui.qs('#ll-more').classList.add('is-hidden');
+    } else {
+      ui.qs('#ll-host').innerHTML = '<div class="ry-hlist"><ul>' + shown.map(row).join('') + '</ul></div>' +
+        '<p class="ry-hint" style="padding:0 4px">当前范围：' + ui.esc(scopeName()) +
+        '　共 ' + list.length + ' 条可见线索。归属动作不改变业务状态与销售事实；失败时原记录不变。</p>';
+      var more = shown.length < list.length;
+      ui.qs('#ll-more').classList.toggle('is-hidden', !more);
+      ui.qs('#ll-more-btn').textContent = '加载更多（已显示 ' + shown.length + ' / ' + list.length + '）';
+    }
+
+    ui.qs('#ll-hint').textContent =
+      '搜索与列表同权，只在当前用户有权数据范围内执行；共 ' + list.length + ' 条可见结果。' +
+      '0.1 无自动分派、无默认池回退、无自动回收。';
+    ui.qs('#ll-scope-note').textContent =
+      '当前数据范围：' + P.dataScope(u).label +
+      '　每一次进入（列表进详情、搜索、深链、消息跳转）都会重新鉴权。';
+
+    ui.qsa('[data-op]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]')) return;
+        ui.closeAll();
+        doAction(b.getAttribute('data-op'), b.getAttribute('data-id'));
+      });
+    });
+    ui.qsa('[data-more]').forEach(function (b) {
+      b.addEventListener('click', function () { moreMenu(b.getAttribute('data-more')); });
+    });
+    ui.bindDenied(document.body);
+  }
+
+  function scopeName() {
+    var s = scopes().filter(function (x) { return x.key === scope; })[0];
+    return s ? s.name : scope;
+  }
+
+  /* ---------------------------------------------------------- 动作入口 */
+
+  function moreMenu(id) {
+    var l = S.lead(id);
+    if (!l) { ui.toast('该线索已不可用。', 'warn'); return; }
+    var acts = actsOf(l).slice(2);
+    if (!acts.length) { ui.toast('当前状态下没有更多单条动作。', 'info'); return; }
+    RY.nav.sheet({
+      title: '更多单条动作', sub: l.id + ' · ' + l.status,
+      body: '<div class="ry-acts-row" style="flex-wrap:wrap;gap:8px">' + acts.map(function (a) {
+        return tagFor(a, l, 'ry-btn--sm');
+      }).join('') + '</div>' +
+        '<p class="ry-hint">线索禁止批量转换，也不提供批量状态动作；所有归属与状态动作只做单条，逐条走同一套校验。' +
+        'H5 不提供导出，导出是 PC 侧可独立授予的能力。</p>',
+      footer: '<button class="ry-btn" data-close>关闭</button>',
+      onOpen: function (host, close) {
+        ui.qsa('[data-op]', host).forEach(function (b) {
+          b.addEventListener('click', function (e) {
+            if (e.target.closest('[data-denied]')) return;
+            var a = b.getAttribute('data-op');
+            close();
+            doAction(a, id);
+          });
+        });
+        ui.bindDenied(host);
+      }
+    });
+  }
+
+  function doAction(a, id) {
+    var l = S.lead(id);
+    if (!l) { ui.toast('该线索已不可用。', 'warn'); return; }
+    if (!canDo(a, l)) {
+      ui.modal({
+        title: '该动作当前不可执行', size: 'sm',
+        body: '<p>' + ui.esc(whyNotDo(a, l)) + '</p>' +
+          '<p class="ry-hint">线索「' + ui.esc(l.status) + '」状态下的允许动作：' +
+          (actsOf(l)).map(function (x) { return ACTION_NAME[x]; }).join('、') + '。' +
+          '不可用动作仍然展示，但不会通过前端隐藏来替代权限校验。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+      });
+      return;
+    }
+    if (a === 'view') { window.location.href = RY.nav.href('h5/lead/detail.html?id=' + encodeURIComponent(id)); return; }
+    if (a === 'follow') { window.location.href = RY.nav.href('h5/activity/create.html?leadId=' + encodeURIComponent(id)); return; }
+    if (a === 'convert') { window.location.href = RY.nav.href('h5/lead/convert.html?id=' + encodeURIComponent(id) + '&from=' + encodeURIComponent(scope)); return; }
+    if (a === 'claim') { actClaim(l); return; }
+    if (a === 'assign') { actAssign(l); return; }
+    if (a === 'transfer') { actTransfer(l); return; }
+    if (a === 'returnPool') { actReturnOrRecycle(l, 'returnPool'); return; }
+    if (a === 'recycle') { actReturnOrRecycle(l, 'recycle'); return; }
+    if (a === 'nurture') { actNurture(l); return; }
+    if (a === 'nurtureReview') { actNurtureReview(l); return; }
+    if (a === 'invalid') { actInvalid(l); return; }
+    if (a === 'correctInvalid') { actCorrectInvalid(l); return; }
+  }
+
+  /* ---------------------------------------------------- 认领（单条、并发） */
+
+  function actClaim(l) {
+    var p = S.poolOf(l.currentPool);
+    var hold = holdCountOf(l.currentPool);
+    var over = p && hold >= p.holdLimit;
+    ui.confirm({
+      title: '认领线索',
+      message: '<p>认领 ' + ui.esc(l.id) + ' 后你成为<b>唯一当前负责人</b>，线索离开池内，来源池保留。</p>' +
+        '<ul class="ry-kv ry-kv--tight">' +
+          '<li><span>所属池</span><b>' + ui.esc(p ? p.name : '—') + '</b></li>' +
+          '<li><span>当前持有 / 上限</span><b>' + hold + ' / ' + (p ? p.holdLimit : '—') + ' 条</b></li>' +
+          '<li><span>保护期</span><b>' + (p && p.protectEnabled ? p.protectDays + ' 天（认领成功后生成）' : '该池不启用保护期') + '</b></li>' +
+        '</ul>' +
+        (over ? '<p class="ll-warn">你从该池取得的活跃线索已达上限，认领会被拒绝；达上限不影响已有线索，也不允许单次强制突破。</p>' : '') +
+        '<p class="ry-hint">认领是并发动作：同一线索<b>只有第一个完成的人成功</b>，其余人只会收到「已被其他人员认领」，不会看到新的负责人身份。' +
+        '认领只改归属与保护期，不建任务、不改业务状态（仍为「待处理」）；认领与池内分派成功后才会生成保护期。</p>',
+      confirmText: '确认认领',
+      onConfirm: function () {
+        var r;
+        if (P.flag('conflict')) {
+          /* 演示「并发认领只有一人成功」：模拟在你提交前已有人先认领成功。 */
+          var cur = S.lead(l.id), was = !!cur.claimLocked;
+          cur.claimLocked = true;
+          r = S.leadAction(l.id, 'claim', { holdCount: hold });
+          if (!was) cur.claimLocked = false;
+        } else {
+          r = S.leadAction(l.id, 'claim', { holdCount: hold });
+        }
+        if (!r.ok) {
+          ui.modal({
+            title: '认领未成功', size: 'sm',
+            body: '<p>' + ui.esc(r.reason) + '</p>' +
+              '<p class="ry-hint">页面不会推断或展示新的负责人；请刷新后查看最新归属与池内剩余线索。</p>',
+            footer: '<button class="ry-btn ry-btn--primary" data-close>知道了</button>'
+          });
+          render();
+          return;
+        }
+        ui.toast('认领成功，当前状态「' + r.lead.status + '」。', 'success');
+        render();
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------------- 分派 */
+
+  function actAssign(l) {
+    var pool = S.poolOf(l.currentPool) || S.poolOf(l.sourcePool);
+    /* 池内分派：目标销售必须是该池成员（prd/02 §3.2）；
+       创建时直接分派与负责人直接转交不要求属于原池。 */
+    var cands = S.arr('users').filter(function (x) {
+      if (x.role !== 'R1' && x.role !== 'R2') return false;
+      if (l.currentPool) return (pool && (pool.members || []).indexOf(x.id) >= 0);
+      return true;
+    });
+    RY.nav.sheet({
+      title: '分派线索', sub: l.id + '　' + (l.currentPool ? '池内分派 · 目标必须是池成员' : '直接分派'),
+      body: RY.ui.field('目标负责人', ui.select('target', [{ value: '', label: '请选择' }].concat(cands.map(function (x) {
+          return { value: x.id, label: x.name + '（' + x.role + '）' };
+        })), ''), '分派成功后写负责人、清当前池、保留来源池与取得方式，不改业务状态、不建任务。', true) +
+        '<p class="ry-hint">池内分派的目标必须是该池成员；分派与认领一样按来源池持有量校验，达上限会阻断。</p>' +
+        RY.ui.field('分派说明', ui.textarea('note', '', '将写入审计', 2)),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ll-as">确认分派</button>',
+      onOpen: function (host, close) {
+        ui.qs('#ll-as', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          if (!v.target) { ui.toast('请选择目标负责人。', 'warn'); return; }
+          var r = S.leadAction(l.id, 'assign', { target: v.target, note: v.note });
+          if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+          close();
+          ui.toast('已分派给 ' + S.userName(v.target) + '。', 'success');
+          render();
+        });
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------------- 转交 */
+
+  function actTransfer(l) {
+    var others = S.arr('users').filter(function (x) { return (x.role === 'R1' || x.role === 'R2') && x.id !== u.id; });
+    var openTasks = S.arr('tasks').filter(function (t) {
+      return t.leadId === l.id && ['待开始', '进行中'].indexOf(t.status) >= 0;
+    }).length;
+    RY.nav.sheet({
+      title: '转交线索', sub: '负责人 A → B，不经池',
+      body: RY.ui.field('受让人', ui.select('target', [{ value: '', label: '请选择' }].concat(others.map(function (x) {
+          return { value: x.id, label: x.name + '（' + x.role + '）' };
+        })), ''), '目标销售必须有效且在数据范围内；不要求属于原池。', true) +
+        RY.ui.field('转交说明', ui.textarea('note', '', '将写入审计', 2)) +
+        RY.ui.banner('转交成功后<b>清除保护期</b>与当前持有量来源池，不受原池上限约束。' +
+          '当前线索下有 <b>' + openTasks + '</b> 条未完成任务：只做提示，<b>不阻断</b>，也不会自动转派、完成或取消。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ll-tf">确认转交</button>',
+      onOpen: function (host, close) {
+        ui.qs('#ll-tf', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          if (!v.target) { ui.toast('请选择受让人。', 'warn'); return; }
+          var r = S.leadAction(l.id, 'transfer', { target: v.target, note: v.note });
+          if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+          close();
+          ui.toast('已转交给 ' + S.userName(v.target) + '。', 'success');
+          render();
+        });
+      }
+    });
+  }
+
+  /* ------------------------------------------------------- 退回 / 回收 */
+
+  function actReturnOrRecycle(l, kind) {
+    var isReturn = kind === 'returnPool';
+    var target = isReturn ? (S.poolOf(l.sourcePool) && S.poolOf(l.sourcePool).returnEnabled ? l.sourcePool : '')
+                          : (S.poolOf(l.sourcePool) ? l.sourcePool : '');
+    var pools = S.arr('leadPools').filter(function (p) { return p.status === '启用'; });
+    var protectOn = !!(l.protectUntil && l.protectUntil.slice(0, 10) >= S.today());
+    var body = RY.ui.kv([
+      ['线索', ui.esc(l.id)],
+      ['当前负责人', ui.esc(S.userName(l.owner) || '—')],
+      ['来源池', ui.esc(l.sourcePool ? poolName(l.sourcePool) : '从未过池')],
+      ['当前保护期', ui.esc(l.protectUntil || '无')]
+    ]) +
+      RY.ui.field('目标池', ui.select('pool', [{ value: '', label: '请选择可接收的池' }].concat(pools.map(function (p) {
+        return { value: p.code, label: p.name + '（持有上限 ' + p.holdLimit + '）' };
+      })), target), '目标池必须有效且可接收；停止接收的池不进新线索。', true) +
+      RY.ui.field('原因', ui.textarea('note', '', '必填，将写入审计', 2), '', true) +
+      RY.ui.banner(isReturn
+        ? '主动退回只适用于<b>当前负责人本人从池取得的活跃线索</b>，且原池必须允许退回。成功后清负责人与保护期、写目标池；任一校验失败时原归属不变。'
+        : '手工回收由具备回收权限的人员执行，需要原因和有效目标池。' +
+          (protectOn ? '<b>该线索仍在保护期内，属于强制回收</b>，需要对应权限并已明确提示。' : '') +
+          '回收后清负责人和保护期并写目标池。', protectOn && !isReturn ? 'danger' : 'warn');
+    RY.nav.sheet({
+      title: isReturn ? '退回池内' : '主管手工回收',
+      sub: '归属动作不改业务状态与销售事实',
+      body: body,
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--danger" id="ll-rp">' + (isReturn ? '确认退回' : '确认回收') + '</button>',
+      onOpen: function (host, close) {
+        ui.qs('#ll-rp', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          if (!v.pool) { ui.toast('请选择目标池。', 'warn'); return; }
+          if (!v.reason || !String(v.reason).trim()) { ui.toast('原因必填。', 'warn'); return; }
+          var r = S.leadAction(l.id, kind, { pool: v.pool, note: String(v.reason).trim() });
+          if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+          close();
+          ui.toast(isReturn ? '已退回池内。' : '已回收至指定池。', 'success');
+          render();
+        });
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------------- 培育 */
+
+  function actNurture(l) {
+    RY.nav.sheet({
+      title: '转入培育',
+      sub: '可逆的暂缓状态，不改变当前负责人',
+      body: RY.ui.field('培育原因', ui.textarea('reason', '', '如：客户年度预算未批复，暂无明确采购时间', 3), '', true) +
+        RY.ui.field('复查时间', ui.input('review', S.addDays(S.today(), 30), 'YYYY-MM-DD'), '到期只提醒，不自动改状态、不自动创建任务。', true) +
+        RY.ui.field('培育方式／判断条件', ui.input('method', '', '如：季度电话复查 + 预算节点确认'), '', true) +
+        RY.ui.banner('转入培育会清除保护期。培育到期<b>只提醒</b>，不自动改状态、不自动回收、不自动创建任务。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ll-nu">转入培育</button>',
+      onOpen: function (host, close) {
+        ui.qs('#ll-nu', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          if (!String(v.reason || '').trim()) { ui.toast('请填写培育原因。', 'warn'); return; }
+          if (!v.review) { ui.toast('请填写复查时间。', 'warn'); return; }
+          if (!String(v.method || '').trim()) { ui.toast('请填写培育方式／判断条件。', 'warn'); return; }
+          S.leadAction(l.id, 'nurture', { reason: v.reason, review: v.review, method: v.method });
+          close();
+          ui.toast('已转入培育，复查时间 ' + v.review + '。', 'success');
+          render();
+        });
+      }
+    });
+  }
+
+  function actNurtureReview(l) {
+    ui.confirm({
+      title: '培育复查',
+      message: '<p>线索 ' + ui.esc(l.id) + ' 将回到「跟进中」，按新的复查周期继续跟进。</p>' +
+        '<p class="ry-hint">复查只改变状态与复查时间，不自动创建商机、任务或转换。</p>',
+      confirmText: '确认复查',
+      onConfirm: function () {
+        S.leadAction(l.id, 'nurtureReview', {});
+        ui.toast('已回到跟进中。', 'success');
+        render();
+      }
+    });
+  }
+
+  /* ------------------------------------------------------- 无效与纠错 */
+
+  function actInvalid(l) {
+    var cands = scoped().filter(function (x) {
+      return x.id !== l.id && TERMINAL_STATES.indexOf(x.status) < 0;
+    });
+    RY.nav.sheet({
+      title: '标记无效', sub: '终态；可由有权人员纠错撤销',
+      body: RY.ui.field('无效原因', ui.select('reason', [{ value: '', label: '请选择' }].concat(D.leadInvalidReason), ''), '选择「其他」时必须填写说明。', true) +
+        RY.ui.field('说明', ui.textarea('note', '', '选择「其他」时必填；其余选填', 2)) +
+        RY.ui.field('重复于（仅「重复线索」时选）',
+          ui.select('dup', [{ value: '', label: '不适用' }].concat(cands.map(function (x) {
+            return { value: x.id, label: x.id + '　' + String(x.raw || '').slice(0, 16) };
+          })), ''),
+          '重复用「无效＋重复于」表达，不迁移、不合并数据；只能选你有权保留的线索。') +
+        RY.ui.banner('无效后清当前池与保护期、退出持有量，已有负责人保留展示与追溯；' +
+          '停止日程、培育复查与保护提醒，原计划字段作历史保留。<b>无效不物理删除，也不批量处理。</b>，' +
+          '无权查看保留线索时不得完成重复处理，将进入统一异常事项且不泄露隐藏信息。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--danger" id="ll-iv">确认标记无效</button>',
+      onOpen: function (host, close) {
+        ui.qs('#ll-iv', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          if (!v.reason) { ui.toast('请选择无效原因。', 'warn'); return; }
+          if ((v.reason === '其他' || v.reason === '重复线索') && !String(v.note || '').trim()) {
+            ui.toast('选择「' + v.reason + '」时必须填写说明。', 'warn');
+            return;
+          }
+          if (v.reason === '重复线索' && !v.dup) {
+            ui.modal({
+              title: '重复处理被阻断', size: 'sm',
+              body: '<p>重复无效<b>必须选一条你有权保留的线索</b>并保存「重复于」。</p>' +
+                '<p class="ry-hint">当前可选项为空，说明你无权查看任何可保留的候选线索。' +
+                '此时不得完成重复处理：该动作进入统一异常事项，由有权限的角色处理，且不向你泄露隐藏线索的标题、摘要与数量。</p>',
+              footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+            });
+            return;
+          }
+          var cur = S.lead(l.id);
+          cur.ownerBeforeInvalid = cur.owner;
+          cur.statusBeforeInvalid = cur.status;
+          cur.protectUntilBeforeInvalid = cur.protectUntil;
+          cur.poolBeforeInvalid = cur.currentPool;
+          S.leadAction(l.id, 'invalid', { reason: v.reason, note: v.note });
+          if (v.dup) { var ll = S.lead(l.id); ll.duplicateOf = v.dup; S.save(); }
+          close();
+          ui.toast('已标记无效。', 'success');
+          render();
+        });
+      }
+    });
+  }
+
+  function actCorrectInvalid(l) {
+    RY.nav.sheet({
+      title: '无效线索纠错',
+      sub: '撤销误标无效，恢复原状态与可用归属',
+      body: RY.ui.kv([
+        ['线索', ui.esc(l.id)],
+        ['无效原因', ui.esc(l.invalidReason || '—')],
+        ['重复于', ui.esc(l.duplicateOf || '—')],
+        ['纠错前状态', ui.esc(l.statusBeforeInvalid || '—')],
+        ['纠错前负责人', ui.esc(l.ownerBeforeInvalid ? S.userName(l.ownerBeforeInvalid) : '—')],
+        ['纠错前保护期', ui.esc(l.protectUntilBeforeInvalid || '无')]
+      ]) +
+        RY.ui.field('纠错原因', ui.textarea('reason', '', '必填，将写入审计', 3), '', true) +
+        RY.ui.banner('纠错优先恢复原状态、有效负责人或原池及<b>原保护截止时间</b>；原保护已过期则恢复原日期并显示到期，' +
+          '<b>不新增保护利益</b>。原归属失效时必须先选新的负责人或池。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="ll-ci">确认纠错</button>',
+      onOpen: function (host, close) {
+        ui.qs('#ll-ci', host).addEventListener('click', function () {
+          var v = ui.formValues(host);
+          if (!String(v.reason || '').trim()) { ui.toast('纠错原因必填。', 'warn'); return; }
+          S.leadAction(l.id, 'correctInvalid', { reason: v.reason });
+          close();
+          ui.toast('已纠错，线索恢复为「' + (S.lead(l.id).status) + '」。', 'success');
+          render();
+        });
+      }
+    });
+  }
+
+  /* ------------------------------------------------------ 池内概览 / 范围 */
+
+  function poolSheet() {
+    var mine = S.arr('leadPools').filter(function (p) { return (p.members || []).indexOf(u.id) >= 0; });
+    var body = mine.length ? mine.map(function (p) {
+      var inPool = scoped().filter(function (l) { return l.currentPool === p.code; }).length;
+      var hold = holdCountOf(p.code);
+      return '<div class="ll-pool"><div class="ll-pool__h"><b>' + ui.esc(p.name) + ' <code>' + ui.esc(p.code) + '</code></b>' +
+        ui.statusTag(p.status) + '</div><div class="ll-pool__m">' +
+        '池内线索：<b>' + inPool + '</b> 条<br>' +
+        '我当前持有：<b>' + hold + '</b> / ' + p.holdLimit + ' 条（按来源池计算，只计我负责的活跃线索）<br>' +
+        '主动认领：' + (p.allowClaim ? '开放' : '未开放') + '　保护期：' + (p.protectEnabled ? p.protectDays + ' 天' : '不启用') +
+        '　退回：' + (p.returnEnabled ? '允许退回本池' : '不适用') +
+        '</div></div>';
+    }).join('') : '<p class="ry-hint">你不是任何线索池的成员；池内线索需要池成员资格才可见。</p>';
+    RY.nav.sheet({
+      title: '池内概览', sub: '池配置与我的持有量（只读）',
+      body: body +
+        '<p class="ry-hint">持有上限按来源池计算：只计当前由我负责、处于待处理／跟进中且从该池取得的线索；' +
+        '终态、已退回／回收／转交及从未过池的线索不计。达上限后阻止新认领和该池新分派，' +
+        '不影响已有线索，<b>不自动回收且不允许单次强制突破</b>。池配置由后台维护，H5 不提供池配置入口。</p>',
+      footer: '<button class="ry-btn" data-close>关闭</button>'
+    });
+  }
+
+  function scopeSheet() {
+    RY.nav.sheet({
+      title: '数据范围', sub: '当前身份',
+      body: '<p class="ry-read">' + ui.esc(P.dataScope(u).label) + '</p>' +
+        '<ul class="ry-kv ry-kv--tight" style="margin-top:10px">' +
+        '<li><span>我的</span><b>当前负责人是我本人</b></li>' +
+        '<li><span>团队</span><b>我在管理组织范围内可见的团队线索，含池内（仅 R2／R3／R5）</b></li>' +
+        '<li><span>池内</span><b>当前池 ID 有值，且我是该池成员</b></li>' +
+        '<li><span>搜索与列表</span><b>与详情、字段权限使用同一数据范围；无权线索不返回标题、摘要与数量</b></li>' +
+        '<li><span>认领前脱敏</span><b>池内线索只展示来源、入池时间、候选业务线、区域／业务范围、脱敏原始摘要与业务状态</b></li>' +
+        '</ul>'
+    });
+  }
+
+  /* ---------------------------------------------------------------- 绑定 */
+
+  var timer = null;
+  ui.qs('#ll-q').addEventListener('input', function (e) {
+    var v = e.target.value;
+    clearTimeout(timer);
+    timer = setTimeout(function () { state.q = v; state.page = 1; st.page = 1; S.save(); render(); }, 180);
+  });
+  ui.qs('#ll-more-btn').addEventListener('click', function () { state.page++; st.page = state.page; S.save(); render(); });
+
+  ui.qs('#ll-filter').addEventListener('click', function () {
+    function seg(name, opts, cur) {
+      return '<div class="ry-fbar__seg" style="margin:8px 0 14px">' + opts.map(function (o) {
+        return '<button type="button" data-k="' + name + '" data-v="' + ui.esc(o) + '"' +
+          (cur === o ? ' class="is-on"' : '') + '>' + ui.esc(o || '全部') + '</button>';
+      }).join('') + '</div>';
+    }
+    var body = '<div class="ry-field__label">线索状态</div>' + seg('status', [''].concat(D.leadStatus), flt.status) +
+      '<div class="ry-field__label">来源</div>' + seg('source', [''].concat(D.leadSource), flt.source) +
+      '<div class="ry-field__label">候选业务线</div>' + seg('line', [''].concat(S.arr('businessLines').map(function (x) { return x.code; })), flt.line) +
+      '<div class="ry-field__label">保护期</div>' + seg('protect', ['', 'on', 'expired', 'none'], flt.protect) +
+      '<p class="ry-hint">筛选是临时条件，不保存个人视图（0.1 不建设个人筛选视图保存）。' +
+      '保护期筛选口径：保护期只由池内分派或认领产生，到期不自动回收、不自动续期。</p>';
+    RY.nav.sheet({
+      title: '筛选线索', sub: '筛选只在有权数据范围内生效',
+      body: body,
+      footer: '<button class="ry-btn" data-reset>重置</button><button class="ry-btn ry-btn--primary" data-close>查看结果</button>',
+      onOpen: function (host, close) {
+        host.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-k]');
+          if (b) {
+            flt[b.getAttribute('data-k')] = b.getAttribute('data-v');
+            state.page = 1; st.page = 1; S.save();
+            b.parentNode.querySelectorAll('button').forEach(function (x) { x.classList.remove('is-on'); });
+            b.classList.add('is-on');
+            render();
+            return;
+          }
+          if (e.target.closest('[data-reset]')) {
+            flt.status = ''; flt.source = ''; flt.line = ''; flt.protect = '';
+            state.page = 1; st.page = 1; S.save();
+            close(); render();
+          }
+        });
+      }
+    });
+  });
+
+  ui.qs('#ll-pools').addEventListener('click', poolSheet);
+  ui.qs('#ll-scope').addEventListener('click', scopeSheet);
+
+  /* 深链：#pool 直接打开池内，?scope=team 来自工作台快捷入口。 */
+  if (!scopesOk()) scope = 'mine';
+  render();
+  ui.bindMasked(document.body);
+})();
+</script>
+</body>
+</html>

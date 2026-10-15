@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>瑞赢 AI · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* M19 唤起后的 AI 首页：首屏能力、会话入口和输入栏。沿用瑞赢 H5 色彩。 */
+  #ry-ai-float { display:none!important; }
+  .ry-bar--brand .ry-bar__back,.ry-bar--brand #ai-refresh { background:transparent;color:#fff; }
+  .ry-body.ai-page { padding:0 0 104px; }
+  .ai-intro { padding:12px 14px;background:var(--brand-soft);color:var(--brand-ink);font-size:12px;line-height:1.6; }
+  .ai-intro a { color:var(--brand-ink);font-weight:700; }
+  .ai-main { padding:16px 14px 20px; }
+  .ai-title { margin:0;text-align:center;font-size:17px;line-height:1.5; }
+  .ai-sub { margin:4px 0 12px;color:var(--muted);font-size:12px;text-align:center; }
+  .ai-cap-head { margin:0 0 8px;color:var(--muted);font-size:12px;text-align:center; }
+  .ai-caps { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px; }
+  .ai-cap { display:flex;align-items:center;gap:8px;min-height:58px;padding:9px 10px;border:1px solid var(--line);border-radius:11px;background:var(--surface);color:var(--ink);font:600 13px/1.35 var(--sans);text-decoration:none;text-align:left;cursor:pointer;box-shadow:var(--sh-sm); }
+  .ai-cap:focus-visible,.ai-cap:hover { border-color:var(--brand);outline:none; }
+  .ai-cap__icon { flex:0 0 29px;font-size:21px;text-align:center; }
+  .ai-cap__name { flex:1;min-width:0; }
+  .ai-cap__state { display:block;color:var(--brand-ink);font-size:10px;font-weight:500;margin-top:2px; }
+  .ai-cap.is-later { background:#f8faf9;color:var(--muted); }
+  .ai-cap.is-later .ai-cap__state { color:var(--faint); }
+  .ai-help { margin:11px 2px 0;text-align:center;color:var(--muted);font-size:11px;line-height:1.55; }
+  .ai-quick { display:flex;gap:7px;margin:15px -14px 0;padding:0 14px 8px;overflow-x:auto;scrollbar-width:thin; }
+  .ai-quick a { flex:0 0 auto;padding:7px 10px;border-radius:999px;background:var(--brand-soft);color:var(--brand-ink);font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap; }
+  .ai-chat { padding:12px 14px 18px;border-top:1px solid var(--line); }
+  .ai-message { display:flex;align-items:flex-start;gap:8px; }
+  .ai-avatar { display:grid;place-items:center;flex:0 0 30px;width:30px;height:30px;border-radius:50%;background:var(--brand);color:#fff;font-size:17px; }
+  .ai-bubble { max-width:calc(100% - 38px);padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:var(--sh-sm);font-size:13px;line-height:1.65; }
+  .ai-bubble p { margin:0 0 6px; }.ai-bubble p:last-child { margin-bottom:0; }
+  .ai-more { margin:16px 14px 0;border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden; }
+  .ai-more summary { padding:10px 12px;cursor:pointer;font-weight:600;color:var(--brand-ink); }
+  .ai-more__body { padding:0 12px 12px; }.ai-more__links { display:flex;flex-wrap:wrap;gap:7px;margin:8px 0; }
+  .ai-more__links a { text-decoration:none; }.ai-summary { color:var(--muted);font-size:12px;line-height:1.6; }
+  .ai-compose { position:fixed;z-index:59;left:50%;bottom:0;transform:translateX(-50%);width:min(430px,100vw);padding:9px 12px max(9px,env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--surface);box-shadow:0 -3px 16px #10202012; }
+  .ai-compose__row { display:flex;align-items:center;gap:7px; }.ai-compose input { flex:1;min-width:0;height:39px;padding:0 11px;border:1px solid var(--line);border-radius:20px;background:var(--surface);font:13px var(--sans); }
+  .ai-compose button { flex:0 0 auto;min-width:38px;height:38px;padding:0 8px;border:1px solid var(--brand-line);border-radius:20px;background:var(--brand-soft);color:var(--brand-ink);font:600 13px var(--sans);cursor:pointer; }
+  .ai-compose button.ai-send { padding:0 14px;background:var(--brand);color:#fff;border-color:var(--brand); }
+  .ai-compose__note { margin:5px 1px 0;color:var(--faint);font-size:10px;line-height:1.4; }
+  @media(max-width:370px) { .ai-cap { padding:8px 6px;gap:4px;font-size:12px; }.ai-cap__icon { flex-basis:25px; } }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+<div class="ry-body ai-page"><div id="ai-host"></div></div>
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  RY.nav.h5shell({ title:'🤖 瑞赢智能助手', back:'h5/more.html', nav:'more', tabbar:false,
+    actions:'<button type="button" class="ry-bar__ico" id="ai-refresh" aria-label="刷新助手">⟳</button>' });
+  ui.qs('.ry-bar__back').textContent = '×';
+  ui.qs('.ry-bar__back').setAttribute('aria-label', '关闭助手');
+  if (ui.q('from') === 'float') {
+    try {
+      var returnUrl = new URL(sessionStorage.getItem('ry_ai_return') || '');
+      var appPath = new URL(RY.nav.href('index.html'), location.href).pathname.replace(/index\.html$/, '');
+      if (returnUrl.protocol === location.protocol && returnUrl.pathname.indexOf(appPath) === 0 &&
+          returnUrl.pathname !== location.pathname) ui.qs('.ry-bar__back').href = returnUrl.href;
+    } catch (e) { /* 来源失效时返回更多页 */ }
+  }
+  if (!P.page('h5.agent.index')) {
+    ui.qs('#ai-host').innerHTML = ui.stateCard('no-permission', { title:'无法使用瑞赢 AI',
+      actions:'<a class="ry-btn" href="' + RY.nav.href('h5/more.html') + '">返回更多</a>' });
+    return;
+  }
+  function link(path) { return RY.nav.href(path); }
+  function cap(icon, name, path, state, later) {
+    return '<a class="ai-cap' + (later ? ' is-later' : '') + '" href="' + link(path) + '"' +
+      (later ? ' data-later="' + ui.esc(name) + '"' : '') + '><span class="ai-cap__icon">' + icon + '</span>' +
+      '<span class="ai-cap__name">' + ui.esc(name) + '<small class="ai-cap__state">' + ui.esc(state) + '</small></span></a>';
+  }
+  function summary() {
+    var mine = S.tasks('mine');
+    return {
+      dueToday: mine.filter(function (t) { return t.status === '待处理' && (t.dueAt || '').slice(0, 10) === S.today(); }),
+      overdue: mine.filter(function (t) { return S.taskOverdue(t); }),
+      visits: S.arr('visits').filter(function (v) { return v.owner === S.currentUser().id && (v.planAt || '').slice(0, 10) === S.today(); })
+    };
+  }
+  function runs() {
+    var user = S.currentUser();
+    return S.agentRunList('all').filter(function (r) { return r.userId === user.id || user.role === 'R5'; });
+  }
+  function render() {
+    var pending = S.candidateList({ age:'当前' }).filter(function (c) { return c.status === '待确认'; }).length;
+    var fail = S.candidateList({ writeFail:true }).length;
+    var daily = summary();
+    var recent = runs().slice(0, 3);
+    var html = '<div class="ai-intro">💡 我是第一期瑞赢助手。可以整理沟通、查找有权业务信息，并把结果交给你核对。' +
+      '候选内容由你修改和确认后才会写入正式系统。<a href="#ai-all">查看完整能力 ›</a></div>' +
+      '<main class="ai-main"><h1 class="ai-title">我有什么能帮助你的吗？</h1>' +
+      '<p class="ai-sub">选择能力开始，或在下方输入沟通内容</p>' +
+      '<p class="ai-cap-head">🤖 第一期瑞赢助手能力</p><div class="ai-caps">' +
+      cap('🏢','新增客户','h5/customer/create.html','AI 创建后续开放',true) +
+      cap('👤','新增或补充联系人信息','h5/contact/list.html','AI 创建后续开放',true) +
+      cap('🔗','新增线索','h5/agent/create.html','AI 创建试点',false) +
+      cap('📈','新增商机','h5/opportunity/create.html','AI 创建后续开放',true) +
+      cap('🔎','查询客户信息','h5/agent/object.html','权限内查询',false) +
+      cap('📚','查询其他信息','h5/agent/object.html','对象与知识检索',false) +
+      '</div><p class="ai-help">客户、联系人、商机可走原有手工创建；AI 创建本期先试点线索。</p>' +
+      '<div class="ai-quick">' +
+      '<a href="' + link('h5/agent/organize.html') + '">📝 沟通整理</a>' +
+      '<a href="' + link('h5/agent/confirm.html') + '">✅ 候选确认' + (pending ? ' · ' + pending : '') + '</a>' +
+      '<a href="' + link('h5/agent/pending.html') + '">📥 待确认与失败' + (fail ? ' · ' + fail : '') + '</a>' +
+      '<a href="' + link('h5/activity/list.html?tab=report') + '">📊 日报底稿</a>' +
+      '<a href="' + link('h5/knowledge/list.html') + '">📚 知识库</a></div></main>' +
+      '<section class="ai-chat"><div class="ai-message"><span class="ai-avatar">🤖</span><div class="ai-bubble">' +
+      '<p>你好，我是瑞赢智能助手。选择上方能力，或输入一次沟通内容，我会带你核对来源、对象和候选结果。</p>' +
+      '<p>AI 给出的内容先作为草稿；确认后再进入正式记录。语音、图片和文件能力按试点开关提供。</p>' +
+      '</div></div></section>' +
+      '<details class="ai-more" id="ai-all"><summary>全部能力与处理入口</summary><div class="ai-more__body">' +
+      '<p class="ai-summary">今日预计处理：今日到期 ' + daily.dueToday.length + ' 项、已逾期 ' +
+      daily.overdue.length + ' 项、今日拜访 ' + daily.visits.length + ' 场。按正式业务数据归纳。</p>' +
+      '<div class="ai-more__links">' +
+      '<a class="ry-btn ry-btn--sm" href="' + link('h5/task/list.html') + '">今日任务</a>' +
+      '<a class="ry-btn ry-btn--sm" href="' + link('h5/agent/meeting.html') + '">会议任务确认</a>' +
+      '<a class="ry-btn ry-btn--sm" href="' + link('h5/agent/manager.html') + '">主管关注</a>' +
+      '<a class="ry-btn ry-btn--sm" href="' + link('h5/agent/pending.html') + '">候选历史与写入失败</a></div>' +
+      '<p class="ai-summary">当前待确认 ' + pending + ' 条，写入失败 ' + fail + ' 条。</p>' +
+      '<p class="ai-summary">最近结果：</p>' +
+      (recent.length ? recent.map(function (r) { return '<p class="ai-summary">' + ui.esc(r.ability) + ' · ' +
+        ui.esc(r.status) + ' · ' + ui.esc(r.finishedAt || r.startedAt || '处理中') + '</p>'; }).join('') :
+        '<p class="ai-summary">暂无最近结果。</p>') +
+      '</div></details>' + contractHtml() +
+      '<div class="ai-compose"><div class="ai-compose__row"><input id="ai-text" type="text" placeholder="输入沟通内容，交给 AI 整理" aria-label="输入沟通内容">' +
+      '<button type="button" id="ai-voice" aria-label="语音输入">🎙</button>' +
+      '<button type="button" id="ai-attach" aria-label="添加图片或文件">📎</button>' +
+      '<button type="button" class="ai-send" id="ai-send">发送</button></div>' +
+      '<p class="ai-compose__note">发送后进入来源核对；AI 输出为草稿，正式写入需人工确认。</p></div>';
+    ui.qs('#ai-host').innerHTML = html;
+    bind();
+  }
+  function contractHtml() {
+    return '<div class="ry-hcard ry-hcard--flat" style="margin:14px"><div class="ry-hcard__head"><h3>本页契约</h3></div>' +
+      '<div class="ry-hcard__body">' + ui.kv([
+      ['页面契约','PG-AI-H5 · 瑞赢 AI 首页 / M19 唤起后的全屏页'],
+      ['角色与权限','ALL5 可进入；有效能力为当前用户业务权限与 R6 服务身份能力交集。对象检索仅返回有权数据；正式写入重新校验权限、关系、查重和版本。'],
+      ['本期能力','沟通整理、候选确认与失败处理、线索 AI 创建试点、对象与知识查询、日报底稿和今日任务总结。客户、联系人、商机 AI 创建只展示目标结构，0.1 不启用。'],
+      ['输入方式','文字是核心输入；语音、图片、文件按分项 POC 和开关启用，不影响文字流程。输入后先核对来源与候选，不在会话里直接写正式对象。'],
+      ['结果边界','AI 推断、外部材料和未确认候选不是正式业务事实；用户修改确认后调用正式业务流程，返回正式 ID 或逐条失败原因。'],
+      ['历史与异常','候选历史、来源证据、写入失败在全屏子页处理；AI 故障不阻断手工业务流程。最近运行默认只显示技术元数据。'],
+      ['PRD 来源','prd/05 §2–4、§8–9；覆盖 AI-01、AI-06、AI-36、AI-37']
+    ]) + '</div></div>';
+  }
+  function bind() {
+    ui.qsa('[data-later]').forEach(function (a) { a.addEventListener('click', function (e) {
+      e.preventDefault();
+      var target = a.getAttribute('href');
+      ui.modal({ title:a.getAttribute('data-later') + ' · AI 创建后续开放', size:'sm',
+        body:'<p>0.1 先开放 AI 新增线索试点。此对象目前可使用 H5 手工流程创建。</p>',
+        footer:'<button class="ry-btn" data-close>关闭</button><a class="ry-btn ry-btn--primary" href="' + target + '">前往手工页面</a>' });
+    }); });
+    function send() {
+      var value = ui.qs('#ai-text').value.trim();
+      if (!value) { ui.toast('请输入沟通内容，或选择上方能力', 'warn'); return; }
+      try { sessionStorage.setItem('ry_ai_organize_draft', value); } catch (e) { /* 原型仍可手工输入 */ }
+      RY.nav.go('h5/agent/organize.html');
+    }
+    ui.qs('#ai-send').addEventListener('click', send);
+    ui.qs('#ai-text').addEventListener('keydown', function (e) { if (e.key === 'Enter') send(); });
+    ui.qs('#ai-voice').addEventListener('click', function () { RY.nav.go('h5/agent/organize.html'); });
+    ui.qs('#ai-attach').addEventListener('click', function () { RY.nav.go('h5/agent/organize.html'); });
+  }
+  ui.qs('#ai-refresh').addEventListener('click', function () { render(); ui.toast('已刷新助手入口与处理数量', 'ok'); });
+  render();
+})();
+</script>
+</body>
+</html>

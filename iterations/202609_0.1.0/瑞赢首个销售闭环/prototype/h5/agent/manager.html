@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>主管关注 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：主管关注（确定性规则命中项 / 候选处理统计 / 边界）。 */
+  .ag-hit { border: 1px solid var(--line); border-radius: 12px; padding: 10px 11px; margin-bottom: 8px; background: var(--surface); }
+  .ag-hit__t { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; }
+  .ag-hit__m { font-size: 11.5px; color: var(--muted); line-height: 1.85; margin-top: 5px; }
+  .ag-tbl { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  .ag-tbl th, .ag-tbl td { border-bottom: 1px solid var(--line-soft); padding: 6px 4px; text-align: right; }
+  .ag-tbl th:first-child, .ag-tbl td:first-child { text-align: left; }
+  .ag-tbl thead th { color: var(--muted); font-weight: 600; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+  <div id="ag-host"></div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.agent.manager';
+
+  RY.nav.h5shell({
+    title: '主管关注',
+    sub: '规则命中项 · 候选处理统计',
+    back: 'h5/agent/index.html',
+    nav: 'more',
+    tabbar: true
+  });
+
+  var u = S.currentUser();
+  var allowed = P.page(PAGE);
+
+  /* ---------------------------------------------------------- 数据 */
+
+  /* 团队口径：主管授权管理组织节点并包含下级组织（数据范围＝本团队）。
+     关注摘要只覆盖一线销售与主管本人所辖成员。 */
+  function team() {
+    return S.arr('users').filter(function (x) {
+      return x.id !== u.id && ['R1', 'R2'].indexOf(x.role) >= 0 && S.inTeamOf(x.id, u.id);
+    });
+  }
+
+  function teamIds() { return team().map(function (x) { return x.id; }); }
+
+  function cap(list) {
+    return S.arr(list).filter(function (o) {
+      var owner = o.owner || o.userId || '';
+      return owner === u.id || (owner && teamIds().indexOf(owner) >= 0) || P.inScope(list, o);
+    });
+  }
+
+  /* 主管关注摘要：底单只来自确定性事实规则，不由 AI 自主判断人员优劣。
+     规则：已逾期任务、长时间无跟进、承诺下一步已过期、商机缺少下一步、应交未交日报、关键数据缺失。 */
+  function hits() {
+    var ids = teamIds();
+    var out = [];
+
+    S.tasks('team').forEach(function (t) {
+      if (ids.indexOf(t.owner) < 0) return;
+      if (S.taskOverdue(t)) out.push({ rule: '已逾期任务', tag: 'bad', name: t.name, owner: t.owner,
+        detail: '截止 ' + (t.dueAt || '未设置') + '，状态 ' + t.status, obj: t.related });
+    });
+
+    cap('leads').forEach(function (l) {
+      if (ids.indexOf(l.owner) < 0) return;
+      if (!l.lastFollowUpAt || String(l.lastFollowUpAt).slice(0, 10) < S.addDays(S.today(), -7)) {
+        out.push({ rule: '长时间无跟进', tag: 'warn', name: '线索 ' + l.id, owner: l.owner,
+          detail: '最近跟进 ' + (l.lastFollowUpAt || '无记录') + '，来源 ' + l.source, obj: { type: '线索', id: l.id } });
+      }
+    });
+
+    cap('opportunities').forEach(function (o) {
+      if (ids.indexOf(o.owner) < 0) return;
+      if (!o.nextAction) out.push({ rule: '商机缺少下一步', tag: 'warn', name: o.name, owner: o.owner,
+        detail: '过程状态 ' + o.processStatus + '，当前阶段 ' + ((S.currentStage(o) || {}).name || '—'), obj: { type: '商机', id: o.id } });
+      else if (o.nextActionAt && String(o.nextActionAt).slice(0, 10) < S.today()) out.push({ rule: '明确承诺未完成', tag: 'bad', name: o.name, owner: o.owner,
+        detail: '承诺动作「' + o.nextAction + '」计划日期 ' + o.nextActionAt + ' 已过期', obj: { type: '商机', id: o.id } });
+    });
+
+    /* 应交未交日报：以最近一个业务日为准，只按「是否已提交」判断，不做提交率计算（提交率属主管看板）。 */
+    var day = S.today();
+    ids.forEach(function (id) {
+      var r = S.reportDraftOf(id, day);
+      if (!r || r.status !== '已提交') {
+        out.push({ rule: '应交未交日报', tag: 'warn', name: S.userName(id) + ' 的日报', owner: id,
+          detail: day + ' 状态 ' + (r ? r.status : '未创建') + '；草稿不计提交', obj: null });
+      }
+    });
+
+    cap('customers').forEach(function (c) {
+      if (!c.owner || ids.indexOf(c.owner) < 0) return;
+      if (c.valueReview !== '已复核') out.push({ rule: '关键数据缺失', tag: 'warn', name: c.name, owner: c.owner,
+        detail: '客户价值 ' + c.value + ' 状态 ' + c.valueReview, obj: { type: '客户', id: c.id } });
+    });
+    return out;
+  }
+
+  /* 候选处理统计：只统计处理情况，不展示候选正文（字段值、证据、来源原文）。 */
+  function candStats() {
+    var ids = teamIds();
+    var rows = [];
+    ids.forEach(function (id) {
+      var list = S.arr('agentCandidates').filter(function (c) { return c.owner === id; });
+      rows.push({
+        id: id, name: S.userName(id),
+        total: list.length,
+        pending: list.filter(function (c) { return c.status === '待确认'; }).length,
+        confirmed: list.filter(function (c) { return c.status === '已确认'; }).length,
+        ignored: list.filter(function (c) { return c.status === '已忽略'; }).length,
+        invalid: list.filter(function (c) { return c.status === '已失效'; }).length,
+        writeOk: list.filter(function (c) { return c.writeStatus === '写入成功'; }).length,
+        writeFail: list.filter(function (c) { return c.writeStatus === '写入失败'; }).length,
+        modified: list.filter(function (c) { return c.status === '已确认' && c.diff; }).length
+      });
+    });
+    return rows;
+  }
+
+  function sum(rows, k) { return rows.reduce(function (a, r) { return a + r[k]; }, 0); }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function hitHtml(x) {
+    var link = '';
+    if (x.obj && x.obj.id) {
+      var path = x.obj.type === '客户' ? 'h5/customer/detail.html?id='
+        : x.obj.type === '商机' ? 'h5/opportunity/detail.html?id='
+        : x.obj.type === '线索' ? 'h5/lead/detail.html?id=' : '';
+      var listKey = x.obj.type === '客户' ? 'customers' : x.obj.type === '商机' ? 'opportunities' : 'leads';
+      var rec = S.find(listKey, x.obj.id);
+      var ok = path && rec && P.inScope(listKey, rec);
+      link = ok
+        ? '<div class="ry-acts-row" style="margin-top:8px"><a class="ry-btn ry-btn--sm" href="' + RY.nav.href(path + encodeURIComponent(x.obj.id)) + '">进入源对象</a></div>'
+        : '<div class="ry-acts-row" style="margin-top:8px"><button class="ry-btn ry-btn--sm" disabled>源对象不在本人权限范围</button></div>';
+    }
+    return '<div class="ag-hit"><div class="ag-hit__t"><span>' + ui.esc(x.name) + '</span>' + ui.tag(x.rule, x.tag) + '</div>' +
+      '<div class="ag-hit__m">责任人 ' + ui.esc(S.userName(x.owner)) + '<br>' + ui.esc(x.detail) + '</div>' + link + '</div>';
+  }
+
+  function render() {
+    var html = '';
+
+    /* 无权限：不展示任何团队数量、摘要与名单 */
+    if (!allowed) {
+      html += ui.stateCard('no-permission', {
+        title: '没有主管关注的访问权限',
+        body: '<p>' + ui.esc(P.whyNot('agent.managerView') || '当前身份没有「主管关注」页面权限。') + '</p>' +
+          '<p class="ry-hint">主管关注只对销售主管（R2）与系统管理员（R5）开放；' +
+          '其他人的 AI 首页只提供本人范围内的今日任务总结，不展示团队聚合数据。' +
+          '主管关注摘要同样只使用确定性事实底单，不评分、不排行、不做绩效评价。</p>',
+        actions: '<a class="ry-btn" href="' + RY.nav.href('h5/agent/index.html') + '">返回瑞赢 AI</a>'
+      });
+      html += contractHtml();
+      ui.qs('#ag-host').innerHTML = html;
+      return;
+    }
+
+    var hs = hits();
+    var stats = candStats();
+    var rules = ['已逾期任务', '长时间无跟进', '明确承诺未完成', '商机缺少下一步', '应交未交日报', '关键数据缺失'];
+
+    html += '<div class="ry-brief">' +
+      '<div class="ry-brief__row"><span class="ry-brief__k">主管关注摘要（系统预生成）</span>' +
+        '<button class="ry-btn ry-btn--sm" id="ag-refresh">按最新正式数据刷新</button></div>' +
+      '<div class="ry-brief__next" style="margin-top:6px">规则命中 <b>' + hs.length + '</b> 项　覆盖团队成员 <b>' + team().length + '</b> 人</div>' +
+      '<p class="ry-hint">数据截至 ' + ui.esc(S.now()) + '；早上固定时间预生成，不主动推送，进入 H5 后查看。' +
+      '底单只来自逾期任务、长时间无跟进、明确承诺未完成、商机缺少下一步、应交未交日报和关键数据缺失等确定性事实。</p></div>';
+
+    html += ui.banner('主管关注的边界：不得给销售评分、形成绩效评价、自主判断人员优劣或自动为下属创建任务；' +
+      '只查看本来就有权的业务正文，无权正文一律不展示。', 'warn');
+
+    /* 规则命中项 */
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>规则命中项</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">确定性底单</span></div></div><div class="ry-hcard__body">' +
+      rules.map(function (r) {
+        var list = hs.filter(function (x) { return x.rule === r; });
+        return '<div class="ry-sec-title">' + ui.esc(r) + '　' + (list.length ? ui.tag(list.length + ' 项', 'warn') : ui.tag('未命中', 'muted')) + '</div>' +
+          (list.length ? list.map(hitHtml).join('') : '<p class="ry-hint">当前没有命中的对象。</p>');
+      }).join('') +
+      '<p class="ry-hint">摘要只重新组织上述确定性事实，不新增判断、不生成正式业务动作。需要处理时进入源对象，' +
+        '由责任人按原业务规则操作；主管不代销售创建任务或确认候选。</p>' +
+      '</div></div>';
+
+    /* 候选处理统计 */
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>候选处理统计</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">不展示候选正文</span></div></div><div class="ry-hcard__body">' +
+      '<table class="ag-tbl"><thead><tr><th>成员</th><th>候选</th><th>待确认</th><th>已确认</th><th>已忽略</th><th>已失效</th><th>写入成功</th><th>写入失败</th><th>修改后确认</th></tr></thead><tbody>' +
+      stats.map(function (r) {
+        return '<tr><td>' + ui.esc(r.name) + '</td><td>' + r.total + '</td><td>' + r.pending + '</td><td>' + r.confirmed +
+          '</td><td>' + r.ignored + '</td><td>' + r.invalid + '</td><td>' + r.writeOk + '</td><td>' + r.writeFail + '</td><td>' + r.modified + '</td></tr>';
+      }).join('') +
+      '<tr><td>合计</td><td>' + sum(stats, 'total') + '</td><td>' + sum(stats, 'pending') + '</td><td>' + sum(stats, 'confirmed') +
+      '</td><td>' + sum(stats, 'ignored') + '</td><td>' + sum(stats, 'invalid') + '</td><td>' + sum(stats, 'writeOk') +
+      '</td><td>' + sum(stats, 'writeFail') + '</td><td>' + sum(stats, 'modified') + '</td></tr></tbody></table>' +
+      '<p class="ry-hint" style="margin-top:8px">统计只到「候选处理情况」这一层：处理量、采纳（已确认）、忽略、失效、写入成功／失败与修改后确认比例。' +
+      '不展示候选正文、字段值、证据、来源原文与候选人对话；主管查看下属 AI 摘要的权限，不得超过该主管本来就有权的业务数据范围。</p>' +
+      '<p class="ry-hint">候选确认按「候选人本人」过滤：即使主管拥有页面与动作权限，也不会在候选确认页看到下属的待确认条目，系统不提供代销售确认的路径。' +
+      '主管需要推动处理时，只做提醒与关注，不替销售做业务确认。</p>' +
+      '</div></div>';
+
+    /* 本页边界 */
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>本页边界</h3></div><div class="ry-hcard__body"><ul class="ry-kv ry-kv--tight">' +
+      '<li><span>不代销售确认</span><b>主管不替销售确认候选、不代改候选业务内容、不替销售创建任务</b></li>' +
+      '<li><span>不做绩效</span><b>不给销售评分、不排行、不形成绩效评价、不自主判断人员优劣</b></li>' +
+      '<li><span>不越权看正文</span><b>只查看本来就有权的业务正文；无权对象的名称、数量与摘要都不得侧漏</b></li>' +
+      '<li><span>底单确定</span><b>摘要底单只来自确定性规则命中项，AI 只总结与归纳，不新增判断</b></li>' +
+      '<li><span>不推送</span><b>预生成结果不主动推送，用户进入 H5 后查看，可手动刷新</b></li>' +
+      '</ul></div></div>';
+
+    html += contractHtml();
+    ui.qs('#ag-host').innerHTML = html;
+
+    var rf = ui.qs('#ag-refresh');
+    if (rf) rf.addEventListener('click', function () { render(); ui.toast('已按最新正式数据刷新主管关注摘要。', 'ok'); });
+  }
+
+  function contractHtml() {
+    return '<div class="ry-hcard ry-hcard--flat" style="margin-top:14px">' +
+      '<div class="ry-hcard__head"><h3>本页契约</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">PG-AI-MANAGER</span></div></div>' +
+      '<div class="ry-hcard__body">' + ui.kv([
+        ['页面契约', 'PG-AI-MANAGER · 主管关注'],
+        ['所属模块', 'Agent（05 Agent 候选与人工确认）'],
+        ['端', '企业微信 H5'],
+        ['可进入角色', 'R2 销售主管｜R5 系统管理员（MGR；数据范围＝本团队，仍需对象级权限校验）'],
+        ['PRD 来源', 'prd/05 §3.1（主管关注摘要）与 §11.2／§11.3（候选处理情况、确定性底单）'],
+        ['覆盖 AC', 'AI-40 AI-41'],
+        ['本页视图', '主管关注｜候选处理统计｜不代销售确认｜只查看本来有权的业务正文'],
+        ['关键边界', '只统计候选处理情况，不展示候选正文；不评分、不排行、不做绩效评价；不替销售确认或创建任务；无权正文不侧漏']
+      ]) + '</div></div>';
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

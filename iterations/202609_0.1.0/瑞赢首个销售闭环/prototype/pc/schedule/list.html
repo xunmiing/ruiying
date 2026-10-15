@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>日程 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：日程列表 */
+  .sl-table { min-width:1900px; white-space:nowrap; }
+  .sl-table th,.sl-table td { padding-left:12px; padding-right:12px; }
+  .sl-table .sl-title { max-width:300px; overflow:hidden; text-overflow:ellipsis; }
+  .sl-table button.ry-cellname { border:0; background:none; padding:0; font:inherit; cursor:pointer; }
+  .sl-row-m { font-size: 11.5px; color: var(--muted); line-height: 1.7; }
+  .sl-cal { display: grid; grid-template-columns:56px repeat(7, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; }
+  .sl-cal__h,.sl-cal__d { min-width:0; box-sizing:border-box; }
+  .sl-cal__gutter { min-width:0; background:var(--surface-2); }
+  .sl-cal__h { background: var(--surface-2); padding: 6px 8px; font-size: 12px; color: var(--muted); text-align: center; }
+  .sl-cal__d { background: var(--surface); min-height: 76px; padding: 6px 7px; font-size: 11.5px; line-height: 1.6; }
+  .sl-cal__d.is-today { background: var(--brand-soft); }
+  .sl-cal__n { color: var(--muted); }
+  .sl-cal__e { display: block; margin-top: 3px; padding: 1px 4px; border-radius: 4px; background: var(--line-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sl-cal__e.is-proj { background: var(--brand-soft); color: var(--brand-ink); }
+  .sl-cal-layout { display:grid; grid-template-columns:minmax(0,1fr) 290px; gap:14px; align-items:start; }
+  .sl-cal-main,.sl-agenda { min-width:0; }
+  .sl-cal-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+  .sl-cal-toolbar h3 { margin:0; font-size:20px; }
+  .sl-cal-toolbar__actions { display:flex; gap:6px; align-items:center; }
+  .sl-cal__d { min-height:122px; cursor:pointer; }
+  .sl-cal__d:focus-visible { outline:2px solid var(--brand); outline-offset:-2px; }
+  .sl-cal__d.is-selected { outline:2px solid var(--brand); outline-offset:-2px; }
+  .sl-cal__n { display:inline-flex; align-items:center; justify-content:center; min-width:23px; height:23px; border-radius:50%; font-weight:700; }
+  .sl-cal__d.is-today .sl-cal__n { background:var(--brand); color:#fff; }
+  .sl-cal__more { display:block; margin-top:4px; color:var(--muted); font-size:11px; }
+  .sl-agenda { border:1px solid var(--line); border-radius:var(--r-card); background:var(--surface); padding:16px; }
+  .sl-agenda h3 { margin:0 0 5px; font-size:16px; }
+  .sl-agenda__sub { color:var(--muted); font-size:12px; margin-bottom:12px; }
+  .sl-agenda__item { display:block; width:100%; border:0; border-top:1px solid var(--line-soft); background:transparent; padding:10px 0; color:var(--text); text-decoration:none; text-align:left; font:inherit; }
+  .sl-agenda__item b { display:block; font-size:12.5px; line-height:1.5; }
+  .sl-agenda__item small { color:var(--muted); font-size:11px; }
+  .sl-agenda__item.is-private { color:var(--muted); }
+  .sl-cal-legend { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; color:var(--muted); font-size:11px; }
+  .sl-cal-legend.is-above { margin-top:0; margin-bottom:10px; }
+  .sl-cal-legend i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; background:var(--line-soft); }
+  .sl-cal-legend .is-proj i { background:var(--brand-soft); }
+  .sl-toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+  .sl-toolbar .ry-scopes { margin:0; }
+  .sl-toolbar__date { display:flex; align-items:center; gap:6px; }
+  .sl-toolbar__date[hidden] { display:none; }
+  .sl-toolbar__date strong { min-width:170px; text-align:center; font-size:15px; }
+  .sl-toolbar .ry-tabs { margin:0; }
+  .sl-toolbar__new { margin-left:auto; white-space:nowrap; }
+  .sl-filter { border:1px solid var(--line); border-radius:var(--r-card); background:var(--surface); padding:12px; margin-bottom:12px; }
+  .sl-filter[hidden] { display:none; }
+  .sl-filter .ry-filter__row { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+  .sl-filter .ry-field { min-width:0; margin:0; }
+  .sl-filter .ry-filter__act { margin-top:10px; }
+  .sl-event { display:block; width:100%; border:0; border-left:3px solid #218b7c; border-radius:5px; background:#e7f5f2; color:#17594f; padding:4px 6px; margin-top:3px; text-align:left; font:inherit; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
+  .sl-event.is-task { border-color:#d8983b; background:#fff4e2; color:#785116; }
+  .sl-event.is-visit { border-color:#256dc1; background:#e9f2ff; color:#174b88; }
+  .sl-event.is-lead,.sl-event.is-opp { border-color:#8c66ce; background:#f2ecff; color:#65419e; }
+  .sl-event.is-private { border-color:#9298a3; background:#f0f1f3; color:#5c626c; cursor:default; }
+  .sl-cal-legend .is-task i { background:#d8983b; }
+  .sl-cal-legend .is-visit i { background:#256dc1; }
+  .sl-cal-legend .is-lead i { background:#8c66ce; }
+  .sl-week { display:grid; grid-template-columns:56px repeat(7,minmax(0,1fr)); border:1px solid var(--line); border-radius:var(--r-card); overflow:auto; max-height:680px; }
+  .sl-week__head,.sl-week__time { min-width:0; box-sizing:border-box; background:var(--surface-2); color:var(--muted); font-size:11px; padding:8px 4px; text-align:center; border-right:1px solid var(--line); border-bottom:1px solid var(--line); }
+  .sl-week__head.is-today { color:var(--brand); font-weight:700; }
+  button.sl-week__head { width:100%; border-top:0; border-left:0; font:inherit; cursor:pointer; }
+  .sl-week__head.is-selected { background:var(--brand-soft); color:var(--brand-ink); }
+  .sl-week__slot { min-height:64px; min-width:0; box-sizing:border-box; padding:3px; border-right:1px solid var(--line-soft); border-bottom:1px solid var(--line-soft); cursor:pointer; }
+  .sl-week__slot:hover,.sl-week__slot.is-selected { background:var(--brand-soft); }
+  .sl-week__all { min-height:42px; }
+  .sl-agenda__item { cursor:pointer; }
+  .sl-agenda__item.is-private { cursor:default; }
+  .sl-agenda__item .sl-event-type { display:inline-block; margin-top:5px; font-size:10px; color:var(--muted); }
+  .sl-agenda__new { width:100%; margin-top:12px; }
+  .sl-detail-section { padding:0 0 16px; margin-bottom:16px; border-bottom:1px solid var(--line); }
+  .sl-detail-section:last-child { margin-bottom:0; border-bottom:0; }
+  .sl-detail-section h4 { margin:0 0 10px; font-size:14px; }
+  .sl-detail-section .ry-kv { overflow-wrap:anywhere; }
+  .sl-detail-actions { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+  .sl-detail-log { display:grid; gap:8px; }
+  .sl-detail-log__item { padding:9px 11px; border-radius:8px; background:var(--surface-2); font-size:12px; line-height:1.6; }
+  @media(max-width:1100px) { .sl-cal-layout { grid-template-columns:1fr; } .sl-cal__d { min-height:90px; } }
+  @media(max-width:900px) { .sl-filter .ry-filter__row { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div class="sl-toolbar"><div class="ry-scopes" id="sl-scopes"></div><div class="ry-tabs" id="sl-views"></div><div class="sl-toolbar__date" id="sl-date-nav"></div><button class="ry-btn" id="sl-filter-toggle" type="button">筛选</button><button class="ry-btn ry-btn--primary sl-toolbar__new" id="sl-new" type="button">新建日程</button></div>
+      <div class="sl-filter" id="sl-filter" hidden></div>
+      <div class="ry-resultbar" id="sl-resultbar"></div>
+      <div id="sl-panel"></div>
+      <div id="sl-pager"></div>
+
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var KEY = 'schedule.list';
+  function can(a) { return RY.perm.can(a); }
+
+  var st = S.listState(KEY);
+  if (!st.calendarFirstV3) { st.view = 'cal'; st.calendarMode = 'week'; st.scope = RY.perm.pcRole(u) === 'R2' ? 'team' : RY.perm.pcRole(u) === 'R3' ? 'all' : 'mine'; st.anchorDate = S.today(); st.selectedDate = S.today(); st.calendarFirstV3 = true; S.save(); }
+  var scope = ui.q('scope') || st.scope || 'mine';
+  var view = ui.q('view') || st.view || 'cal';
+  var calendarMode = st.calendarMode || 'week';
+  var flt = st.flt || (st.flt = { kw: '', status: '', type: '', owner: '' });
+  var page = st.page || 1, size = 10;
+  var anchorDate = st.anchorDate || S.today();
+  var selectedDate = st.selectedDate || S.today();
+  var filterOpen = !!st.filterOpen;
+  var eventCache = {};
+
+  function asDate(s) { return new Date(String(s).slice(0, 10) + 'T00:00:00Z'); }
+  function iso(d) { return d.toISOString().slice(0, 10); }
+  function addDays(s, n) { var d = asDate(s); d.setUTCDate(d.getUTCDate() + n); return iso(d); }
+  function weekStart(s) { return addDays(s, -((asDate(s).getUTCDay() + 6) % 7)); }
+  function monthOf(s) { return String(s).slice(0, 7); }
+  function periodLabel() {
+    if (view === 'list') return '独立日程列表';
+    if (calendarMode === 'month') return asDate(anchorDate).getUTCFullYear() + '年' + (asDate(anchorDate).getUTCMonth() + 1) + '月';
+    return weekStart(anchorDate).slice(5).replace('-', '月') + '日 — ' + addDays(weekStart(anchorDate), 6).slice(5).replace('-', '月') + '日';
+  }
+
+  var TYPES = ['客户约访', '内部会议', '个人安排'];
+  var STATUS = ['有效', '已取消', '已删除'];
+  var samplePrefix = 'SCH-' + S.today().slice(0, 7).replace('-', '') + '-9';
+  var sampleSchedules = [
+    { id:samplePrefix + '001', sample:true, title:'远驰科技车电项目方案沟通', owner:'U-001', type:'客户约访', startAt:S.today() + ' 09:30', endAt:S.today() + ' 10:30', status:'有效', note:'核对交付排期与跨区域服务承诺', related:{ type:'客户', name:'上海远驰汽车科技有限公司' } },
+    { id:samplePrefix + '002', sample:true, title:'华东团队周经营例会', owner:'U-003', type:'内部会议', startAt:S.today() + ' 11:00', endAt:S.today() + ' 12:00', status:'有效', note:'同步重点商机风险与本周约访安排', related:{} },
+    { id:samplePrefix + '003', sample:true, title:'盈川新能源采购需求回访', owner:'U-002', type:'客户约访', startAt:S.today() + ' 14:00', endAt:S.today() + ' 15:00', status:'有效', note:'确认采购主体与试点园区', related:{ type:'客户', name:'广州盈川新能源集团有限公司' } },
+    { id:samplePrefix + '004', sample:true, title:'整理个人工作计划', owner:'U-002', type:'个人安排', startAt:addDays(S.today(), 1) + ' 10:00', endAt:addDays(S.today(), 1) + ' 11:00', status:'有效', note:'个人安排', related:{} },
+    { id:samplePrefix + '005', sample:true, title:'远驰科技方案复核', owner:'U-001', type:'客户约访', startAt:addDays(S.today(), 2) + ' 15:00', endAt:addDays(S.today(), 2) + ' 16:00', status:'有效', note:'复核报价边界和培训安排', related:{} }
+  ];
+  var sampleProjections = [
+    { date:S.today(), time:'16:00', title:'完成车电方案修订', kind:'task', srcType:'任务截止', srcId:'SAMPLE-TASK-01', owner:'U-001', sample:true },
+    { date:addDays(weekStart(S.today()), 1), time:'10:00', title:'整理盈川新能源试点需求清单', kind:'task', srcType:'任务截止', srcId:'SAMPLE-TASK-02', owner:'U-001', sample:true },
+    { date:addDays(weekStart(S.today()), 3), time:'15:00', title:'提交远驰科技报价复核结果', kind:'task', srcType:'任务截止', srcId:'SAMPLE-TASK-03', owner:'U-001', sample:true },
+    { date:addDays(weekStart(S.today()), 4), time:'11:30', title:'跟进华南车队采购决策人反馈', kind:'task', srcType:'任务截止', srcId:'SAMPLE-TASK-04', owner:'U-002', sample:true },
+    { date:addDays(weekStart(S.today()), 5), time:'17:00', title:'汇总本周重点商机行动项', kind:'task', srcType:'任务截止', srcId:'SAMPLE-TASK-05', owner:'U-003', sample:true },
+    { date:addDays(S.today(), 1), time:'13:30', title:'栖达车务现场拜访', kind:'visit', srcType:'正式拜访', srcId:'SAMPLE-VISIT-01', owner:'U-001', sample:true }
+  ];
+  function scheduleById(id) { return sampleSchedules.find(function (x) { return x.id === id; }) || S.sched(id); }
+  function scheduleRows() { return S.arr('schedules').concat(sampleSchedules); }
+  function privateSchedule(s) { return s && s.type === '个人安排' && s.owner !== u.id && RY.perm.pcRole(u) !== 'R3'; }
+  function privateEventFor(e) { return e.kind === 'schedule' && privateSchedule(scheduleById(e.srcId)); }
+
+  function scopes() {
+    var list = [{ key: 'mine', name: '我的日程', desc: '我是日程负责人' }, { key: 'all', name: '全部日程', desc: '按当前数据范围' }];
+    if (RY.perm.pcRole(u) === 'R2') list.splice(1, 0, { key: 'team', name: '团队日程', desc: '我作为主管可见的团队范围' });
+    return list;
+  }
+  function inScope(s) {
+    if (!RY.perm.inScope('schedule', s)) return false;
+    if (scope === 'mine') return s.owner === u.id;
+    if (scope === 'team') return s.owner === u.id || S.inTeamOf(s.owner, u.id);
+    return true;
+  }
+  function filtered() {
+    var k = flt.kw.trim();
+    return scheduleRows().filter(function (s) {
+      if (!inScope(s) || s.isConverted && !flt.kw || s.status === '已删除' && flt.status !== '已删除' && !flt.kw) return false;
+      if (k && (privateSchedule(s) || s.id.indexOf(k) < 0 && (s.title || '').indexOf(k) < 0)) return false;
+      if (flt.status && s.status !== flt.status) return false;
+      if (flt.type && s.type !== flt.type) return false;
+      if (flt.owner && s.owner !== flt.owner) return false;
+      return true;
+    }).sort(function (a, b) { return String(a.startAt || '').localeCompare(String(b.startAt || '')); });
+  }
+  function relLink(r) {
+    if (!r || !r.id) return '无关联对象';
+    var href = r.type === '客户' ? '../customer/detail.html?id=' + encodeURIComponent(r.id)
+      : r.type === '商机' ? '../opportunity/detail.html?id=' + encodeURIComponent(r.id)
+      : r.type === '线索' ? '../lead/detail.html?id=' + encodeURIComponent(r.id) : '';
+    var item = r.type === '客户' ? S.customer(r.id) : r.type === '商机' ? S.opp(r.id) : r.type === '线索' ? S.lead(r.id) : null;
+    if (!item || !RY.perm.inScope(r.type === '客户' ? 'customer' : r.type === '商机' ? 'opp' : 'lead', item)) return '无权查看关联对象';
+    return (href ? '<a href="' + href + '">' : '') + ui.esc(r.name || r.id) + (href ? '</a>' : '');
+  }
+  function syncTag(s) {
+    var tone = s.status === '成功' ? 'ok' : s.status === '失败' ? 'bad' : s.status === '已取消' ? 'muted' : 'info';
+    return ui.tag('企微 ' + s.status, tone);
+  }
+
+  RY.nav.shell({
+    nav: 'schedule.list',
+    title: '日程',
+    subtitle: '以日历查看独立日程及业务时间安排。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '工作管理' }, { label: '日程' }],
+    actions: ''
+  });
+
+  function renderScopes() {
+    ui.qs('#sl-scopes').innerHTML = scopes().map(function (s) {
+      return '<button class="ry-scope' + (scope === s.key ? ' is-on' : '') + '" data-scope="' + s.key + '" title="' + ui.esc(s.desc) + '">' +
+        ui.esc(s.name) + ' <b>' + scheduleRows().filter(function (x) {
+          if (!RY.perm.inScope('schedule', x) || x.isConverted || x.status === '已删除') return false;
+          if (s.key === 'mine') return x.owner === u.id;
+          if (s.key === 'team') return x.owner === u.id || S.inTeamOf(x.owner, u.id);
+          return true;
+        }).length + '</b></button>';
+    }).join('');
+    ui.qsa('[data-scope]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        scope = b.getAttribute('data-scope'); st.scope = scope; page = 1; st.page = 1; S.save(); render();
+      });
+    });
+  }
+
+  ui.qs('#sl-filter').innerHTML =
+    '<div class="ry-filter__row">' +
+      ui.field('关键词', ui.input('kw', flt.kw, '日程编号／标题'), '', false) +
+      ui.field('日程状态', ui.select('status', [{ value: '', label: '全部' }].concat(STATUS), flt.status), '', false) +
+      ui.field('日程类型', ui.select('type', [{ value: '', label: '全部' }].concat(TYPES), flt.type), '', false) +
+      ui.field('负责人', ui.select('owner', [{ value: '', label: '全部' }].concat(S.all('users').filter(function (x) {
+        var role = RY.perm.pcRole(u); return role === 'R3' || x.id === u.id || role === 'R2' && S.inTeamOf(x.id, u.id);
+      }).map(function (x) { return { value: x.id, label: x.name }; })), flt.owner), '', false) +
+    '</div>' +
+    '<div class="ry-filter__act"><button class="ry-btn" id="sl-reset">重置</button>' +
+      '<button class="ry-btn ry-btn--primary" id="sl-apply">查询</button></div>';
+
+  function render() {
+    renderScopes();
+    ui.qs('#sl-date-nav').hidden = view === 'list';
+    ui.qs('#sl-date-nav').innerHTML = '<button class="ry-btn ry-btn--sm" data-sl-shift="-1" aria-label="上一周期">‹</button>' +
+      '<strong>' + ui.esc(periodLabel()) + '</strong><button class="ry-btn ry-btn--sm" data-sl-shift="1" aria-label="下一周期">›</button>' +
+      '<button class="ry-btn ry-btn--sm" id="sl-today">今天</button>';
+    ui.qs('#sl-views').innerHTML =
+      '<button class="ry-tab' + (view === 'cal' && calendarMode === 'week' ? ' is-on' : '') + '" data-sl-mode="week">周</button>' +
+      '<button class="ry-tab' + (view === 'cal' && calendarMode === 'month' ? ' is-on' : '') + '" data-sl-mode="month">月</button>' +
+      '<button class="ry-tab' + (view === 'list' ? ' is-on' : '') + '" data-sl-mode="list">列表</button>';
+    ui.qsa('[data-sl-mode]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var mode = b.getAttribute('data-sl-mode');
+        view = mode === 'list' ? 'list' : 'cal';
+        if (mode !== 'list') { calendarMode = mode; anchorDate = selectedDate; st.anchorDate = anchorDate; }
+        st.view = view; st.calendarMode = calendarMode; page = 1; st.page = 1; S.save(); render();
+      });
+    });
+    ui.qsa('[data-sl-shift]').forEach(function (b) { b.addEventListener('click', function () {
+      var n = Number(b.getAttribute('data-sl-shift'));
+      if (calendarMode === 'month' && view !== 'list') {
+        var d = asDate(anchorDate); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); anchorDate = iso(d);
+      } else anchorDate = addDays(anchorDate, n * 7);
+      selectedDate = view === 'cal' && calendarMode === 'month' ? monthOf(anchorDate) + '-01' : anchorDate;
+      st.anchorDate = anchorDate; st.selectedDate = selectedDate; S.save(); render();
+    }); });
+    ui.qs('#sl-today').addEventListener('click', function () { anchorDate = S.today(); selectedDate = anchorDate; st.anchorDate = anchorDate; st.selectedDate = selectedDate; S.save(); render(); });
+    ui.qs('#sl-filter').hidden = !filterOpen;
+    ui.qs('#sl-filter-toggle').textContent = '筛选' + (flt.kw || flt.status || flt.type || flt.owner ? ' · 已设置' : '');
+    if (view === 'list') renderList(); else renderCal();
+    ui.bindDenied('#ry-page');
+  }
+
+  function renderList() {
+    var list = filtered(), total = list.length;
+    var pages = Math.max(1, Math.ceil(total / size));
+    if (page > pages) page = pages;
+    var rows = list.slice((page - 1) * size, page * size);
+    ui.qs('#sl-panel').innerHTML = '<div class="ry-card"><div class="ry-card__body ry-card__body--flush">' +
+      '<div class="ry-table__wrap"><table class="ry-table ry-table--tight sl-table"><thead><tr>' +
+      '<th>日程编号</th><th>日程标题</th><th>类型</th><th>开始</th><th>结束</th><th>负责人</th><th>关联类型</th><th>关联对象</th><th>企微同步</th><th>同步失败原因</th><th>状态</th><th>已转任务</th><th>操作</th>' +
+      '</tr></thead><tbody>' + (rows.length ? rows.map(function (s) {
+        var mine = s.owner === u.id;
+        var privateEvent = privateSchedule(s);
+        return '<tr>' +
+          '<td>' + (privateEvent ? '—' : '<button type="button" class="ry-cellname" data-sl-detail="' + ui.esc(s.id) + '">' + ui.esc(s.id) + '</button>') + '</td>' +
+          '<td class="sl-title" title="' + ui.esc(privateEvent ? '忙碌' : s.title) + '">' + ui.esc(privateEvent ? '忙碌' : s.title) + '</td>' +
+          '<td>' + (privateEvent ? '—' : ui.esc(s.type)) + '</td>' +
+          '<td>' + ui.esc(s.startAt || '—') + '</td>' +
+          '<td>' + ui.esc(s.endAt || '—') + '</td>' +
+          '<td>' + ui.esc(S.userName(s.owner) || s.owner) + '</td>' +
+          '<td>' + (privateEvent ? '—' : ui.esc(s.related && s.related.id ? s.related.type : '—')) + '</td>' +
+          '<td>' + (privateEvent ? '—' : relLink(s.related)) + '</td>' +
+          '<td>' + (privateEvent ? '—' : ui.esc((s.wecomSync || {}).status || '未同步')) + '</td>' +
+          '<td>' + (privateEvent ? '—' : ui.esc((s.wecomSync || {}).failReason || '—')) + '</td>' +
+          '<td>' + ui.statusTag(s.status) + '</td>' +
+          '<td>' + (privateEvent ? '—' : ui.esc(s.convertedTaskId || '—')) + '</td>' +
+          '<td class="ry-tbl-act">' +
+            (privateEvent ? '—' : '<button type="button" class="ry-btn ry-btn--sm" data-sl-detail="' + ui.esc(s.id) + '">查看详情</button>') +
+            '' +
+          '</td></tr>';
+      }).join('') : '<tr><td colspan="13" class="ry-hint">当前范围与筛选条件下没有日程。</td></tr>') +
+      '</tbody></table></div></div></div>';
+    ui.qs('#sl-pager').innerHTML = ui.pager(total, page, size, KEY);
+    ui.qs('#sl-resultbar').innerHTML = '<span>共 ' + total + ' 条日程（范围：' + ui.esc(scopeName()) + '）</span>' +
+      '<span class="ry-resultbar__right"><button type="button" data-pcn-rule="scheduleProjection"></button></span>';
+    ui.bindPager('#sl-pager', function (p) { page = p; st.page = p; S.save(); render(); });
+    ui.qsa('[data-sl-detail]').forEach(function (b) { b.addEventListener('click', function () {
+      var s = scheduleById(b.getAttribute('data-sl-detail'));
+      if (s) showEvent({ kind:'schedule', srcId:s.id, title:s.title, owner:s.owner, date:s.startAt.slice(0, 10), time:s.startAt.slice(11, 16), endTime:s.endAt.slice(11, 16), sample:true });
+    }); });
+    ui.qsa('[data-sl-edit]').forEach(function (b) {
+      b.addEventListener('click', function (e) { if (e.target.closest('[data-denied]')) return; edit(b.getAttribute('data-sl-edit')); });
+    });
+  }
+
+  function calendarEvents(start, end) {
+    var months = [], cursor = asDate(start);
+    cursor.setUTCDate(1);
+    while (iso(cursor) <= end) { months.push(iso(cursor).slice(0, 7)); cursor.setUTCMonth(cursor.getUTCMonth() + 1); }
+    var evs = [];
+    months.forEach(function (month) { evs = evs.concat(S.calendarEvents(month)); });
+    sampleSchedules.forEach(function (s) {
+      if (s.startAt.slice(0, 10) >= start && s.startAt.slice(0, 10) <= end) {
+        evs.push({ date:s.startAt.slice(0, 10), time:s.startAt.slice(11, 16), endTime:s.endAt.slice(11, 16),
+          title:s.title, kind:'schedule', srcType:'独立日程', srcId:s.id, owner:s.owner, editable:true, sample:true });
+      }
+    });
+    sampleProjections.forEach(function (e) { if (e.date >= start && e.date <= end) evs.push(Object.assign({}, e)); });
+    evs = evs.filter(function (e) {
+      var kind = e.kind === 'schedule' ? 'schedule' : e.kind === 'task' ? 'task' : e.kind === 'visit' ? 'visit' : e.kind === 'lead' ? 'lead' : 'opp';
+      var item = e.sample && kind !== 'schedule' ? { owner:e.owner } : kind === 'schedule' ? scheduleById(e.srcId) : kind === 'task' ? S.task(e.srcId) :
+        kind === 'visit' ? S.visit(e.srcId) : kind === 'lead' ? S.lead(e.srcId) : S.opp(e.srcId);
+      if (!item || !RY.perm.inScope(kind, item)) return false;
+      if (scope === 'mine' && e.owner !== u.id) return false;
+      if (scope === 'team' && e.owner !== u.id && !S.inTeamOf(e.owner, u.id)) return false;
+      if (flt.owner && e.owner !== flt.owner) return false;
+      if (flt.kw && (privateEventFor(e) || e.srcId.indexOf(flt.kw.trim()) < 0 && e.title.indexOf(flt.kw.trim()) < 0)) return false;
+      if (flt.status && flt.status !== '有效') return false;
+      if (flt.type && (e.kind !== 'schedule' || item.type !== flt.type)) return false;
+      return true;
+    }).sort(function (a, b) { return (a.date + a.time).localeCompare(b.date + b.time); });
+    eventCache = {};
+    evs.forEach(function (e, i) { e.key = String(i); eventCache[e.key] = e; });
+    return evs;
+  }
+
+  function eventButton(e) {
+    var privateEvent = privateEventFor(e), label = privateEvent ? '忙碌' : e.title;
+    return '<button type="button" class="sl-event is-' + (privateEvent ? 'private' : e.kind) +
+      '" data-sl-event="' + e.key + '" title="' + ui.esc(label) + '">' + ui.esc((e.time ? e.time + ' ' : '') + label) + '</button>';
+  }
+
+  function renderMonth(evs) {
+    var d = asDate(anchorDate), year = d.getUTCFullYear(), month = d.getUTCMonth();
+    var first = new Date(Date.UTC(year, month, 1)), days = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    var before = (first.getUTCDay() + 6) % 7;
+    var cells = '<div class="sl-cal__gutter"></div>' + ['一','二','三','四','五','六','日'].map(function (w) { return '<div class="sl-cal__h">周' + w + '</div>'; }).join('');
+    for (var i = 0; i < before; i++) {
+      if (i % 7 === 0) cells += '<div class="sl-cal__gutter"></div>';
+      cells += '<div class="sl-cal__d" style="background:var(--surface-2)"></div>';
+    }
+    for (var n = 1; n <= days; n++) {
+      if ((before + n - 1) % 7 === 0) cells += '<div class="sl-cal__gutter"></div>';
+      var day = iso(new Date(Date.UTC(year, month, n))), list = evs.filter(function (e) { return e.date === day; });
+      cells += '<div role="button" tabindex="0" data-sl-day="' + day + '" class="sl-cal__d' +
+        (day === S.today() ? ' is-today' : '') + (day === selectedDate ? ' is-selected' : '') + '">' +
+        '<span class="sl-cal__n">' + n + '</span>' + list.slice(0, 3).map(eventButton).join('') +
+        (list.length > 3 ? '<span class="sl-cal__more">另有 ' + (list.length - 3) + ' 项</span>' : '') + '</div>';
+    }
+    var trailing = (7 - (before + days) % 7) % 7;
+    for (var j = 0; j < trailing; j++) cells += '<div class="sl-cal__d" style="background:var(--surface-2)"></div>';
+    return '<div class="sl-cal">' + cells + '</div>';
+  }
+
+  function renderWeek(evs) {
+    var start = weekStart(anchorDate), days = Array.from({ length:7 }, function (_, i) { return addDays(start, i); });
+    var cells = '<div class="sl-week__head"></div>' + days.map(function (day, i) {
+      return '<button type="button" data-sl-day="' + day + '" class="sl-week__head' +
+        (day === S.today() ? ' is-today' : '') + (day === selectedDate ? ' is-selected' : '') + '">' +
+        ['周一','周二','周三','周四','周五','周六','周日'][i] + '<br><b>' + Number(day.slice(8)) + '</b></button>';
+    }).join('');
+    cells += '<div class="sl-week__time">全天</div>' + days.map(function (day) {
+      var items = evs.filter(function (e) { return e.date === day && !e.time; });
+      return '<div class="sl-week__slot sl-week__all" data-sl-slot="' + day + ' 09:00">' + items.map(eventButton).join('') + '</div>';
+    }).join('');
+    for (var hour = 7; hour <= 20; hour++) {
+      var hh = String(hour).padStart(2, '0');
+      cells += '<div class="sl-week__time">' + hh + ':00</div>' + days.map(function (day) {
+        var items = evs.filter(function (e) { return e.date === day && e.time && e.time.slice(0, 2) === hh; });
+        return '<div class="sl-week__slot' + (day === selectedDate ? ' is-selected' : '') +
+          '" data-sl-slot="' + day + ' ' + hh + ':00">' + items.map(eventButton).join('') + '</div>';
+      }).join('');
+    }
+    return '<div class="sl-week">' + cells + '</div>';
+  }
+
+  function renderCal() {
+    var start, end;
+    if (calendarMode === 'month') {
+      var d = asDate(anchorDate);
+      start = iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)));
+      end = iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)));
+    } else { start = weekStart(anchorDate); end = addDays(start, 6); }
+    if (selectedDate < start || selectedDate > end) selectedDate = anchorDate;
+    st.anchorDate = anchorDate; st.selectedDate = selectedDate; st.calendarMode = calendarMode; S.save();
+    var evs = calendarEvents(start, end), dayEvs = evs.filter(function (e) { return e.date === selectedDate; });
+    var legend = '<div class="sl-cal-legend is-above"><span><i></i>独立日程</span><span class="is-task"><i></i>任务</span><span class="is-visit"><i></i>拜访</span><span class="is-lead"><i></i>线索／商机</span>' +
+      '<span>本周期 ' + evs.length + ' 项</span><button type="button" data-pcn-rule="scheduleProjection"></button></div>';
+    ui.qs('#sl-panel').innerHTML = '<div class="sl-cal-layout"><div class="ry-card sl-cal-main"><div class="ry-card__body">' +
+      legend + (calendarMode === 'month' ? renderMonth(evs) : renderWeek(evs)) + '</div></div>' +
+      '<aside class="sl-agenda"><h3>' + selectedDate + ' · 当日安排</h3><div class="sl-agenda__sub">' + dayEvs.length + ' 项 · ' + ui.esc(scopeName()) + '</div>' +
+      (dayEvs.length ? dayEvs.map(function (e) {
+        var privateEvent = privateEventFor(e), label = privateEvent ? '忙碌' : e.title;
+        var inner = '<b>' + ui.esc(label) + '</b><small>' + ui.esc((e.time || '全天') + ' · ' +
+          (privateEvent ? '忙碌' : e.srcType) + (e.owner === u.id ? '' : ' · ' + (S.userName(e.owner) || e.owner))) + '</small>' +
+          (privateEvent ? '' : '<span class="sl-event-type">' + (e.kind === 'schedule' ? '独立日程' : '只读投影') + '</span>');
+        return privateEvent ? '<div class="sl-agenda__item is-private">' + inner + '</div>' :
+          '<button type="button" class="sl-agenda__item" data-sl-event="' + e.key + '">' + inner + '</button>';
+      }).join('') : '<p class="ry-hint">当天没有安排。</p>') +
+      '<button type="button" class="ry-btn sl-agenda__new" id="sl-new-day">＋ 新建当日日程</button></aside></div>';
+    ui.qsa('[data-sl-day]').forEach(function (el) {
+      function selectDay() { selectedDate = el.getAttribute('data-sl-day'); st.selectedDate = selectedDate; render(); }
+      el.addEventListener('click', function (e) { if (!e.target.closest('[data-sl-event]')) selectDay(); });
+      el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectDay(); } });
+    });
+    ui.qsa('[data-sl-slot]').forEach(function (el) { el.addEventListener('click', function (e) {
+      if (e.target.closest('[data-sl-event]')) return;
+      var value = el.getAttribute('data-sl-slot'); selectedDate = value.slice(0, 10); st.selectedDate = selectedDate; render(); drawer(null, selectedDate, value.slice(11));
+    }); });
+    ui.qsa('[data-sl-event]').forEach(function (el) { el.addEventListener('click', function (e) {
+      e.stopPropagation(); showEvent(eventCache[el.getAttribute('data-sl-event')]);
+    }); });
+    ui.qs('#sl-new-day').addEventListener('click', function () { drawer(null, selectedDate, '09:00'); });
+    ui.qs('#sl-resultbar').innerHTML = '<span>' + ui.esc(periodLabel()) + ' · ' + ui.esc(scopeName()) + ' · ' + evs.length + ' 项</span>';
+    ui.qs('#sl-pager').innerHTML = '';
+  }
+
+  function scopeName() { var s = scopes().filter(function (x) { return x.key === scope; })[0]; return s ? s.name : scope; }
+
+  function showEvent(e) {
+    if (!e || privateEventFor(e)) return;
+    var s = e.kind === 'schedule' ? scheduleById(e.srcId) : null;
+    var href = !s && e.path ? '../' + e.path + '?id=' + encodeURIComponent(e.srcId) : '';
+    var related = s && s.related || {}, sync = s && s.wecomSync || {};
+    var history = s && s.history || [];
+    var body = s ?
+      '<div class="sl-detail-actions">' + ui.statusTag(s.status) + ui.tag(s.type, 'muted') +
+      (!s.sample && s.owner === u.id && s.status === '有效' && !s.isConverted && can('schedule.edit') ? '<button type="button" class="ry-btn ry-btn--sm" id="sl-detail-edit">编辑日程</button>' : '') + '</div>' +
+      '<section class="sl-detail-section"><h4>日程信息</h4>' + ui.kv([
+        ['日程编号', ui.esc(s.id)], ['日程标题', ui.esc(s.title)], ['日程类型', ui.esc(s.type)],
+        ['负责人', ui.esc(S.userName(s.owner) || s.owner)], ['开始时间', ui.esc(s.startAt || '—')],
+        ['结束时间', ui.esc(s.endAt || '—')], ['备注', ui.esc(s.note || '—')],
+        ['创建人／时间', ui.esc((S.userName(s.createdBy) || s.createdBy || '—') + '　' + (s.createdAt || '—'))],
+        ['已转任务', s.isConverted && s.convertedTaskId ? '<a href="../task/detail.html?id=' + encodeURIComponent(s.convertedTaskId) + '">' + ui.esc(s.convertedTaskId) + '</a>' : '未转为任务'],
+        ['取消／删除原因', ui.esc(s.cancelReason || s.deleteReason || '—')]
+      ]) + '</section>' +
+      '<section class="sl-detail-section"><h4>关联对象</h4>' + ui.kv([
+        ['关联类型', ui.esc(related.type || '未关联')], ['关联对象', relLink(related)],
+        ['关联编号', ui.esc(related.id || '—')]
+      ]) + '</section>' +
+      '<section class="sl-detail-section"><h4>企微同步状态</h4>' + ui.kv([
+        ['同步状态', ui.esc(sync.status || '未同步')], ['最近同步时间', ui.esc(sync.at || '—')],
+        ['重试次数', ui.esc(String(sync.retryCount || 0)) + ' 次'], ['失败原因', ui.esc(sync.failReason || '—')]
+      ]) + '</section>' +
+      '<section class="sl-detail-section"><h4>日志</h4><div class="sl-detail-log">' + (history.length ? history.slice().reverse().map(function (x) {
+        return '<div class="sl-detail-log__item"><b>' + ui.esc((x.at || '') + '　' + (x.actor || '') + '　' + (x.action || '')) + '</b>' +
+          (x.from || x.to ? '<div>' + ui.esc(x.from || '—') + ' → ' + ui.esc(x.to || '—') + '</div>' : '') +
+          (x.reason ? '<div>原因：' + ui.esc(x.reason) + '</div>' : '') + '</div>';
+      }).join('') : '<p class="ry-hint">暂无日志记录。</p>') + '</div></section>' :
+      '<section class="sl-detail-section"><h4>来源事项</h4>' + ui.kv([
+        ['名称', ui.esc(e.title)], ['来源类型', ui.esc(e.srcType || '—')], ['来源编号', ui.esc(e.srcId || '—')],
+        ['负责人', ui.esc(S.userName(e.owner) || e.owner)], ['时间', ui.esc(e.date + ' ' + (e.time || '全天'))],
+        ['说明', '此事项从源业务对象投影到日历，日历中只读。']
+      ]) + '</section>';
+    ui.drawer({ title:s ? s.title : e.title, subtitle:s ? '日程详情' : '来源事项详情 · 只读投影', size:'lg', body:body,
+      footer:'<button class="ry-btn" data-close>关闭</button>' + (href ? '<a class="ry-btn ry-btn--primary" href="' + href + '">打开源对象</a>' : ''),
+      onOpen:function (el) {
+        var editBtn = ui.qs('#sl-detail-edit', el);
+        if (editBtn) editBtn.addEventListener('click', function () { ui.close(); drawer(s); });
+      } });
+  }
+
+  function edit(id) {
+    var s = S.sched(id);
+    if (!s) return;
+    drawer(s);
+  }
+
+  function drawer(s, prefillDate, prefillTime) {
+    var isNew = !s;
+    var startAt = isNew && prefillDate ? prefillDate + ' ' + (prefillTime || '09:00') : isNew ? '' : s.startAt;
+    var nextHour = prefillTime ? String(Math.min(23, Number(prefillTime.slice(0, 2)) + 1)).padStart(2, '0') + ':00' : '';
+    var endAt = isNew && prefillDate ? prefillDate + ' ' + nextHour : isNew ? '' : s.endAt;
+    ui.drawer({
+      title: isNew ? '新建日程' : '编辑日程',
+      subtitle: '独立日程可同步到企微日历；任务不做企微同步。',
+      size: 'lg',
+      body: (isNew ? '' : ui.kv([['日程编号', s.id], ['当前状态', s.status], ['企微同步', (s.wecomSync || {}).status || '未同步']])) +
+        ui.field('日程标题', ui.input('title', isNew ? '' : s.title, '', true), '', true) +
+        ui.grid2(
+          ui.field('日程类型', ui.select('type', TYPES, isNew ? '客户约访' : s.type), '', true),
+          ui.field('负责人', '<span>' + ui.esc(S.userName(isNew ? u.id : s.owner)) + '</span>', '', false)
+        ) +
+        ui.grid2(
+          ui.field('开始时间', ui.input('startAt', startAt, 'YYYY-MM-DD HH:mm'), '', true),
+          ui.field('结束时间', ui.input('endAt', endAt, 'YYYY-MM-DD HH:mm'), '', false)
+        ) +
+        ui.field('备注', ui.textarea('note', isNew ? '' : s.note, '', 2), '', false) +
+        '<button type="button" data-pcn-rule="' + (isNew ? 'scheduleCreateSync' : 'scheduleEditSync') + '"></button>',
+      footer: '<button class="ry-btn" data-close>取消</button>' +
+        '<button class="ry-btn ry-btn--primary" id="sl-d-ok">' + (isNew ? '创建' : '保存') + '</button>',
+      onOpen: function (el) {
+        ui.qs('#sl-d-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!(v.title || '').trim()) { ui.toast('日程标题必填。', 'warn'); return; }
+          if (!(v.startAt || '').trim()) { ui.toast('开始时间必填。', 'warn'); return; }
+          var r = isNew
+            ? S.createSchedule({ title: v.title.trim(), type: v.type, owner: u.id, startAt: v.startAt, endAt: v.endAt || v.startAt, note: v.note })
+            : S.updateSchedule(s.id, { title: v.title.trim(), type: v.type, startAt: v.startAt, endAt: v.endAt || v.startAt, note: v.note });
+          if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+          ui.close(); ui.toast(isNew ? '日程已创建，已提交企微同步。' : '日程已保存，已重新提交企微同步。', 'success');
+          if (isNew) { selectedDate = v.startAt.slice(0, 10); anchorDate = selectedDate; st.selectedDate = selectedDate; st.anchorDate = anchorDate; }
+          render();
+        });
+      }
+    });
+  }
+
+  ui.qs('#sl-new').addEventListener('click', function () { drawer(null, selectedDate, '09:00'); });
+  ui.qs('#sl-filter-toggle').addEventListener('click', function () { filterOpen = !filterOpen; st.filterOpen = filterOpen; S.save(); ui.qs('#sl-filter').hidden = !filterOpen; });
+
+  ui.qs('#sl-apply').addEventListener('click', function () {
+    var v = ui.formValues(ui.qs('#sl-filter'));
+    flt.kw = v.kw; flt.status = v.status; flt.type = v.type; flt.owner = v.owner;
+    if (flt.status === '已取消' || flt.status === '已删除') { view = 'list'; st.view = 'list'; }
+    page = 1; st.page = 1; st.flt = flt; S.save(); render();
+  });
+  ui.qs('#sl-reset').addEventListener('click', function () {
+    Object.keys(flt).forEach(function (k) { flt[k] = ''; });
+    page = 1; st.page = 1; S.save();
+    ui.qs('#sl-filter').querySelectorAll('input,select').forEach(function (x) {
+      if (x.tagName === 'SELECT') x.selectedIndex = 0; else x.value = '';
+    });
+    render();
+  });
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

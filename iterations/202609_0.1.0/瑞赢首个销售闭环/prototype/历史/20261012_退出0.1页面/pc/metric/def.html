@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>指标定义 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：指标定义（固定 24 个，只读口径） */
+  .md-theme { margin-bottom: 16px; }
+  .md-theme__h { display: flex; align-items: center; gap: 9px; margin: 0 0 8px; }
+  .md-theme__h h3 { font-size: 14.5px; margin: 0; }
+  .md-tbl th { white-space: nowrap; }
+  .md-formula { font-size: 12px; color: var(--muted); line-height: 1.7; max-width: 420px; }
+  .md-io { font-size: 11.5px; color: var(--muted); line-height: 1.7; }
+  .md-io b { color: var(--ink); font-weight: 600; }
+  .md-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+  @media (max-width: 1180px) { .md-cols { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="md-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var PAGE = 'metric.def';
+  var canEdit = RY.perm.can('metric.draft');
+
+  RY.nav.shell({
+    nav: 'metric.def',
+    title: '指标定义',
+    subtitle: '管理分析使用的<b>固定 24 个指标</b>口径。只读展示，<b>不新增、不删除、不做自定义指标</b>。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '指标配置' }, { label: '指标定义' }],
+    actions: '<a class="ry-btn" href="version.html">指标版本</a>'
+  });
+
+  var g = RY.perm.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#md-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入指标定义',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示指标名称、口径与数据来源。</p>'
+    });
+    return;
+  }
+
+  var kw = '', theme = '';
+
+  function list() { return S.metricDefList(); }
+  function themes() {
+    var seen = [], out = [];
+    list().forEach(function (m) { if (seen.indexOf(m.theme) < 0) { seen.push(m.theme); out.push(m.theme); } });
+    return out;
+  }
+  function filtered() {
+    var k = kw.trim().toLowerCase();
+    return list().filter(function (m) {
+      if (theme && m.theme !== theme) return false;
+      if (k && (m.name + m.code + m.formula + m.source).toLowerCase().indexOf(k) < 0) return false;
+      return true;
+    });
+  }
+  function versionOf(code) {
+    var vs = S.metricVersionList(code).filter(function (v) { return v.status === '生效'; });
+    return vs.length ? vs[0].version : '—';
+  }
+  function draftOf(code) {
+    return S.metricVersionList(code).filter(function (v) { return v.status === '草稿'; })[0];
+  }
+  function knownStatus(code) {
+    /* 指标能否算出值取决于字段映射是否完成；这里与指标卡口径保持一致，不把未知写成 0。 */
+    var v = S.metricValue(code, { range: '本月' });
+    return v.status;
+  }
+
+  function render() {
+    var all = list(), rows = filtered();
+    ui.qs('#md-host').innerHTML =
+      ui.banner('管理分析固定使用 <b>24 个正式指标</b>，分属六个主题。指标口径在本页<b>只读展示</b>：' +
+        '0.1 <b>不提供新增、删除、复制、自定义指标</b>，也不提供自定义维度与自由 BI。' +
+        '口径变更只能通过「指标版本」走草稿 → 校验 → 立即发布，<b>历史数据不自动重算</b>，' +
+        '跨版本<b>不计算环比</b>。', 'info') +
+
+      '<div class="ry-card" style="margin-top:12px"><div class="ry-card__body">' +
+        '<div class="ry-filter__row">' +
+          ui.field('关键词', ui.input('md-kw', kw, '指标名称／编码／口径／数据来源'), '', false) +
+          ui.field('主题', ui.select('md-theme', [{ value: '', label: '全部主题' }].concat(themes()), theme), '', false) +
+        '</div>' +
+        '<div class="ry-filter__act"><button class="ry-btn" id="md-reset">重置</button>' +
+          '<button class="ry-btn ry-btn--primary" id="md-apply">查询</button></div>' +
+      '</div></div>' +
+
+      '<div class="md-cols">' +
+        '<div>' + themes().map(function (t) {
+          var ms = rows.filter(function (m) { return m.theme === t; });
+          if (!ms.length) return '';
+          return '<section class="md-theme"><div class="md-theme__h"><h3>' + ui.esc(t) + '</h3>' +
+            '<span class="ry-hint">' + ms.length + ' 个指标</span></div>' +
+            '<div class="ry-card"><div class="ry-card__body ry-card__body--flush">' +
+            '<div class="ry-table__wrap"><table class="ry-table ry-table--tight md-tbl"><thead><tr>' +
+              '<th>指标</th><th>类型</th><th>单位</th><th>口径</th><th>计算对象与时间字段</th><th>版本</th><th style="width:120px">操作</th>' +
+            '</tr></thead><tbody>' + ms.map(function (m) {
+              var mv = S.metricValue(m.code, { range: '本月' });
+              var dr = draftOf(m.code);
+              return '<tr>' +
+                '<td><span class="ry-cellname">' + ui.esc(m.name) + '</span>' +
+                  '<div class="ry-hint">' + ui.esc(m.code) + '　口径负责人 ' + ui.esc(S.userName(m.owner) || m.owner) + '</div>' +
+                  (mv.status !== 'ok' ? '<div class="md-io"><b>当前不可计算</b>：' + ui.esc(mv.reason || '') + '</div>' : '') + '</td>' +
+                '<td>' + ui.tag(m.type, m.type === '发生型' ? 'info' : 'muted') + '<div class="ry-hint">' + (m.type === '当前状态' ? '不受统计范围控制' : '受统计范围控制') + '</div></td>' +
+                '<td>' + ui.esc(m.unit) + '</td>' +
+                '<td class="md-formula">' + ui.esc(m.formula) +
+                  '<div class="md-io"><b>过滤</b>：' + ui.esc(m.filter || '无') + '　<b>去重</b>：' + ui.esc(m.dedupe || '—') + '</div></td>' +
+                '<td class="md-io"><b>数据来源</b>：' + ui.esc(m.source) + '<br>' +
+                  '<b>时间字段</b>：' + ui.esc(m.timeField) + '<br>' +
+                  '<b>数据范围字段</b>：' + ui.esc(m.scopeField || '—') + '<br>' +
+                  '<b>刷新</b>：' + ui.esc(m.refresh) + '</td>' +
+                '<td><span class="ry-code">' + ui.esc(versionOf(m.code)) + '</span>' +
+                  (dr ? '<div class="ry-hint">草稿 ' + ui.esc(dr.version) + '</div>' : '') + '</td>' +
+                '<td class="ry-tbl-act">' +
+                  '<button class="ry-btn ry-btn--sm" data-md-detail="' + ui.esc(m.code) + '">口径详情</button>' +
+                  (canEdit ? ui.actionBtn('metric.draft', '改口径', ' data-md-ver="' + ui.esc(m.code) + '"', 'ry-btn--sm') : '') +
+                '</td></tr>';
+            }).join('') + '</tbody></table></div></div></div></section>';
+        }).join('') +
+        (rows.length ? '' : ui.stateCard('empty', { title: '没有匹配的指标', body: '<p>请调整关键词或主题筛选。</p>' })) +
+        '</div>' +
+
+        '<div>' +
+          ui.section('固定指标口径',
+            ui.kv([
+              ['指标总数', all.length + ' 个'],
+              ['主题数', themes().length + ' 个'],
+              ['发生型', all.filter(function (m) { return m.type === '发生型'; }).length + ' 个'],
+              ['当前状态', all.filter(function (m) { return m.type === '当前状态'; }).length + ' 个'],
+              ['比率指标', all.filter(function (m) { return m.unit === '%'; }).length + ' 个'],
+              ['当前不可计算', all.filter(function (m) { return knownStatus(m.code) !== 'ok'; }).length + ' 个']
+            ]) +
+            '<p class="ry-hint" style="margin-top:8px">不可计算的指标在管理分析里显示「<b>—</b>」并给出原因，' +
+              '<b>不会显示为 0</b>，也不会被其他卡片的失败掩盖。</p>') +
+          ui.section('比率指标的分母口径',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>赢单率</span><b>赢单 ÷（赢单 ＋ 输单）；关闭不进分母</b></li>' +
+              '<li><span>任务完成率</span><b>已完成 ÷ 应完成；逾期后完成仍计完成</b></li>' +
+              '<li><span>日报提交率</span><b>已提交单元 ÷ 应提交单元；最小单元＝人员 × 应提交日期</b></li>' +
+              '<li><span>逾期任务率</span><b>当前逾期未完成 ÷ 当前未完成且有有效截止时间</b></li>' +
+              '<li><span>字段完整率</span><b>关键字段完整 ÷ 当前有效对象</b></li>' +
+            '</ul>' +
+            '<p class="ry-hint" style="margin-top:8px">比率指标在下钻明细里同时展示<b>完整分母</b>，并区分分子、分母与未纳入记录。</p>') +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-METRICDEF</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-METRICDEF · PC · 指标配置</b></li>' +
+        '<li><span>依据</span><b>prd/00 §5.4；prd/06 §6 §8</b></li>' +
+        '<li><span>可进入角色</span><b>管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-60</b></li>' +
+        '<li><span>口径登记项</span><b>计算对象｜时间字段｜过滤｜去重｜权限｜刷新｜下钻契约</b></li>' +
+        '<li><span>明确不做</span><b>不新增、不删除、不做自定义指标与自定义维度；不支持自由 BI</b></li>' +
+        '<li><span>变更入口</span><b>口径变更只能走「指标版本」的草稿 → 校验 → 立即发布</b></li>' +
+        '<li><span>历史口径</span><b>历史数据不自动重算；跨版本不计算环比</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    ui.qs('#md-apply').addEventListener('click', function () {
+      var v = ui.formValues(ui.qs('#md-host'));
+      kw = v['md-kw'] || ''; theme = v['md-theme'] || ''; render();
+    });
+    ui.qs('#md-reset').addEventListener('click', function () { kw = ''; theme = ''; render(); });
+    ui.qsa('[data-md-detail]').forEach(function (b) {
+      b.addEventListener('click', function () { detail(b.getAttribute('data-md-detail')); });
+    });
+    ui.qsa('[data-md-ver]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]')) return;
+        window.location.href = 'version.html?code=' + encodeURIComponent(b.getAttribute('data-md-ver'));
+      });
+    });
+  }
+
+  function detail(code) {
+    var m = list().filter(function (x) { return x.code === code; })[0];
+    var st = S.metricValue(code, { range: '本月' });
+    ui.modal({
+      title: m.name + '　' + m.code, size: 'lg',
+      body: ui.kv([
+        ['主题', m.theme], ['指标类型', m.type], ['单位', m.unit],
+        ['口径', m.formula],
+        ['计算对象／数据来源', m.source],
+        ['时间字段', m.timeField],
+        ['过滤条件', m.filter || '无'],
+        ['去重口径', m.dedupe || '—'],
+        ['数据范围字段', m.scopeField || '—'],
+        ['刷新频率', m.refresh],
+        ['下钻契约', m.drill],
+        ['当前生效版本', versionOf(m.code)],
+        ['口径负责人', S.userName(m.owner) || m.owner],
+        ['当前是否可计算', st.status === 'ok' ? '可计算' : '不可计算：' + (st.reason || '')]
+      ]) +
+      ui.banner('下钻明细按<b>固定模板</b>展示，维度与列由指标口径决定，<b>不支持自定义列与自定义维度</b>。' +
+        '跳转源对象仍受源对象页面权限与数据范围约束，不因来自分析页而放宽。', 'info'),
+      footer: '<button class="ry-btn ry-btn--primary" data-close>关闭</button>'
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>新建任务 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+<div class="ry-body ry-body--pad-bottom"><div id="tc-host"></div></div>
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var kind = ui.q('type');
+  if (kind !== 'meeting' && kind !== 'other') { RY.nav.go('h5/task/list.html?create=1'); return; }
+  var u = S.currentUser();
+  RY.nav.h5shell({ title: kind === 'meeting' ? '新建会议任务' : '新建其他任务', sub: '一个任务 ID · 多人参与', back: 'h5/task/list.html', tabbar: false });
+  if (!P.page('h5.task.create') || !P.can('task.create')) {
+    ui.qs('#tc-host').innerHTML = ui.stateCard('no-permission', { title: '当前身份不能新建任务',
+      actions: '<a class="ry-btn" href="list.html">返回任务列表</a>' }); return;
+  }
+  function render() {
+    var canAssign = P.can('task.assign');
+    var users = S.all('users').filter(function (x) { return x.role === 'R1' || x.role === 'R2'; });
+    ui.qs('#tc-host').innerHTML =
+      '<div class="ry-hcard"><div class="ry-hcard__head"><h3>' + (kind === 'meeting' ? 'M23 · 新建会议任务' : 'M06 · 新建其他任务') + '</h3></div><div class="ry-hcard__body">' +
+      ui.field('任务名称', ui.input('name', '', kind === 'meeting' ? '如：项目方案评审会议' : '如：跟进客户需求'), '', true) +
+      ui.field('负责人', ui.select('owner', (canAssign ? users : [u]).map(function (x) { return { value: x.id, label: x.name }; }), u.id), '一个任务只有一个负责人。', true) +
+      (kind === 'meeting' ?
+        '<h4>会议安排</h4>' +
+        ui.field('会议开始时间', ui.input('meetingAt', '', 'YYYY-MM-DD HH:mm'), '', true) +
+        ui.field('会议结束时间', ui.input('meetingEndAt', '', 'YYYY-MM-DD HH:mm'), '', true) +
+        ui.field('会议方式', ui.select('meetingMode', [{ value: '线下', label: '线下' }, { value: '线上', label: '线上' }], '线下'), '', true) +
+        '<div id="tc-meeting-place"></div>' : '') +
+      ui.field('说明／议程', ui.textarea('description', '', '填写任务目标或会议议程', 3)) +
+      '<div class="ry-field"><div class="ry-field__label">参与人</div>' + ui.personPicker() +
+        '<p class="ry-hint">可查询公司全部人员并多选；参与同一个任务，不按人数复制任务。会议任务一期不发送企微邀请。</p></div>' +
+      (kind === 'meeting' ? '' : ui.field('截止时间', ui.input('dueAt', '', 'YYYY-MM-DD HH:mm'), '', true)) +
+      '<button class="ry-btn ry-btn--primary" id="tc-save">创建任务</button></div></div>';
+    var picker = ui.bindPersonPicker(ui.qs('.ry-person-picker'), S.all('users'), function () {
+      return ui.qs('[name=owner]').value;
+    });
+    ui.qs('[name=owner]').addEventListener('change', picker.syncOwner);
+    function renderMeetingPlace() {
+      var host = ui.qs('#tc-meeting-place');
+      if (!host) return;
+      var online = ui.qs('[name=meetingMode]').value === '线上';
+      host.innerHTML = online ? ui.field('会议链接', ui.input('meetingLink', '', '填写线上会议链接'), '', true) :
+        ui.field('会议地点', ui.input('meetingLocation', '', '填写会议地点'), '', true);
+    }
+    if (kind === 'meeting') {
+      ui.qs('[name=meetingMode]').addEventListener('change', renderMeetingPlace);
+      renderMeetingPlace();
+    }
+    ui.qs('#tc-save').addEventListener('click', function () {
+      var vals = ui.formValues(ui.qs('#tc-host'));
+      if (!vals.name || (kind !== 'meeting' && !vals.dueAt)) {
+        ui.toast(kind === 'meeting' ? '请填写任务名称' : '请填写名称和截止时间', 'warn'); return;
+      }
+      if (kind === 'meeting') {
+        if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(vals.meetingAt) ||
+            !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(vals.meetingEndAt) || vals.meetingEndAt <= vals.meetingAt) {
+          ui.toast('请填写有效的会议开始、结束时间，结束时间须晚于开始时间', 'warn'); return;
+        }
+        if (vals.meetingMode === '线上' ? !vals.meetingLink : !vals.meetingLocation) {
+          ui.toast(vals.meetingMode === '线上' ? '请填写会议链接' : '请填写会议地点', 'warn'); return;
+        }
+      }
+      if (vals.owner !== u.id && !P.can('task.assign')) { ui.toast('当前身份不能指派他人', 'warn'); return; }
+      var participants = picker.values();
+      var task = S.createTask({ name: vals.name, owner: vals.owner,
+        dueAt: kind === 'meeting' ? vals.meetingEndAt : vals.dueAt,
+        source: vals.owner === u.id ? '自建任务' : '主管指派',
+        bizType: kind === 'meeting' ? '会议任务' : '其他', description: vals.description,
+        participants: participants,
+        meeting: kind === 'meeting' ? { at: vals.meetingAt, endAt: vals.meetingEndAt, mode: vals.meetingMode,
+          location: vals.meetingMode === '线下' ? vals.meetingLocation : '',
+          link: vals.meetingMode === '线上' ? vals.meetingLink : '' } : null });
+      ui.toast('已创建 ' + task.id + '，状态为待处理', 'ok');
+      RY.nav.go(kind === 'meeting' ? 'h5/task/meeting.html?id=' + encodeURIComponent(task.id) : 'h5/task/detail.html?id=' + encodeURIComponent(task.id));
+    });
+  }
+  render();
+})();
+</script>
+</body>
+</html>

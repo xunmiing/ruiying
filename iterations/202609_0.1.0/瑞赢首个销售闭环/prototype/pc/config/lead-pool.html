@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>线索池 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：A 类线索池配置 */
+  .lp-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .lp-card { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); padding: 12px 13px; }
+  .lp-card.is-off { background: var(--surface-2); }
+  .lp-card__h { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .lp-card__n { font-size: 13.5px; font-weight: 600; }
+  .lp-card__c { font-size: 11.5px; color: var(--muted); }
+  .lp-card__k { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 6px; font-size: 12.5px; line-height: 1.85; }
+  .lp-card__k > span { color: var(--muted); }
+  .lp-members { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+  @media (max-width: 1180px) { .lp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="lp-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var PAGE = 'cfg.leadPool';
+  var canEdit = RY.perm.can('config.editA');
+  function rule(key) { return '<button type="button" data-pcn-rule="' + key + '"></button>'; }
+
+  RY.nav.shell({
+    nav: 'cfg.leadPool',
+    title: '线索池',
+    subtitle: '<b>A 类配置</b>：保存即生效并留历史。控制<b>持有上限、保护期、停止接收</b>。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '配置中心' }, { label: '线索池' }]
+  });
+
+  var g = RY.perm.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#lp-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入线索池配置',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示线索池名称、成员与在池数量。</p>'
+    });
+    return;
+  }
+
+  function pools() { return S.configA('leadPool') || []; }
+  function inPool(pool) {
+    return S.arr('leads').filter(function (l) {
+      return l.currentPool === pool.code || (!l.owner && l.sourcePool === pool.code);
+    }).length;
+  }
+  function holdOf(pool) {
+    return S.arr('leads').filter(function (l) { return l.owner && l.sourcePool === pool.code && l.currentPool === ''; }).length;
+  }
+  function memberNames(pool) {
+    return (pool.members || []).map(function (id) { return S.userName(id) || id; });
+  }
+
+  function render() {
+    var ps = pools();
+    ui.qs('#lp-host').innerHTML =
+      '<div class="ry-acts-row">' + rule('cfgLeadPoolLifecycle') + rule('cfgLeadPoolProtect') + '</div>' +
+
+      '<div class="lp-grid" style="margin-top:12px">' + ps.map(function (p) {
+        var off = p.status !== '启用';
+        var used = holdOf(p);
+        return '<div class="lp-card' + (off ? ' is-off' : '') + '">' +
+          '<div class="lp-card__h"><div><div class="lp-card__n">' + ui.esc(p.name) + '</div>' +
+            '<div class="lp-card__c">' + ui.esc(p.code) + '　' + ui.esc(p.id) + '</div></div>' + ui.statusTag(p.status) + '</div>' +
+          '<div class="lp-card__k">' +
+            '<span>持有上限</span><b>' + p.holdLimit + ' 条／人　<span class="ry-hint">当前最高 ' + Math.max(0, used) + ' 条</span></b>' +
+            '<span>允许认领</span><b>' + (p.allowClaim ? '允许' : '不允许') + '</b>' +
+            '<span>保护期</span><b>' + (p.protectEnabled ? p.protectDays + ' 天' : '不启用保护期') + '</b>' +
+            '<span>退回</span><b>' + (p.returnEnabled ? '允许退回至 ' + ui.esc(p.returnPool || p.code) : '不允许退回') + '</b>' +
+            '<span>在池线索</span><b>' + inPool(p) + ' 条</b>' +
+          '</div>' +
+          '<div class="lp-members">' + (memberNames(p).length
+            ? memberNames(p).map(function (n) { return ui.tag(n, 'muted'); }).join('')
+            : '<span class="ry-faint">无成员</span>') + '</div>' +
+          '<div class="ry-acts-row" style="margin-top:10px">' +
+            (canEdit ? ui.actionBtn('config.editA', '编辑配置', ' data-lp-edit="' + p.id + '"', 'ry-btn--sm')
+              : '<button class="ry-btn ry-btn--sm" data-denied="1" data-action="config.editA">编辑配置<i class="ry-btn__lock">无权限</i></button>') +
+            (canEdit ? '<button class="ry-btn ry-btn--sm" data-lp-tog="' + p.id + '">' + (off ? '恢复启用' : '停止接收') + '</button>' : '') +
+          '</div></div>';
+      }).join('') + '</div>' +
+
+      (canEdit ? '<div class="ry-acts-row" style="margin-top:12px"><button class="ry-btn ry-btn--primary" id="lp-new">新增线索池</button>' +
+        rule('cfgLeadPoolSave') + '</div>' : '');
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function editor(id) {
+    var p = id ? pools().filter(function (x) { return x.id === id; })[0] : null;
+    var users = S.all('users').filter(function (x) { return ['R1', 'R2'].indexOf(x.role) >= 0; });
+    ui.drawer({
+      title: p ? ('编辑线索池 ' + p.code) : '新增线索池',
+      subtitle: 'A 类：保存即生效并写入历史。',
+      size: 'md',
+      body:
+        ui.grid2(
+          ui.field('线索池名称', ui.input('name', p ? p.name : '', '如：车电线索池'), '', true),
+          ui.field('线索池编码', ui.input('code', p ? p.code : '', 'POOL-XX'), rule('cfgLeadPoolCode'), !p)
+        ) +
+        ui.grid2(
+          ui.field('持有上限（条／人）', ui.input('holdLimit', p ? p.holdLimit : 20, '整数'), rule('cfgLeadPoolLimit'), true),
+          ui.field('状态', ui.select('status', ['启用', '停止接收', '停用'], p ? p.status : '启用'))
+        ) +
+        ui.grid2(
+          ui.field('允许认领', ui.select('allowClaim', [{ value: '1', label: '允许' }, { value: '0', label: '不允许' }], p ? (p.allowClaim ? '1' : '0') : '1')),
+          ui.field('允许退回', ui.select('returnEnabled', [{ value: '1', label: '允许' }, { value: '0', label: '不允许' }], p ? (p.returnEnabled ? '1' : '0') : '1'))
+        ) +
+        ui.grid2(
+          ui.field('启用保护期', ui.select('protectEnabled', [{ value: '1', label: '启用' }, { value: '0', label: '不启用' }], p ? (p.protectEnabled ? '1' : '0') : '1')),
+          ui.field('保护期（天）', ui.input('protectDays', p ? p.protectDays : 7, '整数'), rule('cfgLeadPoolProtect'))
+        ) +
+        ui.field('成员（可按线索池认领的销售）',
+          '<div class="ry-checks">' + users.map(function (x) {
+            var on = p && (p.members || []).indexOf(x.id) >= 0;
+            return '<label class="ry-check"><input type="checkbox" name="mem" value="' + x.id + '"' + (on ? ' checked' : '') + '>' +
+              '<span>' + ui.esc(x.name) + '　' + ui.esc(x.dept) + '</span></label>';
+          }).join('') + '</div>', rule('cfgLeadPoolMembers')) +
+        ui.field('变更原因', ui.textarea('reason', '', '说明本次调整原因（写入历史）', 3), rule('cfgLeadPoolSave'), true),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="lp-ok">保存生效</button>',
+      onOpen: function (el) {
+        ui.qs('#lp-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!v.name || !v.name.trim()) { ui.toast('线索池名称必填。', 'warn'); return; }
+          if (!v.reason || !v.reason.trim()) { ui.toast('变更原因必填。', 'warn'); return; }
+          var hl = parseInt(v.holdLimit, 10);
+          if (!(hl > 0)) { ui.toast('持有上限必须是大于 0 的整数。', 'warn'); return; }
+          var pe = v.protectEnabled === '1';
+          var pd = parseInt(v.protectDays, 10) || 0;
+          if (pe && !(pd > 0)) { ui.toast('启用保护期时，保护期天数必须大于 0。', 'warn'); return; }
+          var mem = ui.qsa('input[name="mem"]', el).filter(function (x) { return x.checked; }).map(function (x) { return x.value; });
+          var code2 = p ? p.code : (v.code || '').trim().toUpperCase();
+          if (!code2) { ui.toast('线索池编码必填。', 'warn'); return; }
+          var r = S.configAItem('leadPool', p ? p.id : null, {
+            id: p ? p.id : 'LP-' + String(pools().length + 1).padStart(2, '0'),
+            code: code2, name: v.name.trim(), status: v.status, members: mem,
+            allowClaim: v.allowClaim === '1', holdLimit: hl,
+            protectEnabled: pe, protectDays: pe ? pd : 0,
+            returnEnabled: v.returnEnabled === '1', returnPool: v.returnEnabled === '1' ? code2 : ''
+          }, v.reason.trim());
+          if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+          ui.close(); ui.toast('线索池配置已保存生效。', 'success'); render();
+        });
+      }
+    });
+  }
+
+  function bind() {
+    ui.qsa('[data-lp-edit]').forEach(function (b) {
+      b.addEventListener('click', function (e) { if (e.target.closest('[data-denied]')) return; editor(b.getAttribute('data-lp-edit')); });
+    });
+    ui.qsa('[data-lp-tog]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-lp-tog');
+        var p = pools().filter(function (x) { return x.id === id; })[0];
+        var off = p.status !== '启用';
+        var n = inPool(p);
+        ui.confirm({
+          title: off ? '恢复启用线索池' : '停止接收入池',
+          message: '<p>将把「' + ui.esc(p.name) + '」设为 <b>' + (off ? '启用' : '停止接收') + '</b>。</p>' +
+            '<p class="ry-hint">' + (off ? '恢复后新线索可以继续进入该池。'
+              : '停止接收只影响之后的入池；<b>已在池中的 ' + n + ' 条线索不受影响</b>，仍可正常认领。') + '</p>',
+          requireReason: true,
+          reasonLabel: '变更原因',
+          confirmText: off ? '恢复启用' : '停止接收',
+          onConfirm: function (reason) {
+            var r = S.configAItem('leadPool', id, { status: off ? '启用' : '停止接收' }, reason);
+            if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+            ui.toast('线索池状态已更新。', 'success'); render();
+          }
+        });
+      });
+    });
+    var nb = ui.qs('#lp-new');
+    if (nb) nb.addEventListener('click', function () { editor(null); });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

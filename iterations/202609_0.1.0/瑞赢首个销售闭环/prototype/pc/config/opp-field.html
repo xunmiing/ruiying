@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>商机自定义字段 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：商机自定义字段（通用字段能力，不做行业特化字段包） */
+  .of-row-m { font-size: 11.5px; color: var(--muted); line-height: 1.7; }
+  .of-opts { font-size: 12px; color: var(--muted); line-height: 1.8; }
+  .of-scope { display: flex; gap: 6px; flex-wrap: wrap; }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="of-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<!-- 原型说明层：把「业务规则 / 注解 / 待修 / 不做」就地标注在页面上；不含业务逻辑，可整行摘除 -->
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var PAGE = 'cfg.oppField';
+  var canEdit = RY.perm.can('config.editA');
+  var TYPES = ['单行文本', '多行文本', '数字', '日期', '单选', '多选', '是否'];
+
+  RY.nav.shell({
+    nav: 'cfg.oppField',
+    title: '商机自定义字段',
+    subtitle: '<b>A 类配置</b>：保存即生效并留历史。提供<b>通用字段能力</b>，不预置行业特化字段包。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '配置中心' }, { label: '商机自定义字段' }]
+  });
+
+  ui.qs('#of-host').innerHTML = ui.stateCard('unavailable', {
+    title: '本期暂不提供商机自定义字段配置',
+    body: '商机使用普通字段；流程模板本期只配置阶段结构与阶段任务。'
+  });
+  return;
+
+  var g = RY.perm.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#of-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入商机自定义字段',
+      body: '<p>' + ui.esc(g.reason) + '</p>' +
+        '<p class="ry-hint">无权时不展示字段名称、类型、适用范围与已填写数据量。</p>'
+    });
+    return;
+  }
+
+  function fields() { return S.configA('customFields') || []; }
+  function lineName(code) { return S.businessLineName(code) || code; }
+  function usedCount(code) {
+    return S.arr('opportunities').filter(function (o) { return o.custom && o.custom[code] !== undefined; }).length;
+  }
+  function isStageRequired(code) {
+    var n = 0;
+    S.flowTemplates().forEach(function (t) {
+      (t.stages || []).forEach(function (s) { if ((s.requiredFields || []).indexOf(code) >= 0) n++; });
+    });
+    return n;
+  }
+
+  function render() {
+    var list = fields();
+    ui.qs('#of-host').innerHTML =
+      ui.banner('自定义字段是<b>通用字段能力</b>：由配置人员按业务需要登记字段、类型与适用范围，' +
+        '流程模板再把字段挂到阶段的必填校验上。<b>不在代码里写死行业字段</b>，也不随业务线预置一套专属字段包。' +
+        '字段删除不删除已填写的数据：历史商机的字段值仍按记录时点保留。', 'info') +
+
+      ui.section('字段清单',
+        '<div class="ry-table__wrap"><table class="ry-table ry-table--tight">' +
+          '<thead><tr><th>字段名称</th><th>编码</th><th>类型</th><th>可选项</th><th>适用范围</th>' +
+            '<th>阶段必填</th><th>已填写</th><th>状态</th><th style="width:170px">操作</th></tr></thead>' +
+          '<tbody>' + (list.length ? list.map(function (f) {
+            var req = isStageRequired(f.code);
+            return '<tr>' +
+              '<td><span class="ry-cellname">' + ui.esc(f.name) + '</span></td>' +
+              '<td><span class="ry-code">' + ui.esc(f.code) + '</span></td>' +
+              '<td>' + ui.esc(f.type) + '</td>' +
+              '<td class="of-opts">' + ((f.options || []).length ? f.options.map(function (o) { return ui.esc(o.name); }).join('　') : '<span class="ry-faint">—</span>') + '</td>' +
+              '<td class="of-scope">' + ((f.businessLines || []).length
+                ? f.businessLines.map(function (b) { return ui.tag(lineName(b), 'brand'); }).join('')
+                : ui.tag('全部业务线', 'muted')) + '</td>' +
+              '<td>' + (req ? ui.tag(req + ' 处', 'warn') : '<span class="ry-faint">未用于必填</span>') + '</td>' +
+              '<td>' + usedCount(f.code) + ' 个商机</td>' +
+              '<td>' + ui.statusTag(f.status) + '</td>' +
+              '<td class="ry-tbl-act">' +
+                (canEdit ? ui.actionBtn('config.editA', '编辑', ' data-of-edit="' + f.code + '"', 'ry-btn--sm')
+                  : '<button class="ry-btn ry-btn--sm" data-denied="1" data-action="config.editA">编辑<i class="ry-btn__lock">无权限</i></button>') +
+                (canEdit ? '<button class="ry-btn ry-btn--sm" data-of-tog="' + f.code + '">' + (f.status === '启用' ? '停用' : '启用') + '</button>' : '') +
+              '</td></tr>';
+          }).join('') : '<tr><td colspan="9" class="ry-hint">尚未登记自定义字段。</td></tr>') +
+        '</tbody></table></div>' +
+        (canEdit ? '<div class="ry-acts-row" style="margin-top:10px"><button class="ry-btn ry-btn--primary" id="of-new">新增字段</button>' +
+          '<span class="ry-hint">新增字段保存即生效，商机详情立即可见。</span></div>' : ''),
+        fields().length + ' 个字段') +
+
+      '<section class="ry-card ry-card--flat"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-OPPFIELD</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-OPPFIELD · PC · 业务配置</b></li>' +
+        '<li><span>配置分类</span><b>A 类：保存即生效并留历史</b></li>' +
+        '<li><span>依据</span><b>prd/00 §5.5；prd/06 §9</b></li>' +
+        '<li><span>可进入角色</span><b>管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-55</b></li>' +
+        '<li><span>能力边界</span><b>通用字段能力：字段名、类型、可选项、适用范围；不预置行业字段包</b></li>' +
+        '<li><span>与模板关系</span><b>阶段必填由流程模板引用本页字段；改模板走 B 类流程，改字段走 A 类</b></li>' +
+        '<li><span>明确不做</span><b>不因字段停用或删除而清除历史商机已填写的值</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function optsText(f) { return (f.options || []).map(function (o) { return o.name; }).join('\n'); }
+
+  function editor(code) {
+    var f = code ? fields().filter(function (x) { return x.code === code; })[0] : null;
+    var lines = S.all('businessLines');
+    ui.drawer({
+      title: f ? ('编辑字段 ' + f.code) : '新增自定义字段',
+      subtitle: 'A 类：保存即生效并写入历史；不进入审批、不预约生效时点。',
+      size: 'md',
+      body:
+        ui.grid2(
+          ui.field('字段名称', ui.input('name', f ? f.name : '', '如：客户预算区间'), '', true),
+          ui.field('字段编码', ui.input('code', f ? f.code : '', 'CF-XXXX，保存后不可修改'), '', !f)
+        ) +
+        ui.grid2(
+          (f ? ui.field('字段类型', '<input class="ry-input" value="' + ui.esc(f.type) + '" disabled>')
+             : ui.field('字段类型', ui.select('type', TYPES, '单选'), '', true)),
+          ui.field('状态', ui.select('status', ['启用', '停用'], f ? f.status : '启用'))
+        ) +
+        ui.field('可选项（每行一个，仅单选／多选需要）',
+          ui.textarea('options', f ? optsText(f) : '', '选项名称逐行填写', 5)) +
+        ui.field('适用范围（不选＝全部业务线）',
+          '<div class="ry-checks">' + lines.map(function (l) {
+            var on = f && (f.businessLines || []).indexOf(l.code) >= 0;
+            return '<label class="ry-check"><input type="checkbox" name="bl" value="' + l.code + '"' + (on ? ' checked' : '') + '>' +
+              '<span>' + ui.esc(l.name) + '</span></label>';
+          }).join('') + '</div>') +
+        ui.field('变更原因', ui.textarea('reason', '', '说明本次字段调整原因（写入历史）', 3), '', true) +
+        ui.banner('字段类型保存后不可修改：类型变更会让历史值语义不确定。如需换类型，请停用旧字段并新建字段。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="of-ok">保存生效</button>',
+      onOpen: function (el) {
+        ui.qs('#of-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!v.name || !v.name.trim()) { ui.toast('字段名称必填。', 'warn'); return; }
+          if (!v.reason || !v.reason.trim()) { ui.toast('变更原因必填。', 'warn'); return; }
+          var code2 = f ? f.code : (v.code || '').trim().toUpperCase();
+          if (!code2) { ui.toast('字段编码必填。', 'warn'); return; }
+          if (!f && fields().some(function (x) { return x.code === code2; })) { ui.toast('字段编码已存在。', 'warn'); return; }
+          var type = f ? f.type : v.type;
+          var optionNames = (v.options || '').split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+          var oldOptions = f && f.options || [];
+          var nextOptionCode = oldOptions.reduce(function (max, x) { var m = /^O(\d+)$/.exec(x.code || ''); return Math.max(max, m ? Number(m[1]) : 0); }, 0) + 1;
+          var opts = optionNames.map(function (name) {
+            var old = oldOptions.filter(function (x) { return x.name === name; })[0];
+            return { code: old ? old.code : 'O' + (nextOptionCode++), name: name };
+          });
+          if ((type === '单选' || type === '多选') && !opts.length) { ui.toast('单选／多选字段必须至少有一个可选项。', 'warn'); return; }
+          var bls = ui.qsa('input[name="bl"]', el).filter(function (x) { return x.checked; }).map(function (x) { return x.value; });
+          var r = S.configAItem('customFields', f ? f.code : null, {
+            code: code2, name: v.name.trim(), type: type, businessLines: bls,
+            status: v.status || '启用', options: opts
+          }, v.reason.trim());
+          if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+          ui.close(); ui.toast('字段已保存生效。', 'success'); render();
+        });
+      }
+    });
+  }
+
+  function bind() {
+    ui.qsa('[data-of-edit]').forEach(function (b) {
+      b.addEventListener('click', function (e) { if (e.target.closest('[data-denied]')) return; editor(b.getAttribute('data-of-edit')); });
+    });
+    ui.qsa('[data-of-tog]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var code = b.getAttribute('data-of-tog');
+        var f = fields().filter(function (x) { return x.code === code; })[0];
+        var next = f.status === '启用' ? '停用' : '启用';
+        ui.confirm({
+          title: next === '停用' ? '停用自定义字段' : '启用自定义字段',
+          message: '<p>将把「' + ui.esc(f.name) + '」置为 <b>' + next + '</b>。</p>' +
+            (next === '停用' ? '<p class="ry-hint">停用后新旧商机都不再展示与填写该字段；<b>已填写的历史值不清除</b>，已引用该字段为阶段必填的模板需要另行调整，否则阶段推进校验会提示字段不可用。</p>'
+              : '<p class="ry-hint">启用后字段重新出现在商机表单中。</p>'),
+          requireReason: true,
+          reasonLabel: '变更原因',
+          confirmText: '确认' + next,
+          onConfirm: function (reason) {
+            var r = S.configAItem('customFields', code, { status: next },
+              reason || (next === '停用' ? '停用字段，历史值不清除' : '启用字段'));
+            if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+            ui.toast('字段已' + next + '。', 'success'); render();
+          }
+        });
+      });
+    });
+    var nb = ui.qs('#of-new');
+    if (nb) nb.addEventListener('click', function () { editor(null); });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

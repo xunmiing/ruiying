@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>任务详情 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：任务详情（概览 / 执行与提交 / 协作与关联 / 历史）。 */
+  .td-host { display: block; }
+  .td-sec { display: none; }
+  .td-sec.is-on { display: block; }
+  .td-foot { position: sticky; bottom: 0; background: var(--surface); border-top: 1px solid var(--line); padding: 10px 12px; display: flex; gap: 8px; }
+  .td-foot .ry-btn { flex: 1; justify-content: center; min-height: 42px; font-size: 14px; }
+  .td-foot .ry-btn[data-more] { flex: 0 0 84px; }
+  .td-reject { border: 1px solid var(--danger-line); background: var(--danger-soft); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+  .td-reject__t { font-size: 12.5px; font-weight: 600; color: var(--danger); margin: 0 0 4px; }
+  .td-reject__b { font-size: 12.5px; line-height: 1.8; margin: 0; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+  <div class="td-host" id="td-host"></div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.task.detail';
+  var id = ui.q('id');
+  var t = id ? S.task(id) : null;
+
+  RY.nav.h5shell({
+    title: t ? t.name : '任务详情',
+    sub: '任务由负责人执行 · H5 只做单条',
+    back: 'h5/task/list.html',
+    nav: 'home',
+    tabbar: false   /* 详情页隐藏底部五入口，避免与底部操作栏叠加 */
+  });
+
+  /* 本页契约区块：任何状态下都要渲染，评审需要能对照页面边界。 */
+  function contractHtml() {
+    return '<div class="ry-hcard ry-hcard--flat" style="margin-top:14px"><div class="ry-hcard__head"><h3>本页契约</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">PG-TASK-DETAIL</span></div></div>' +
+      '<div class="ry-hcard__body">' + ui.kv([
+        ['页面契约', 'PG-TASK-DETAIL · 任务与销售活动 · H5'],
+        ['可进入角色', 'R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员（ALL5）'],
+        ['依据', 'prd/04 §2'],
+        ['覆盖验收', 'AC-25 AC-26 AC-09'],
+        ['本页视图', '概览、完成与成果、参与人、日志'],
+        ['执行边界', '负责人完成任务；创建人改期或取消；参与人补充记录；正式任务不设验收'],
+        ['不做', 'H5 不做任务模板配置、不做批量分派（均为 PC 能力）']
+      ]) +
+      '<p class="ry-hint">本页在所有状态下都展示该契约；缺少对象标识或对象不可用时，页面只渲染状态说明与契约，不渲染任务字段。</p>' +
+      '</div></div>';
+  }
+
+  /* 进入即重新鉴权：无权限时不展示标题、摘要与数量。
+     缺少 id 或对象不存在时不能按「有权限」继续渲染——否则会读到空对象并抛出未捕获异常。 */
+  var g = t ? P.guard(PAGE, 'tasks', id)
+            : { ok: false, kind: 'unavailable', reason: '缺少任务标识，或该任务不存在、已被取消或已不在当前数据范围内。' };
+  if (!g.ok) {
+    ui.qs('#td-host').innerHTML = ui.stateCard(g.kind, {
+      title: g.kind === 'no-permission' ? '没有该任务的访问权限' : '该任务当前不可用',
+      body: '<p>' + ui.esc(g.reason) + '</p>' +
+        '<p class="ry-hint">任务详情必须先解析到对象再鉴权：缺少标识或对象不存在时不会渲染任何任务字段，也不展示数量与摘要。</p>' +
+        '<p class="ry-hint">任务分派后直接待处理；只有负责人可完成。已完成、已取消的任务不再接受执行动作。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/task/list.html') + '">返回任务列表</a>' +
+               '<a class="ry-btn" href="' + RY.nav.href('index.html') + '">返回工作台</a>'
+    }) + contractHtml();
+    return;
+  }
+
+  var my = S.currentUser();
+  function owner() { return t.owner === my.id; }
+  function creator() { return t.createdBy === my.id; }
+  function participant() { return (t.collaborators || []).indexOf(my.id) >= 0; }
+  function line(k, v) { return [k, v == null || v === '' ? '—' : v]; }
+  function details() {
+    var rows = [
+      line('任务编号', ui.esc(t.id)), line('来源', ui.esc(t.source)),
+      line('业务类型', ui.esc(t.bizType || '—')),
+      line('责任人', ui.esc(S.userName(t.owner))),
+      line('参与人', ui.esc(((t.collaborators && t.collaborators.length ? t.collaborators :
+        (t.meeting && t.meeting.attendeeIds) || []).map(S.userName).join('、')) ||
+        (t.meeting && t.meeting.attendees) || '无')),
+      line('创建人', ui.esc(t.createdBy ? S.userName(t.createdBy) : '系统')),
+      ...(t.meeting ? [] : [line('截止时间', ui.esc(t.dueAt || '—'))]),
+      line('完成时间', ui.esc(t.doneAt || '—')),
+      line('关联对象', ui.esc(t.related && t.related.name ? t.related.type + '：' + t.related.name : '无'))
+    ];
+    if (t.stageTask) {
+      rows.push(line('阶段与轮次', ui.esc((t.stageCode || '—') + ' · 第 ' + (t.stageRound || 1) + ' 轮')));
+      rows.push(line('规则版本', ui.esc(t.ruleVersion || '—')));
+    }
+    if (t.meeting) {
+      rows.push(line('会议时间', ui.esc((t.meeting.at || '—') + (t.meeting.endAt ? ' — ' + t.meeting.endAt : ''))));
+      rows.push(line('会议方式', ui.esc(t.meeting.mode || '—')));
+      rows.push(line(t.meeting.mode === '线上' ? '会议链接' : '会议地点', ui.esc(t.meeting.mode === '线上' ? t.meeting.link || '—' : t.meeting.location || '—')));
+    }
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>任务信息</h3></div><div class="ry-hcard__body">' +
+      ui.kv(rows) + '</div></div>';
+  }
+  function results() {
+    var entries = (t.collabRecords || []).slice().reverse().map(function (r) {
+      return '<li><p class="ry-tl__t">' + ui.esc(S.userName(r.by)) + '：' + ui.esc(r.note) + '</p><p class="ry-tl__m">' + ui.esc(r.at) + '</p></li>';
+    }).join('');
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>成果与参与记录</h3></div><div class="ry-hcard__body">' +
+      ui.kv([line('完成成果', ui.esc(t.result || '尚未提交')), line('成果附件', ui.esc((t.resultAttachments || []).map(function (a) { return a.name; }).join('、') || '—')), line('取消原因', ui.esc(t.cancelReason || '—')),
+        line('改期原因', ui.esc(t.rescheduleReason || '—'))]) +
+      (entries ? '<ul class="ry-tl">' + entries + '</ul>' : '<p class="ry-hint">暂无参与记录</p>') +
+      ((owner() || participant()) ? '<button class="ry-btn" data-act="记录">补充参与记录</button>' : '') +
+      '</div></div>';
+  }
+  function history() {
+    var list = (t.history || []).slice().reverse();
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>日志记录</h3></div><div class="ry-hcard__body">' +
+      (list.length ? '<ul class="ry-tl">' + list.map(function (h) {
+        return '<li><p class="ry-tl__t"><b>' + ui.esc(h.action) + '</b> ' +
+          ui.esc((h.from || '—') + ' → ' + (h.to || '—')) + '</p><p class="ry-tl__m">' +
+          ui.esc((h.actor || '系统') + ' · ' + (h.at || '')) + (h.note ? ' · ' + ui.esc(h.note) : '') + '</p></li>';
+      }).join('') + '</ul>' : '<p class="ry-hint">暂无日志记录</p>') + '</div></div>';
+  }
+  function actions() {
+    if (t.status !== '待处理') return '<p class="ry-hint">任务已结束，保留详情与日志供查看。</p>';
+    var a = [];
+    if (owner()) a.push('<button class="ry-btn ry-btn--primary" data-act="完成">完成任务</button>');
+    if (creator()) {
+      a.push('<button class="ry-btn" data-act="改期">' + (t.meeting ? '修改会议结束时间' : '修改截止时间') + '</button>');
+      a.push('<button class="ry-btn" data-act="取消">取消任务</button>');
+    }
+    return a.length ? '<div class="ry-acts-row">' + a.join('') + '</div>' : '<p class="ry-hint">可查看任务并补充参与记录。</p>';
+  }
+  function render() {
+    var badge = ui.statusTag(t.status) +
+      (S.taskOverdue(t) ? ' ' + ui.tag('已逾期', 'bad') : '');
+    ui.qs('#td-host').innerHTML =
+      '<div class="ry-hcard"><div class="ry-hcard__body"><h2>' + ui.esc(t.name) + '</h2><p>' + badge + '</p>' +
+      '<p class="ry-hint">逾期是时间标记；正式任务仅待处理、已完成、已取消。</p>' + actions() + '</div></div>' +
+      details() +
+      (t.meeting ? '<div class="ry-hcard"><div class="ry-hcard__body"><a class="ry-btn" href="meeting.html?id=' + encodeURIComponent(t.id) + '">会议文字、纪要与分工</a></div></div>' : '') +
+      results() + history() + contractHtml();
+    ui.qsa('#td-host [data-act]').forEach(function (b) {
+      b.addEventListener('click', function () { openAction(b.getAttribute('data-act')); });
+    });
+    ui.bindDenied(document.body);
+  }
+  function openAction(action) {
+    var spec = {
+      '完成': ['完成任务', '完成说明', 'result', '说明本次完成的内容与成果', false],
+      '改期': [t.meeting ? '修改会议结束时间' : '修改截止时间', '改期原因', 'reason', '说明改期原因', true],
+      '取消': ['取消任务', '取消原因', 'reason', '说明取消原因', false],
+      '记录': ['补充参与记录', '参与内容', 'note', '记录本人进展或成果', false]
+    }[action];
+    if (!spec) return;
+    var body = (spec[4] ? ui.field(t.meeting ? '新的会议结束时间' : '新的截止时间', ui.input('dueAt', '', 'YYYY-MM-DD HH:mm'), '', true) : '') +
+      ui.field(spec[1], ui.textarea(spec[2], '', spec[3], 3), '', action !== '完成') +
+      (action === '完成' ? '<div class="ry-field"><label>成果附件（图片、文件或视频）</label><input type="file" id="td-attachments" multiple><p class="ry-hint">原型仅记录文件名与大小，正式上传需接入文件服务。</p></div>' : '');
+    RY.nav.sheet({
+      title: spec[0], sub: t.name, body: body,
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="td-save">确认</button>',
+      onOpen: function (host, close) {
+        host.addEventListener('click', function (e) {
+          if (!e.target.closest('#td-save')) return;
+          var v = ui.formValues(host), r;
+          if (action === '记录') r = S.addTaskCollabRecord(t.id, v.note);
+          else r = S.taskAct(t.id, action, { result: v.result || '', dueAt: v.dueAt || '', reason: v.reason || '',
+            attachments: action === '完成' ? Array.from((ui.qs('#td-attachments', host).files || [])).map(function (f) { return { name: f.name, size: f.size, type: f.type }; }) : [] });
+          if (!r.ok) { ui.toast(r.msg || '操作未完成', 'warn'); return; }
+          t = S.task(id); close(); ui.toast(r.msg || '已保存', 'ok'); render();
+        });
+      }
+    });
+  }
+  render();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>架构说明 · 瑞赢 0.1 原型套件</title>
+<link rel="stylesheet" href="assets/css/common.css">
+<link rel="stylesheet" href="assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：架构说明页（评审说明文件，不是页面契约） */
+  .ar-lead { font-size: 13px; line-height: 1.9; }
+  .ar-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 18px; }
+  .ar-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ar-list { margin: 0; padding: 0 0 0 18px; }
+  .ar-list li { font-size: 12.5px; line-height: 1.9; padding: 2px 0; }
+  .ar-h { font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
+  .ar-h:first-child { margin-top: 0; }
+  .ar-flow { margin: 0; padding: 12px 14px; background: var(--bg); border: 1px dashed var(--line); border-radius: var(--r-btn);
+             font-size: 12.5px; line-height: 2; white-space: pre-wrap; word-break: break-word; }
+  .ar-tbl { width: 100%; border-collapse: collapse; }
+  .ar-tbl th, .ar-tbl td { text-align: left; font-size: 12.5px; padding: 7px 10px; border-bottom: 1px dashed var(--line-soft); vertical-align: top; }
+  .ar-tbl th { color: var(--muted); font-weight: 500; background: #FBFCFC; border-bottom: 1px solid var(--line); }
+  .ar-tbl td b { font-weight: 600; }
+  .ar-tbl tr:last-child td { border-bottom: 0; }
+  .ar-num { font-family: var(--mono); font-weight: 600; }
+  .ar-divider { border: 0; border-top: 1px dashed var(--line); margin: 14px 0; }
+  @media (max-width: 1100px) { .ar-grid, .ar-grid--3 { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+
+      <div id="ar-banner"></div>
+
+      <!-- ============================================ 0. 本页性质 -->
+      <section class="ry-card">
+        <header class="ry-card__head">
+          <h3>本页性质</h3>
+          <div class="ry-card__extra"><span class="ry-hint">不是页面契约</span></div>
+        </header>
+        <div class="ry-card__body">
+          <ul class="ry-kv ry-kv--tight">
+            <li><span>文件性质</span><b>评审说明文件，不是页面契约</b></li>
+            <li><span>是否计入页面总数</span><b>不计入。本文件不登记在页面契约登记表 <code>assets/js/page-manifest.js</code> 中，也不占用页面契约编号</b></li>
+            <li><span>数据性质</span><b>全部数据为合成脱敏样例，不含真实客户、联系人、手机号、凭证或生产接口地址</b></li>
+            <li><span>效力边界</span><b>原型不代表生产实现或技术承诺；只用于评审页面结构、业务规则与交互分工</b></li>
+            <li><span>事实来源</span><b>每一句话均可追溯到正式文档；本文不新增文档中不存在的模块、状态、角色、指标、页面或能力</b></li>
+            <li><span>冲突处理</span><b>本文与正式 PRD／assets 文档冲突时，以正式文档为准</b></li>
+          </ul>
+          <p class="ry-hint">
+            依据：assets/js/page-manifest.js 文件头注释「architecture.html 是评审说明文件，不是页面契约，不计入页面总数」；
+            iterations/202609_0.1.0/瑞赢首个销售闭环/prd.md §6.0「辅助文档：prototype/architecture.html（瑞赢 0.1 开发架构导览）供技术方案与联合评审参考，不是业务契约页面，因此不登记本表」。
+            该处 prd.md 表述为「不计入 53 个页面契约 id」，与当前页面契约登记表的实际条目数存在口径差异，详见本页末节「数字口径与文档差异」。
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================ 1. 系统定位与边界 -->
+      <section class="ry-card">
+        <header class="ry-card__head">
+          <h3>一、系统定位与边界</h3>
+          <div class="ry-card__extra"><span class="ry-hint">依据：assets/system-overview.md §1、§3</span></div>
+        </header>
+        <div class="ry-card__body">
+          <p class="ar-lead">
+            瑞赢是公司自建的销售 CRM，以唯一客户主档为底座，管理客户、联系人、线索、商机、销售活动、任务、日程、日报、知识及销售管理过程。
+            客户关系网以集团关系、总分关系、上游、下游四类轻量关系表达客户之间的关联；客户＋区域＋业务线经营关系表达经营责任和资格；全国公海是零条有效经营关系的客户主档池。
+            销售 Agent 在权限范围内生成候选，经人工确认形成正式事实。
+          </p>
+          <p class="ar-lead">
+            瑞赢同时承担两类职责：（1）管理签约前销售过程，包括线索、商机、销售活动、任务、日报和管理反馈；
+            （2）维护「这个客户主体是谁」的公司级唯一客户主档——客户身份不会因业务线、负责人或下游系统不同而重复建立。
+          </p>
+          <p class="ry-hint">依据：assets/system-overview.md §1 系统定位。</p>
+          <hr class="ar-divider">
+          <div class="ar-grid">
+            <div>
+              <div class="ar-h">瑞赢负责（§3.1）</div>
+              <ul class="ar-list">
+                <li>客户主档及轻量客户关系网。</li>
+                <li>公司级客户价值分级直接设置并留日志，以及客户—区域—业务线责任关系。</li>
+                <li>联系人及联系人—客户关系。</li>
+                <li>线索、线索池、分派、主动认领、跟进、转换和拆分追溯。</li>
+                <li>商机、商机业务线明细、销售场景、流程模板、阶段推进、关闭结果和拆分追溯。</li>
+                <li>销售活动、独立正式拜访、任务、统一日历投影、日报、轻量知识、消息及管理反馈。</li>
+                <li>统一客户销售活动、销售活动／正式拜访原件引用及集团聚合时间线；0.1 不建设独立原件治理。</li>
+                <li>销售 Agent 候选提炼、人工确认、来源追溯和操作审计。</li>
+                <li>PC 销售过程管理分析和数据质量视图。</li>
+                <li>纷享销客现用线索数据的迁移与替换。</li>
+              </ul>
+            </div>
+            <div>
+              <div class="ar-h">瑞赢不负责（§3.2）</div>
+              <ul class="ar-list">
+                <li>不把下游业务系统的「上海易鑫（车电业务）」「上海易鑫（车务业务）」等业务记录复制成新的客户主体。</li>
+                <li>不在首个验证版本接入合同、订单、履约、应收、回款、成本和报销等复杂下游业务。</li>
+                <li>不把 AI 推断直接作为正式客户、线索、商机、销售活动、任务或报告事实。</li>
+                <li>不在未明确授权和人工确认时自动报价、承诺、对外发送或执行高风险写入。</li>
+                <li>不以采购工作手机作为首个版本启动前提。</li>
+                <li>不在瑞赢中重建公司知识库的复杂文件审批和版本系统；0.1 的瑞赢轻量知识文档与公司级知识事实源明确分层。</li>
+              </ul>
+              <p class="ry-hint">
+                签约、订单、履约、应收、回款和成本等交易及经营事实仍由对应业务系统负责；这些系统通过稳定客户标识关联瑞赢客户主档，不在瑞赢中再建立另一套客户主体事实（§1）。
+              </p>
+            </div>
+          </div>
+          <hr class="ar-divider">
+          <div class="ar-h">核心产品原则要点（§7，共 31 条，此处只摘录与架构直接相关的部分）</div>
+          <ul class="ar-list">
+            <li>客户主体唯一；对象独立、关系连接；业务线与客户身份分离。</li>
+            <li>AI 先生成候选——Agent 输出默认经销售查看、修改和确认后才进入正式业务数据。</li>
+            <li>权限不被 AI 绕过——Agent 继承当前用户权限，读取、写入和对外发送分别控制。</li>
+            <li>自动能力可降级——Agent 或企微输入不可用时，销售仍可手工完成核心业务流程。</li>
+            <li>统一 H5 执行、PC 治理——销售和主管共用一个企微 H5 业务工作台；PC 承担数据维护、配置发布、治理、审计和深度分析。</li>
+            <li>后续关系先验证、后建设——股权、控制、商业合作和资方只有在真实业务流程验证必要后才进入正式版本，不提前建立空表、隐藏菜单、状态或自动化规则。</li>
+          </ul>
+          <p class="ry-hint">依据：assets/system-overview.md §7 核心产品原则第 1、2、3、6、8、9、15、31 条。</p>
+        </div>
+      </section>
+
+      <!-- ============================================ 2. 两个统一入口 -->
+      <section class="ry-card">
+        <header class="ry-card__head">
+          <h3>二、两个统一入口与端职责</h3>
+          <div class="ry-card__extra"><span class="ry-hint">依据：prd/00 §1.1、§1.2；system-overview.md §1</span></div>
+        </header>
+        <div class="ry-card__body">
+          <div class="ar-grid">
+            <div>
+              <div class="ar-h">企微 H5：<a class="ry-inline-btn" data-ry-href="index.html">index.html</a></div>
+              <ul class="ar-list">
+                <li>企业微信 H5 是销售与主管的高频执行端，继续承接日常查看、记录、跟进、确认和闭环。</li>
+                <li>对 Agent 而言，H5 是 0.1 主操作端；Agent 在 H5 完整提供：AI 首页、沟通整理、候选确认、AI 待确认（当前／历史待处理／写入失败）、会议任务确认、对象 AI、日报和主管关注。</li>
+                <li>「零额外入口」：销售与主管主要在企业微信 H5 完成高频执行。</li>
+                <li>销售和主管共用一个企微 H5 业务工作台，菜单按角色能力和数据范围展示。</li>
+              </ul>
+            </div>
+            <div>
+              <div class="ar-h">统一 PC 应用：<a class="ry-inline-btn" data-ry-href="pc.html">pc.html</a></div>
+              <ul class="ar-list">
+                <li>PC 采用「一个统一应用 + 一个工作区 + 一个首页 + 五个一级导航分组」。</li>
+                <li>五个一级导航为：客户管理、销售管理、工作管理、分析、系统管理。</li>
+                <li>所有人工用户登录后统一进入首页；业务页面、分析页面、治理页面和配置页面只是同一导航体系中的不同功能分组，不形成新的权限层级。</li>
+                <li>PC 只提供 AI 数量／状态入口、团队处理情况、既有日报、运行记录、能力配置和试点范围，不建设 PC 自由输入和完整候选编辑器；AI 运行记录和失败治理归 05／08；06 只提供一个 Agent 配置页面（能力、来源、试点范围、预生成四个页签）。</li>
+                <li>PC 承担数据维护、配置发布、治理、审计和深度分析。</li>
+              </ul>
+            </div>
+          </div>
+          <hr class="ar-divider">
+          <div class="ar-h">跨端一致性</div>
+          <ul class="ar-list">
+            <li>两端共用同一套候选、权限、状态和正式写入结果（system-overview.md §1）。</li>
+            <li>PC 与 H5 共用业务对象 ID、业务状态、权限和数据范围、版本控制及正式业务事实；业务深链不经过首页，直接打开目标页面并重新鉴权（prd/00 §1.2）。</li>
+            <li>PC 修改后不要求 H5 实时推送，H5 刷新或重新进入时读取最新事实（prd/00 §9）。</li>
+          </ul>
+          <hr class="ar-divider">
+          <div class="ar-h">H5 明确不建设的能力</div>
+          <ul class="ar-list">
+            <li>不建设管理看板（团队分析看板）、指标趋势和指标下钻——只保留 04 的团队任务、团队日报、拜访复核等高频源业务入口。</li>
+            <li>不提供通用批量编辑；批量操作仅统一 PC 应用中具备对应动作权限的用户可使用。H5 无导出和个人保存视图。</li>
+            <li>不建设 PC 自由输入和完整候选编辑器；PC 的 Agent 配置页不得拆成四个一级页面。</li>
+          </ul>
+          <p class="ry-hint">
+            依据：prd/00 §1.1、§1.2、§11；prd/06 §2（「H5 不建设团队分析看板、趋势和指标下钻」「Agent 四项是同一页面页签」）；
+            prd.md §3.4（批量操作仅统一 PC 应用）；prd.md §6.3（H5 无导出和个人保存视图）；system-functional-modules.md §2（入口与工作台行「H5 不建设管理分析、趋势和指标下钻」）。
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================ 3. 模块与页面结构 -->
+      <section class="ry-card">
+        <header class="ry-card__head">
+          <h3>三、模块与页面结构</h3>
+          <div class="ry-card__extra"><span class="ry-hint">数字由页面契约登记表实时计算</span></div>
+        </header>
+        <div class="ry-card__body">
+          <div id="ar-totals"></div>
+          <p class="ry-hint">
+            页数与端分布的权威口径来自 <code>assets/js/page-manifest.js</code> 的 <code>verify()</code> 返回值（下表与汇总行均由该函数与本页运行时计算结果渲染，非人工填写）。
+            模块分组取登记表每行的 <code>module</code> 字段；模块与导航分组的定义见 prd/00 §1.2、§3、§6。
+          </p>
+          <div id="ar-modules"></div>
+          <hr class="ar-divider">
+          <div class="ar-h">PC 一级导航分组与页数（prd/00 §1.2、§3）</div>
+          <div id="ar-navgroups"></div>
+          <p class="ry-hint">
+            门店不进入 0.1；当前页面清单、入口和共享逻辑均不包含门店能力。
+            指标下钻不作为一级导航；Agent 四项是同一页面页签（prd/06 §2）。
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================ 4. 核心业务闭环 -->
+      <section class="ry-card">
+        <header class="ry-card__head">
+          <h3>四、核心业务闭环</h3>
+          <div class="ry-card__extra"><span class="ry-hint">依据：assets/system-overview.md §5</span></div>
+        </header>
+        <div class="ry-card__body">
+          <pre class="ar-flow">客户价值／客户关系网／区域业务线经营责任／线索／商机／销售活动信息
+→ 自建、主管指派、沟通提炼或规则生成候选／正式任务
+→ 候选经人工确认写入正式任务，正式任务直接待处理
+→ 负责人提交成果后直接完成，逾期仅作时间标记
+→ 形成销售活动、客户反馈和下一步
+→ Agent 提炼候选销售活动和候选任务；日报使用独立版本模型
+→ 销售查看、修改和确认
+→ 正式记录回写瑞赢
+→ 日报和管理分析按权限汇总已确认事实
+→ 主管反馈形成后续任务或跟进要求</pre>
+          <p class="ry-hint">
+            依据：assets/system-overview.md §5 核心业务闭环原文。约束：日报不能成为脱离业务记录的二次填报；管理分析不能直接统计未经确认的 AI 推断（§5）。
+          </p>
+          <hr class="ar-divider">
+          <div class="ar-h">首个版本必须形成的端到端能力（system-functional-modules.md §3）</div>
+          <pre class="ar-flow">客户价值、区域业务线责任、客户关系网／线索信息进入
+→ 分派或主动认领
+→ 形成候选或正式任务并按需接收
+→ 销售执行并记录销售活动
+→ 线索转换或按商机流程模板推进
+→ Agent 生成候选销售活动和候选任务
+→ 发起人确认候选／日报独立编辑并一次提交
+→ 成果型任务按需验收，普通任务直接完成
+→ 正式记录和任务回流
+→ 主管看板查看并反馈</pre>
+          <p class="ry-hint">
+            依据：assets/system-functional-modules.md §3。首个版本可以降低单个模块的功能深度，但不能删掉任务、日报、Agent 或看板而破坏闭环。
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================ 5. 核心数据事实源 -->
+      <section class="ry-card">
+        <header class="ry-card__head">
+          <h3>五、核心数据事实源</h3>
+          <div class="ry-card__extra"><span class="ry-hint">依据：assets/system-overview.md §6</span></div>
+        </header>
+        <div class="ry-card__body">
+          <p class="ry-hint">下表按「数据 → 正式事实源 → 边界」原样摘录关键行，完整表见 assets/system-overview.md §6。</p>
+          <table class="ar-tbl">
+            <thead><tr><th style="width:22%">数据</th><th style="width:20%">正式事实源</th><th>边界</th></tr></thead>
+            <tbody>
+              <tr><td>客户主体身份</td><td>瑞赢客户主档</td><td>公司级唯一；业务线和下游系统不得复制为多份主体</td></tr>
+              <tr><td>客户组和成员关系</td><td>瑞赢</td><td>支持多级和多父级，用于集团汇总</td></tr>
+              <tr><td>公司级客户价值分级</td><td>瑞赢</td><td>一个客户一个公司级分级；系统给出可解释建议，由具备客户价值确认权限的人员确认并保留变更历史；客户主档可无负责人</td></tr>
+              <tr><td>客户—区域—业务线经营关系</td><td>瑞赢</td><td>0.1 范围；状态仅有效／停止经营，保存一个主负责人、多个协作人和保护期，不保存客户公海占用事实或经营优先级</td></tr>
+              <tr><td>客户关系网</td><td>瑞赢</td><td>维护关联客户、集团／总分／上游／下游类型、关系标签和备注；不自动扩大权限或产生经营资格</td></tr>
+              <tr><td>联系人及联系人关系</td><td>瑞赢</td><td>联系人通过关系与一个或多个客户关联</td></tr>
+              <tr><td>线索及线索处理历史</td><td>瑞赢</td><td>线索客户可空；转换后保留源线索和转化关系</td></tr>
+              <tr><td>商机及销售过程</td><td>瑞赢</td><td>创建时客户、名称、唯一主业务线和销售场景必填；商机仅一个当前客户、一个主负责人和一个整体结果</td></tr>
+              <tr><td>销售互动、任务、日程和日报</td><td>瑞赢</td><td>拜访必须关联客户；统一日程包含独立、任务、拜访来源并只读投影线索／商机关键时间；日报一次提交且不退回重提</td></tr>
+              <tr><td>人员停用与业务移交</td><td>瑞赢</td><td>先立即停用，再按对象逐项移交当前责任；0.1 不建设临时代办</td></tr>
+              <tr><td>消息投递治理</td><td>瑞赢</td><td>PC 集成页管理模板、渠道、投递、失败重试和对账；不替代站内消息读状态</td></tr>
+              <tr><td>瑞赢销售知识文档</td><td>瑞赢</td><td>0.1 简单维护、发布、搜索、Agent 检索、下载与分享控制；不替代公司级知识审批体系</td></tr>
+              <tr><td>公司级知识原件、版本和审批</td><td>公司知识库</td><td>瑞赢后续同步授权目录与元数据，并提供检索、问答、推荐、引用和分享追踪</td></tr>
+              <tr><td>业务线及产品定义</td><td>公司业务线管理系统</td><td>瑞赢引用稳定标识，不自建另一套业务线主数据</td></tr>
+              <tr><td>大圆个人标准文档</td><td>大圆／企业微信侧派生输入</td><td>当前假设大圆生成瑞赢可读的企微文档，仍待技术验证；是 Agent 输入与证据，不是正式销售事实</td></tr>
+              <tr><td>下游业务客户</td><td>对应业务系统</td><td>通过映射关联瑞赢客户主档，不直接关联瑞赢联系人</td></tr>
+              <tr><td>合同、订单、应收、回款、成本</td><td>对应业务系统</td><td>首个版本不做复杂集成；后续按稳定客户 ID 关联</td></tr>
+            </tbody>
+          </table>
+          <p class="ry-hint">依据：assets/system-overview.md §6 核心数据事实源。</p>
+        </div>
+      </section>
+
+      <!-- ============================================ 6. 业务对象模型 -->
+      <section class="ry-card">
+        <header class="ry-card__head">
+          <h3>六、业务对象模型要点</h3>
+          <div class="ry-card__extra"><span class="ry-hint">依据：assets/business-object-model.md</span></div>
+        </header>
+        <div class="ry-card__body">
+          <div class="ar-h">一句话模型（§1）</div>
+          <p class="ar-lead">
+            瑞赢用唯一客户主档表达「现实中的客户主体是谁」，用客户关系网表达客户间的业务或组织关联，用公司级价值档案表达人工价值判断，
+            用客户—区域—业务线经营关系表达责任和销售经营资格，用客户级全国公海记录表达零条有效经营关系的待分配状态，
+            用联系人关系表达「谁与哪些客户有关」，用当前地址和业务地址快照区分当前地点与历史事实。
+            线索、商机、销售活动、任务、日程和日报继续按各自生命周期独立建模。
+          </p>
+          <hr class="ar-divider">
+          <div class="ar-h">核心对象与其「不替代的事实」（§2 摘录）</div>
+          <table class="ar-tbl">
+            <thead><tr><th style="width:26%">对象</th><th style="width:37%">保存的事实</th><th>不替代的事实</th></tr></thead>
+            <tbody>
+              <tr><td>客户主档</td><td>客户身份、类型、名称、唯一标识和主数据状态</td><td>线索状态、商机阶段和下游业务名称</td></tr>
+              <tr><td>客户价值档案</td><td>公司级客户价值分级、最近调整信息和变更历史；不设置复核状态</td><td>客户主体身份、经营关系和具体商机阶段</td></tr>
+              <tr><td>客户—区域—业务线经营关系</td><td>主负责人、协作人、有效／停止经营、保护期和变更历史</td><td>公司级客户价值、客户级全国公海记录和业务线主数据定义</td></tr>
+              <tr><td>客户关系网</td><td>关联客户、关系类型、关系标签和备注</td><td>法律主体身份、结构化股权穿透、销售经营资格和数据权限</td></tr>
+              <tr><td>联系人 / 联系人关系</td><td>自然人的基础信息和联系方式；联系人与客户之间的角色、部门和有效关系</td><td>在具体客户中的任职、决策或代理角色；联系人自身稳定信息</td></tr>
+              <tr><td>线索</td><td>原始来源、待验证信息、负责人、跟进和转化结果</td><td>已确认客户身份或正式销售机会的完整事实</td></tr>
+              <tr><td>商机</td><td>当前客户、名称、主负责人、主业务线、销售场景、冻结模板版本、当前两层阶段、预计成交时间、过程状态、下一步行动、关闭结果和历史</td><td>客户价值分级、产品／金额／报价、客户角色和业务线主数据定义</td></tr>
+              <tr><td>商机业务线明细</td><td>商机涉及的业务线、主／协同角色、文字业务范围、参与状态及拆分来源</td><td>独立场景、流程、阶段、负责人、预计成交时间和关闭结果</td></tr>
+              <tr><td>销售活动</td><td>一次已发生的电话、消息、邮件、会议或手工纪要，以及至少一个关联业务对象、可选客户、结论、承诺和下一步</td><td>未来任务、AI 未确认推断、拜访主对象和时间线投影</td></tr>
+              <tr><td>拜访</td><td>与客户实际发生或计划发生的拜访、责任人、计划与实际时间、地点、签到签退、结果和异常说明</td><td>普通销售活动、独立日程或绩效质量结论</td></tr>
+              <tr><td>任务候选 / 正式任务</td><td>待确认动作、来源和建议字段；正式任务保存唯一责任人、多个可选协作人、来源、生成方式、类型、关联对象、计划、执行结果、协作提交及按需验收</td><td>候选判断不替代正式任务；正式任务不替代已发生的销售活动</td></tr>
+              <tr><td>日报 / 日报版本 / 日报阅读状态 / 日报建议</td><td>日期、责任人和当前状态；AI 原始底稿、销售编辑草稿、一次提交版本、来源、差异和提交时间；主管未读／已读；主管追加的建议</td><td>日报状态、主管阅读状态和源业务事实互不替代</td></tr>
+              <tr><td>Agent 候选 / Agent 写入执行</td><td>待确认的候选销售活动或任务（待确认／已确认／已忽略／已失效）；未写入／写入中／写入成功／写入失败、幂等键、失败原因和正式对象 ID</td><td>候选不替代正式业务事实；写入执行不替代用户对候选的决策</td></tr>
+              <tr><td>统一日程 / 日程投影</td><td>独立日程、任务日程或拜访日程的来源、标题、开始结束时间、提醒、状态和关联对象；线索／商机关键时间只读投影</td><td>任务、拜访本身；投影不可从日历直接修改源业务事实</td></tr>
+              <tr><td>异常事项 / 批量作业 / 人员移交作业</td><td>跨模块问题的来源与处理；批量发起人、白名单动作、预检快照、逐项结果、幂等键和重试记录；移交清单、接收人、预检与逐项执行结果</td><td>不替代通用审批流、正式业务对象、人员状态事实源</td></tr>
+            </tbody>
+          </table>
+          <p class="ry-hint">
+            依据：assets/business-object-model.md §1 一句话模型、§2 核心对象。完整对象、基数与关系图见该文件 §4、§5、§11。
+            对象级原则：客户、联系人、线索、商机均为独立对象，不限定唯一创建路径（system-overview.md §7 第 2 条）。
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================ 7. 对象状态机 -->
+      <section class="ry-card">
+        <header class="ry-card__head">
+          <h3>七、对象状态机要点</h3>
+          <div class="ry-card__extra"><span class="ry-hint">依据：assets/state-machine.md（状态名一律取自文档）</span></div>
+        </header>
+        <div class="ry-card__body">
+          <table class="ar-tbl">
+            <thead><tr><th style="width:20%">对象</th><th style="width:34%">状态</th><th>关键约束</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>线索</td>
+                <td>待处理、跟进中、已转化、无效</td>
+                <td>是否在线索池、当前持有人及保护期与业务状态分开管理；进入跟进中必须同时保存正式销售活动、下一步动作和下次跟进日期；跟进中不能回到待处理；已转化为终态，无效误判仅能由主管或纠错权限人员撤销</td>
+              </tr>
+              <tr>
+                <td>商机过程阶段</td>
+                <td>机会确认 → 需求确认 → 方案验证 → 报价与审批 → 商务与合同</td>
+                <td>五个阶段为跨业务线统一管理口径，模板详细阶段映射到统一阶段；所有模板从映射「机会确认」的首个详细阶段开始按顺序推进，0.1 不支持跳级；阶段门槛只支持必填字段和必须完成阶段任务；预计成交时间创建时可空，但离开机会确认前是所有模板和角色均不可关闭或绕过的系统固定门槛</td>
+              </tr>
+              <tr>
+                <td>商机关闭结果</td>
+                <td>赢单、输单、关闭</td>
+                <td>商机流程状态仅进行中、已结束，已结束结果仅赢单、输单、关闭；停滞仅作为提醒；商机可在任意详细阶段结束；仅已结束（关闭）可由有权人填写原因后重新激活并恢复结束前详细阶段和冻结模板，历史结束事件永久保留</td>
+              </tr>
+              <tr>
+                <td>历史已合并客户</td>
+                <td>0.1 不提供合并或恢复操作</td>
+                <td>迁移数据中的历史已合并记录只读保留原始编号和主客户跳转；疑似重复仅人工核对，「待治理」是数据质量标签</td>
+              </tr>
+              <tr>
+                <td>客户经营关系与公海</td>
+                <td>存在有效经营关系 / 全国公海</td>
+                <td>全国公海只包含零条有效经营关系的客户主档，同一客户最多一条有效公海记录，且与有效经营关系互斥；公海不保留待分配的当前区域或业务线；认领或分派时才指定区域、业务线和主负责人，原子创建初始经营关系，并发仅一人成功</td>
+              </tr>
+              <tr>
+                <td>Agent 候选</td>
+                <td>待确认 → 已确认 / 已忽略 / 已失效</td>
+                <td>候选任务与正式任务分别流转，不把「待确认」混入正式任务状态；「修改后确认」是确认方式，不是主状态；长期未处理候选仍为待确认，只转入历史待处理列表</td>
+              </tr>
+              <tr>
+                <td>Agent 写入执行</td>
+                <td>未写入 → 写入中 → 写入成功 / 写入失败</td>
+                <td>写入失败可按原幂等键重试并重新校验；候选决策与写入执行分开</td>
+              </tr>
+              <tr>
+                <td>正式任务</td>
+                <td>待处理、已完成、已取消</td>
+                <td>所有正式任务创建后直接待处理；负责人完成后直接已完成，创建人可改期或取消；阶段上下文失效时由系统取消并留存原因。逾期由截止时间实时计算，不覆盖主状态。</td>
+              </tr>
+              <tr>
+                <td>正式拜访</td>
+                <td>计划中 → 进行中 → 已完成；计划中 → 已取消；计划中 → 未到访；进行中 → 已取消</td>
+                <td>异常记录为「待复核 → 已复核」或「待复核 → 待补充 → 待复核」；异常不自动改变拜访主状态；销售活动修订和拜访补充以追加版本或纠错记录实现，不回退销售活动、拜访、任务或日报状态</td>
+              </tr>
+              <tr>
+                <td>日报</td>
+                <td>草稿 → 已提交</td>
+                <td>对销售只保留一次提交操作，提交后不再发生内容状态流转；AI 首次原始底稿、当前草稿和销售提交版本分别保存；提交前动态刷新正式事实，提交时冻结正文、事实快照和来源；主管打开正文详情才自动已读，建议只追加</td>
+              </tr>
+              <tr>
+                <td>独立日程</td>
+                <td>有效 → 已取消 / 已删除；已取消 → 已删除</td>
+                <td>只有独立日程维护日程主状态，任务、拜访、线索和商机在日历中为源对象投影；独立日程转任务以派生字段记录，不增加「已转换」主状态；企微同步只覆盖独立日程和正式拜访</td>
+              </tr>
+              <tr>
+                <td>人员移交</td>
+                <td>待预检 → 待确认 → 处理中 → 部分成功 / 已完成；待预检／待确认 → 已取消</td>
+                <td>人员离岗移交使用独立处理单记录进度，不修改源对象自身的业务状态；人员停用不等待移交完成；H5 只展示移交／代办待处理摘要、状态和处理编号，不推进本状态机</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="ry-hint">
+            依据：assets/state-machine.md §1～§8。本页不引入该文件之外的状态名。
+            0.1 不支持商机阶段跳级、条件免办、自动推进（state-machine.md §2 约束）。
+            未确认枚举和门槛在该文件中明确保留为空（state-machine.md 文件头）。
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================ 8. 权限模型 -->
+      <section class="ry-card">
+        <header class="ry-card__head">
+          <h3>八、权限模型</h3>
+          <div class="ry-card__extra"><span class="ry-hint">依据：assets/permission-model.md</span></div>
+        </header>
+        <div class="ry-card__body">
+          <div class="ar-h">角色（§1）</div>
+          <table class="ar-tbl">
+            <thead><tr><th style="width:24%">角色</th><th style="width:22%">定位</th><th>主要能力</th></tr></thead>
+            <tbody>
+              <tr><td>R1 销售</td><td>一线业务人员</td><td>处理本人及被授权协作范围内的客户、线索、商机、活动、拜访、任务、日程和日报</td></tr>
+              <tr><td>R2 销售主管</td><td>团队管理者</td><td>在授权团队范围内进行分派、验收、复核、日报建议和管理分析</td></tr>
+              <tr><td>R3 销售运营</td><td>业务运营与配置维护</td><td>维护获授权的业务配置、指标、知识和数据质量能力</td></tr>
+              <tr><td>R4 客户数据管理能力包</td><td>客户资料维护能力包</td><td>按权限直接维护客户主体、客户关系网、合并与恢复；修改即时生效并写入历史</td></tr>
+              <tr><td>R5 系统管理员</td><td>系统固定最高权限人工角色</td><td>拥有全部页面、业务动作、数据范围、字段查看、配置、原件及系统管理能力</td></tr>
+              <tr><td>R6 Agent / 服务身份</td><td>非人工登录身份</td><td>在调用用户权限与服务身份权限交集内执行获准动作</td></tr>
+            </tbody>
+          </table>
+          <p class="ry-hint">
+            多角色用户的有效权限直接取并集，不设置主角色。R4 是能力包，不是独立工作区（§1）。
+            R5 默认无条件拥有全部 PC/H5 页面权限、业务动作权限、数据范围、字段查看权限、配置管理权限、原件查看／下载／处置权限和全部系统管理能力；只有 R5 可以授予或撤销其他用户的 R5，系统必须始终保留至少 1 个有效 R5（§2）。
+          </p>
+          <hr class="ar-divider">
+          <div class="ar-h">权限计算公式（§3）</div>
+          <pre class="ar-flow">角色页面权限 ∩ 动作权限 ∩ 数据范围 ∩ 字段规则 ∩ 当前对象状态</pre>
+          <ul class="ar-list">
+            <li>普通多角色取各角色授权并集后，再执行对象状态、字段安全和业务规则校验。</li>
+            <li>页面菜单不是新的权限层级，只是已有页面权限的导航表现。</li>
+            <li>搜索、列表、详情、导出、分析下钻均沿用同一页面权限和数据范围（§4）。</li>
+          </ul>
+          <hr class="ar-divider">
+          <div class="ar-h">每次进入重新鉴权（§3）</div>
+          <ul class="ar-list">
+            <li>首页快捷入口；全局搜索结果；消息、深链和复制链接；列表进入详情；关联对象跳转；H5/PC 跨端进入；下载与重试。</li>
+            <li>失权后不得继续展示对象标题、摘要、数量或无权关联关系。</li>
+          </ul>
+          <hr class="ar-divider">
+          <div class="ar-h">管理分析与业务配置能力项（§4.1）</div>
+          <div class="ar-grid">
+            <div>
+              <p class="ry-hint" style="margin:0 0 4px">分析能力：查看管理分析 / 查看指标下钻 / 查看敏感字段明文 / 导出指标明细</p>
+            </div>
+            <div>
+              <p class="ry-hint" style="margin:0 0 4px">配置能力：查看配置 / 编辑配置（含校验）/ 发布配置 / 启用／停用配置</p>
+            </div>
+          </div>
+          <ul class="ar-list">
+            <li>汇总、下钻、明文和导出分别计算；配置查看、编辑、发布和启停分别计算。</li>
+            <li>角色是默认权限集合，能力项是服务端最终授权依据；除 R5 固定最高权限模型外，不得根据角色名称直接推断用户拥有某项 06 权限，尤其不能默认 R3 拥有全部配置能力。</li>
+            <li>下载导出文件时重新校验创建人、当前导出能力、对象数据范围和字段权限；已失权时禁止领取。</li>
+          </ul>
+          <hr class="ar-divider">
+          <div class="ar-h">人员变化与权限收敛（§5）</div>
+          <ul class="ar-list">
+            <li>公司用户中心是组织、人员及销售准入资格的事实源；瑞赢自动同步合格人员并授予基础 R1。</li>
+            <li>变化影响当前权限时：立即停止受影响的旧权限范围 → 保留未变化的权限范围 → 生成权限待处理事项和受影响业务对象清单 → 不自动授予新范围 → 不自动完成业务移交。</li>
+            <li>恢复资格只恢复人员有效状态和基础 R1，不自动恢复历史额外角色、数据范围或业务责任。</li>
+            <li>0.1 不建设临时代办或临时待办委托。</li>
+          </ul>
+          <hr class="ar-divider">
+          <div class="ar-h">原件、知识与 Agent（§6）与安全降级（§7）</div>
+          <ul class="ar-list">
+            <li>原件依附销售活动或正式拜访，按当前业务对象权限查看和下载；普通用户不能替换或删除已经成为正式业务证据的原件，R5 可查看、下载和处置。</li>
+            <li>知识仅对已发布且处于当前用户发布范围内的用户可见；知识链接不扩大权限，打开时重新鉴权。</li>
+            <li>R6 只能使用当前正式已发布、调用用户有权访问的知识版本；执行动作时调用用户权限与服务身份权限取交集，并记录操作来源。</li>
+            <li>谁发起 Agent 提炼，谁确认候选；主管只查看团队候选处理统计和本来有权的业务正文，不能代销售确认。</li>
+            <li>候选未确认前撤权时，不再展示无权原文，候选失效且不允许继续确认；正式写入后完全回归原业务模块权限。</li>
+            <li>R5 的正式 CRM 最高权限不自动转化为 AI 运维对来源原文的查看权。</li>
+            <li>权限或身份服务异常时不得默认放大权限；短时异常可使用有有效期的最近一次有效权限缓存，没有有效缓存或缓存失效时拒绝访问。</li>
+          </ul>
+          <p class="ry-hint">
+            依据：assets/permission-model.md §1～§7。技术评审待定项见该文件 §8（权限缓存有效期与实现方式、高并发撤权传播时延、字段级规则的技术表达方式、R6 服务身份的凭证轮换与最小授权实现）。
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================ 9. Agent 边界 -->
+      <section class="ry-card">
+        <header class="ry-card__head">
+          <h3>九、Agent 边界</h3>
+          <div class="ry-card__extra"><span class="ry-hint">依据：system-overview.md §1.1、§9；permission-model.md §6</span></div>
+        </header>
+        <div class="ry-card__body">
+          <div class="ar-h">Agent 最终边界（system-overview.md §1.1）</div>
+          <ul class="ar-list">
+            <li>Agent 不建立第二套 CRM；外部材料、AI 推断和未确认候选均不是正式业务事实。</li>
+            <li>所有正式业务写入必须人工确认，服务端重新鉴权、校验和幂等后调用正式业务接口。</li>
+            <li>系统主动预生成仅包含今日预计处理任务总结、主管关注摘要和日报底稿；不主动推送。</li>
+            <li>工作手机自动采集不进入 0.1。一期使用 Coze 私有化承担生成与编排，瑞赢保留鉴权、候选、确认、写入、幂等和审计控制。</li>
+          </ul>
+          <hr class="ar-divider">
+          <div class="ar-h">Agent 与任务、日报、看板的关系（system-overview.md §9）</div>
+          <ul class="ar-list">
+            <li>用户界面展示自建任务、主管指派、沟通提炼和规则生成四类来源；候选确认和阶段生成作生成路径追溯。</li>
+            <li>Agent 可以从获授权输入和瑞赢正式数据中生成候选销售活动、候选任务、日报独立底稿和提示；候选至少保留来源版本、字段证据、事实／推断／缺失、确认方式和写入结果。</li>
+            <li>Agent 展示拟写字段、来源证据和查重结果；人工修改确认后调用对象正式创建流程。0.1 先试点少数能力，后续按同一架构扩展。</li>
+            <li>会议纪要只生成候选，支持人工批量确认；知识检索结果不自动创建任务。</li>
+            <li>正式任务只有待处理、已完成、已取消；逾期是时间标识。创建人可按权限调整截止时间并留痕。</li>
+            <li>看板统计范围受数据权限控制并只使用正式事实；0.1 不提供个人排行榜或自动绩效结论。</li>
+          </ul>
+          <hr class="ar-divider">
+          <div class="ar-h">不做自由对话式问答、不构成第二个 CRM 的边界表述</div>
+          <ul class="ar-list">
+            <li>瑞赢 Agent 核心为「沟通内容 → 对象匹配 → 候选销售活动＋候选任务 → 人工确认 → 正式写入」；日报不进入通用候选；不直接建客户／联系人／线索／商机；不自动建任务、排优先级或裁决冲突（system-functional-modules.md §2 瑞赢 Agent 行）。</li>
+            <li>对象 AI 为权限内知识检索，只读摘要与问答，不改写正式字段（prd/00 §1.1 与页面清单 PG-AI-OBJECT 契约视图）。</li>
+            <li>Coze 负责模型、Prompt、Agent／Workflow、知识检索流程和 AI 工具编排；瑞赢负责 H5／PC 交互、用户鉴权、数据权限、上下文、候选、人工确认、正式写入、幂等、重试、审计、能力开关、试点范围、来源配置和预生成调度；Coze 不得绕过瑞赢候选与人工确认直接写 CRM（integration-boundaries.md §7.1）。</li>
+            <li>Agent 失败、超时或输入不可用时转为手工录入；系统不能因 Agent 不可用阻断核心销售流程（state-machine.md §5）。</li>
+          </ul>
+          <p class="ry-hint">
+            依据：assets/system-overview.md §1.1、§9；assets/system-functional-modules.md §2；assets/integration-boundaries.md §7.1；assets/state-machine.md §5。
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================ 10. 集成边界 -->
+      <section class="ry-card">
+        <header class="ry-card__head">
+          <h3>十、集成边界、外部依赖、失败降级与人工接管</h3>
+          <div class="ry-card__extra"><span class="ry-hint">依据：integration-boundaries.md；system-overview.md §10</span></div>
+        </header>
+        <div class="ry-card__body">
+          <div class="ar-h">总原则（integration-boundaries.md §1）</div>
+          <ul class="ar-list">
+            <li>瑞赢内部正式业务事实由 01～07 已确认的业务对象、状态与规则定义；第二阶段治理能力只服务已有业务事实，不创建第二套 CRM 事实。</li>
+            <li>外部系统失败不得改变瑞赢内部正式业务状态。</li>
+            <li>每类集成必须明确事实源、同步方向、白名单字段、幂等标识、失败恢复和审计要求。</li>
+            <li>外部回调与瑞赢事实冲突时，不允许系统静默任选一方覆盖。</li>
+          </ul>
+          <hr class="ar-divider">
+          <div class="ar-h">外部系统登记与边界（§2）</div>
+          <ul class="ar-list">
+            <li>0.1 仅登记已经正式接入的系统，维护：系统名称、环境、负责人、服务身份、能力范围、启停状态、最近健康状态。</li>
+            <li>密钥、Token、密码不得在普通页面或日志中明文展示。</li>
+            <li>0.1 不建设 API 管理平台、通用接口编排器、用户自定义接口或通用字段 Mapping 平台。</li>
+          </ul>
+          <hr class="ar-divider">
+          <div class="ar-h">人员与身份（§3）</div>
+          <ul class="ar-list">
+            <li>公司用户中心是组织、人员及销售准入资格的事实源；瑞赢自动消费人员事件并保证重复、乱序事件不会让旧状态覆盖新状态。工号缺失、冲突、格式异常或身份无法唯一匹配时，不创建正式人员，进入「人员同步异常」。</li>
+            <li>企业微信认证：瑞赢只消费公司既有企微认证结果，不建设绑定、改绑或人工身份映射维护。未绑定、工号不一致、认证失效或认证失败时拒绝登录。</li>
+          </ul>
+          <hr class="ar-divider">
+          <div class="ar-h">统一同步任务（§4）</div>
+          <ul class="ar-list">
+            <li>状态：待处理 → 处理中 → 成功 / 失败。</li>
+            <li>至少记录：来源系统、业务对象、方向、外部 ID、幂等标识、状态、执行时间、最后成功时间、失败原因、重试次数。</li>
+            <li>同步失败先由系统自动重试，次数和间隔由技术方案确定；超过上限后进入失败并创建统一异常事项，R5 可人工重试。人工重试仍须执行幂等和正式业务校验。</li>
+            <li>0.1 不建设通用对账平台；具体集成确需对账时，仅提供检查差异和重新同步能力。</li>
+            <li>只有真实存在「瑞赢对象 ↔ 外部对象」映射的集成才允许解除映射；人员同步、身份认证等事实源集成不允许解除映射。</li>
+          </ul>
+          <hr class="ar-divider">
+          <div class="ar-h">企业微信日程集成（§5）</div>
+          <ul class="ar-list">
+            <li>0.1 只同步独立日程和正式拜访；任务不创建企微日程。</li>
+            <li>瑞赢业务事实优先；只有白名单字段可以受限双向同步；企微不能修改任务截止时间、正式拜访业务状态或其他未授权业务事实。</li>
+            <li>企微删除或取消外部日程不能自动取消正式拜访，只更新外部映射和同步状态，必要时提示重新同步。</li>
+            <li>如企微实际 API 不支持完整双向同步，产品能力必须降级为「瑞赢 → 企微」单向同步，不展示不存在的能力。</li>
+          </ul>
+          <hr class="ar-divider">
+          <div class="ar-h">消息投递（§6）</div>
+          <ul class="ar-list">
+            <li>站内消息是正式消息记录；企业微信是额外提醒渠道；只有产品白名单重要事件发送企微；用户不能自行配置企微事件。</li>
+            <li>业务事件发生时计算并保存接收人快照，后续组织或人员变化不得改写历史消息。</li>
+            <li>投递状态为「待发送 / 发送中 / 成功 / 失败」，阅读状态为「已读 / 未读」，两者完全独立。</li>
+            <li>投递失败自动重试；超过上限创建「消息投递失败」异常事项，R5 可人工重试；消息失败不得回滚来源业务事务。</li>
+            <li>0.1 不建设消息静默时段、消息合并窗口、个人消息偏好、通用渠道降级链或通用通知编排平台。</li>
+          </ul>
+          <hr class="ar-divider">
+          <div class="ar-h">知识与 Agent 输入（§7、§7.2）</div>
+          <ul class="ar-list">
+            <li>只有当前正式已发布且调用用户有权限访问的知识版本可以被 R6 Agent 引用；系统必须能够追溯知识来源、版本、调用用户和服务身份。</li>
+            <li>文字／粘贴为核心阻断输入；大圆在线文档、录音／语音、图片和文件为 0.1 正式增强输入，按来源开关和 POC 验收。工作手机自动采集不进入本期。</li>
+            <li>来源版本变化后原候选失效，基于新版本另建候选；多来源相似只提示，冲突证据并列展示并由人工选择。</li>
+          </ul>
+          <hr class="ar-divider">
+          <div class="ar-h">失败、超时与人工接管（§8）</div>
+          <ul class="ar-list">
+            <li>外部系统不是正式事实源时，其失败不阻断瑞赢可独立完成的核心业务。</li>
+            <li>高影响写请求必须具有请求唯一标识和幂等能力。</li>
+            <li>网络超时时，页面区分成功、失败、处理中或结果确认中，不能简单提示失败并诱导重复提交。</li>
+            <li>自动重试超过上限后创建统一异常事项，由人工接管。</li>
+            <li>R5 的人工重试、重新同步和重新发布仍需经过正式规则和系统校验，不能直接修改数据库制造成功。</li>
+          </ul>
+          <hr class="ar-divider">
+          <div class="ar-h">审计要求（§9）与高风险写入（system-overview.md §10）</div>
+          <ul class="ar-list">
+            <li>人员同步、认证异常、同步任务、人工重试、映射变化、消息投递和 R6 写入均应记录正式审计或可关联的技术执行记录；审计应能够关联同步任务、异常事项及源业务对象。</li>
+            <li>统一社会信用代码冲突、人员移交、批量作业、消息投递重试、批量导入导出和其他高风险写入需要受控权限和正式审计；0.1 不产生客户合并或恢复操作。</li>
+            <li>Agent 记录输入来源、生成内容、用户修改、确认和执行结果。</li>
+            <li>销售活动原件、AI 底稿、定位和知识引用分别控制查看、下载、治理和审计权限；系统管理员不因维护系统自动获得业务原文权限。</li>
+          </ul>
+          <p class="ry-hint">
+            依据：assets/integration-boundaries.md §1～§9；assets/system-overview.md §10 权限、安全与审计。
+            技术评审待定项见 integration-boundaries.md §10（自动重试次数／间隔／退避、企微日程 API 实际双向能力与字段白名单、幂等标识生成与保存期限、外部健康状态计算方式、凭证托管轮换与脱敏、审计与同步记录物理归档期限）。
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================ 11. 0.1 明确不建设 -->
+      <section class="ry-card">
+        <header class="ry-card__head">
+          <h3>十一、0.1 明确不建设清单</h3>
+          <div class="ry-card__extra"><span class="ry-hint">依据：assets/rules.md；prd/08 §20；prd/01 §17；prd/02 §1；prd/03 §1；prd/06 §1／§16；prd.md §1.4</span></div>
+        </header>
+        <div class="ry-card__body">
+          <div class="ar-h">A. rules.md 规则总表中含「0.1 不建设」表述的条目（逐条引用）</div>
+          <table class="ar-tbl">
+            <thead><tr><th style="width:14%">编号</th><th>规则原文摘录</th></tr></thead>
+            <tbody>
+              <tr><td>DATA-04</td><td>合同、订单、应收、回款和成本等数据由对应业务系统维护；瑞赢首个版本不做复杂下游集成。</td></tr>
+              <tr><td>CUST-06</td><td>0.1 不建设下游客户映射对象、页面、接口或空态。</td></tr>
+              <tr><td>CUST-13</td><td>公司级价值分级由有权人员直接设置或调整，保存即生效并留日志；不设主管复核，也不提供系统或 AI 建议、评分模型及周期复核。</td></tr>
+              <tr><td>CUST-19</td><td>0.1 只建设一个全国公海，不建设区域公海、区域优先路由、多池或跨池转移；经营关系只提供停止经营，停止最后一条有效关系后客户自动入池。</td></tr>
+              <tr><td>CUST-22</td><td>门店退出 0.1，仅作为后续版本候选。</td></tr>
+              <tr><td>CUST-26</td><td>0.1 不建设股权投资、控制管理、商业合作或资方的结构化关系、页面、状态、权限和 Agent 能力。资方保留为后续候选业务角色。</td></tr>
+              <tr><td>OPP-17</td><td>0.1 不建设独立竞争管理、投标对象或商机竞争字段；采购、投标可以作为详细阶段，但不形成独立模块。</td></tr>
+              <tr><td>OPP-18</td><td>0.1 商机不建设产品、预计金额、业务线分摊、报价、合同金额、多币种和金额分析能力。</td></tr>
+              <tr><td>OPP-21</td><td>商机只保存一个当前客户，不建设签约方、付款方、使用方、决策方、合作伙伴或多候选签约主体关系。</td></tr>
+              <tr><td>MGMT-02</td><td>公司级价值分级由有权人员直接维护并留日志；0.1 不建设主管复核或周期复核计划。</td></tr>
+              <tr><td>MGMT-13</td><td>管理分析固定为六主题 24 指标；0.1 不建设排行、评分、绩效、预测、自由 BI 或自定义报表。</td></tr>
+              <tr><td>MGMT-16</td><td>当前状态型指标按数据截止时间和当前归属计算，不受时间范围控制，0.1 不建设历史状态趋势。</td></tr>
+              <tr><td>WORK-20</td><td>0.1 不建设独立原件治理、保全中心、到期处置队列或复杂保留策略。</td></tr>
+              <tr><td>WORK-38</td><td>0.1 不建设临时代办或临时待办委托。</td></tr>
+              <tr><td>WORK-42</td><td>0.1 不建设知识纠错反馈入口、反馈单、处理队列或反馈状态流。</td></tr>
+              <tr><td>DATA-09</td><td>企微身份认证只消费公司既有结果，不建设绑定、改绑或人工映射。</td></tr>
+            </tbody>
+          </table>
+          <p class="ry-hint">
+            依据：assets/rules.md 第 1～6 节各表中的上述编号条目。
+            说明：本文档中并未出现标题为「已删除能力清单」的独立章节；可核对的删除／不建设表述以上述规则条目及下方 prd 各节为准，本页不作推断。
+          </p>
+          <hr class="ar-divider">
+          <div class="ar-h">B. prd/08 §20「0.1 明确不建设」原文</div>
+          <ul class="ar-list">
+            <li>临时代办；</li>
+            <li>独立原件治理中心或保全中心；</li>
+            <li>通用集成编排器、字段映射平台或对账平台；</li>
+            <li>数据质量自由规则设计器；</li>
+            <li>配置审批流、复杂影响模拟或真正一键回滚；</li>
+            <li>SLA 或自动升级体系；</li>
+            <li>消息静默、合并、个人偏好或通用渠道降级；</li>
+            <li>审计导出、自由报表或技术调用链分析平台。</li>
+          </ul>
+          <p class="ry-hint">依据：iterations/202609_0.1.0/瑞赢首个销售闭环/prd/08-PC基础平台与集成治理.md §20。</p>
+          <hr class="ar-divider">
+          <div class="ar-h">C. 模块 PRD 与 prd.md 的「0.1 明确不做」要点</div>
+          <ul class="ar-list">
+            <li><b>产品与金额：</b>产品、数量、单价、折扣、预计金额、报价、合同金额、多币种和金额分析不在 0.1；商机产品不进入 0.1（prd/03 §1；system-functional-modules.md §4）。</li>
+            <li><b>部分赢单：</b>关闭结果仅赢单、输单、关闭，一条商机只有一个整体结果，不支持部分赢单和业务线混合结果（prd/03 §1、§（关闭结果）；state-machine.md §3；system-overview.md §8）。</li>
+            <li><b>阶段跳级／免办：</b>阶段跳级、条件免办、通用规则／自动化引擎、自动推进不在 0.1；0.1 门槛只支持必填字段和必须完成阶段任务（prd/03 §1、§（推进门槛）；state-machine.md §2）。</li>
+            <li><b>自动线索回收：</b>不做自动回收；保护到期不自动回收，到期不清负责人、不改状态（prd/02 §1、§（上限与保护期）；system-overview.md §8）。</li>
+            <li><b>区域公海：</b>0.1 只建设一个全国公海，不建设区域公海、区域优先路由、多池或跨池转移（prd/01 §（公海）；rules.md CUST-19）。</li>
+            <li><b>资方关系：</b>资方保留为后续候选业务角色，0.1 不建设其结构化关系、页面、状态、权限或 Agent 能力；订单实际选用资方由下游交易系统记录（system-overview.md §8；rules.md CUST-26）。</li>
+            <li><b>独立主管端／独立配置端：</b>旧 <code>manager.html</code>、<code>admin.html</code> 及其路由只作为历史差异证据，不再代表目标导航、页面数量或职责归属；旧 <code>manager.html</code>、<code>admin.html</code> 只作差异证据，不是目标信息架构（prd/00 §11；prd/06 §1、§16）。工作手机彻底退出 0.1（prd/06 §1）。</li>
+            <li><b>其他硬边界（prd.md §1.4）：</b>竞争信息与独立投标模块；复杂下游集成（合同、订单、履约、应收、回款、成本、报销）；把下游业务记录复制成新的瑞赢客户主体；AI 推断直接作为正式事实；未授权自动报价／承诺／对外发送／高风险写入；客户 D／C／B／A／存量作为线上字段、状态或看板维度；复杂量化客户价值评分模型；以采购工作手机作为启动前提；周报；个人企微日程接入、路线规划、连续轨迹和考勤；公司知识库完整接入；个人排行榜、自动绩效评分或用定位异常直接形成绩效结论；知识纠错反馈入口；存量商机导入规则、迁移页面和通用迁移工具。</li>
+          </ul>
+          <p class="ry-hint">
+            依据：prd.md §1.4 本次不做（硬边界）；prd/03 §1「0.1 明确不做」；prd/02 §1「0.1 不做」；prd/01 §17「0.1 明确不做」；prd/06 §1、§16；prd/00 §11；assets/system-overview.md §8；assets/rules.md CUST-19、CUST-26。
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================ 12. 当前仍待确认 -->
+      <section class="ry-card">
+        <header class="ry-card__head">
+          <h3>十二、当前仍待确认</h3>
+          <div class="ry-card__extra"><span class="ry-hint">依据：system-overview.md §11（原文条目，未补充判断）</span></div>
+        </header>
+        <div class="ry-card__body">
+          <ul class="ar-list">
+            <li>各线索池的成员、是否允许认领、按来源池持有上限、保护期、退回／回收目标和启停状态；不配置自动回收、日／周领取上限或默认路由。</li>
+            <li>各业务线与销售场景的正式试点初始化清单；当前开发、联调和测试使用示例配置。</li>
+            <li>阶段任务重试、幂等、容量、日志归档、看板计算和异步补偿等技术方案参数。</li>
+            <li>公司销售管理标准中的频次、天数、数量和考核阈值经过团队校准后的正式配置值。</li>
+            <li>客户价值建议参考条件的试点校准值及例外处理。</li>
+            <li>两区域的区域业务线主负责人／协作人初始化数据、全国公海认领与分派动作权限、保护期与持有上限参数。</li>
+            <li>股权投资、控制管理、商业合作和资方是否进入后续正式版本；进入前需先验证业务问题、事实源、维护责任及与下游交易事实的边界。</li>
+            <li>无合同销售场景的等效赢单凭证，以及关闭后重新激活的详细权限。</li>
+            <li>客户资料修改、公海、任务、日报和敏感字段的详细角色矩阵；任务权限按负责人、创建人、参与人及团队范围逐项鉴权。</li>
+            <li>大圆企微文档的数据契约、来源锚点、权限、更新频率和真实技术可用性。</li>
+            <li>0.1 正式迭代编号为 <code>202609_0.1.0</code>。系统实现完成后从两个区域选择销售试点；名单、试用环境、数据范围、验收指标、周期和发布日期在试点启动前确认。</li>
+            <li>企业微信日程接口权限、应用日历方案、同步限额、失败重试和企业侧配置。</li>
+            <li>后续法务／安全明确要求后的原件保存期限和处置策略；0.1 不建设复杂保全和到期队列。</li>
+          </ul>
+          <p class="ry-hint">
+            依据：assets/system-overview.md §11「当前仍待确认」全部 13 条原文。
+            关联待确认清单另见 system-functional-modules.md §5、state-machine.md §9、permission-model.md §8、integration-boundaries.md §10；本页不重复展开，也不对任何待确认项做判断。
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================ 13. 数字口径与文档差异 -->
+      <section class="ry-card">
+        <header class="ry-card__head">
+          <h3>十三、数字口径与文档差异</h3>
+          <div class="ry-card__extra"><span class="ry-hint">如实登记，不由本页裁定</span></div>
+        </header>
+        <div class="ry-card__body">
+          <div id="ar-numbers"></div>
+          <hr class="ar-divider">
+          <div class="ar-h">已发现的文档间口径差异（如实报告，不在本页裁定）</div>
+          <ul class="ar-list">
+            <li>
+              <b>页面总数：103（登记表）对 53（prd.md 表述）。</b>
+              <code>assets/js/page-manifest.js</code> 的 <code>verify()</code> 返回 <code>total = 103</code>（PC 66 + H5 37），而 <code>prd.md</code> §6.0 说明编号段仍写「不计入 53 个页面契约 id」。
+              两者口径不同：登记表按「端 × 行」计数（同一页面契约 id 在 H5 与 PC 各登记一行），登记表内去重后的契约 id 数亦为不同数值，与 53 均不一致。本页数字一律采用登记表 <code>verify()</code>。
+            </li>
+            <li>
+              <b>prd/00 §3 导航树含「AI 运行记录与失败治理（归 05／08）」子分组，但 §6 系统管理分组表未列出该分组。</b>
+              页面契约登记表中存在对应条目（<code>pc/ai/ops.html</code>，契约 <code>PG-AI-OPS</code>）。两处不一致。
+            </li>
+            <li>
+              <b>页数 ≠ prd 能力条目数。</b>
+              prd/00 §6 以能力条目描述页面（例如知识管理写作「知识列表、知识详情／编辑、发布与停用」），而页面契约登记表按 HTML 页面计数（知识管理为 2 行，发布与停用作为同一页面的视图承载）。
+              本页的模块页数一律取自登记表行数。
+            </li>
+            <li>
+              <b>rules.md 未设「已删除能力清单」独立章节。</b>
+              本页第十一节按 rules.md 中实际含「0.1 不建设」表述的编号条目逐条引用，未替文档补写或合并章节。
+            </li>
+          </ul>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script src="assets/js/demo-data.js"></script>
+<script src="assets/js/prototype-store.js"></script>
+<script src="assets/js/permissions.js"></script>
+<script src="assets/js/common-actions.js"></script>
+<script src="assets/js/navigation.js"></script>
+<script src="assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store;
+
+  /* ---------------------------------------------------------- 外壳 */
+  RY.nav.shell({
+    nav: '',
+    title: '架构说明',
+    titleNote: '评审说明文件 · 不是页面契约',
+    subtitle: '瑞赢 0.1 原型套件的系统架构导览：定位与边界、两个统一入口、模块与页面结构、核心闭环与事实源、状态机、权限、Agent 边界、集成边界与 0.1 不建设清单。每一句话均可追溯至正式文档。',
+    crumbs: [{ label: '架构说明' }],
+    actions: '<a class="ry-btn" data-ry-href="index.html">企微 H5 入口</a>' +
+             '<a class="ry-btn" data-ry-href="pc.html">统一 PC 应用</a>'
+  });
+
+  /* ------------------------------------------------- 统一解析内部链接 */
+  /* 所有页面内链接一律由 RY.nav.href(path) 生成，避免手写相对路径。 */
+  ui.qsa('[data-ry-href]').forEach(function (a) {
+    a.setAttribute('href', RY.nav.href(a.getAttribute('data-ry-href')));
+  });
+
+  /* ------------------------------------------------------ 顶部说明 */
+  ui.qs('#ar-banner').innerHTML = ui.banner(
+    '<b>本页是评审说明文件，不是页面契约，不计入页面总数。</b>' +
+    '本页不登记在页面契约登记表 <code>assets/js/page-manifest.js</code> 中，也不占用页面契约编号。' +
+    '全部数据为合成脱敏样例，不含真实客户、联系人、手机号、凭证或生产接口地址。' +
+    '原型只用于评审页面结构、业务规则与交互分工，不代表生产实现或技术承诺。' +
+    '本页与正式 PRD／assets 文档冲突时，以正式文档为准。',
+    'brand'
+  ) + ui.banner(
+    '本页内容是文档的导览与索引，不新增文档中不存在的模块、状态、角色、指标、页面或能力；' +
+    '页内所有数字由页面契约登记表 <code>RY.manifest.verify()</code> 与本页运行时计算得出，非人工填写。',
+    'info'
+  );
+
+  /* ------------------------------------- 页数与端分布（取 verify()） */
+  var v = RY.manifest.verify();
+  var list = RY.manifest.list;
+  var SOURCE = 'assets/js/page-manifest.js verify()';
+
+  function groupCount(keyFn) {
+    var m = {};
+    list.forEach(function (e) { var k = keyFn(e); m[k] = (m[k] || 0) + 1; });
+    return m;
+  }
+  var byModule = groupCount(function (e) { return e.end + '\u0000' + e.module; });
+
+  /* 汇总行：总数、端分布 —— 全部来自 verify() */
+  ui.qs('#ar-totals').innerHTML =
+    '<ul class="ry-kv ry-kv--tight">' +
+      '<li><span>页面总数</span><b><span class="ar-num">' + v.total + '</span> 个（来源：' + SOURCE + ' 的 <code>total</code>）</b></li>' +
+      '<li><span>端分布</span><b>统一 PC 应用 <span class="ar-num">' + v.pc + '</span> 个（含 <code>pc.html</code>）；企业微信 H5 <span class="ar-num">' + v.h5 + '</span> 个（含 <code>index.html</code>）</b></li>' +
+      '<li><span>模块分组数</span><b><span class="ar-num">' + Object.keys(byModule).length + '</span> 个（口径：登记表每端 <code>module</code> 字段去重）</b></li>' +
+      '<li><span>契约一致性</span><b>路径重复 <span class="ar-num">' + v.dup.length + '</span> 项；不在本轮范围 <span class="ar-num">' + v.outOfRound.length + '</span> 项</b></li>' +
+    '</ul>';
+
+  /* 模块分组表 */
+  function rows(end) {
+    var keys = Object.keys(byModule).filter(function (k) { return k.indexOf(end + '\u0000') === 0; })
+      .map(function (k) { return k.split('\u0000')[1]; });
+    return keys.map(function (name) {
+      return '<tr><td>' + ui.esc(end === 'PC' ? '统一 PC 应用' : '企业微信 H5') + '</td><td>' + ui.esc(name) +
+        '</td><td class="ar-num">' + byModule[end + '\u0000' + name] + '</td></tr>';
+    }).join('');
+  }
+  ui.qs('#ar-modules').innerHTML =
+    '<table class="ar-tbl"><thead><tr><th style="width:20%">端</th><th>模块分组</th><th style="width:12%">页数</th></tr></thead><tbody>' +
+    rows('PC') + rows('H5') +
+    '<tr><td colspan="2"><b>合计</b></td><td class="ar-num"><b>' + v.total + '</b></td></tr>' +
+    '</tbody></table>';
+
+  /* PC 一级导航分组：五个分组 + 首页与全局能力 */
+  var NAV5 = [
+    { name: '客户管理', mods: ['客户管理'] },
+    { name: '销售管理', mods: ['销售管理'] },
+    { name: '工作管理', mods: ['工作管理'] },
+    { name: '分析', mods: ['分析'] },
+    { name: '系统管理', mods: ['人员与权限', '业务配置', '异常事项', '数据质量', '指标配置', 'Agent 配置', '知识管理', '集成与同步', '消息投递', 'AI 运行记录与失败治理', '审计'] }
+  ];
+  var navSum = 0;
+  var navRows = NAV5.map(function (g) {
+    var n = g.mods.reduce(function (a, m) { return a + (byModule['PC\u0000' + m] || 0); }, 0);
+    navSum += n;
+    return '<tr><td>' + ui.esc(g.name) + '</td><td class="ar-num">' + n + '</td><td>' +
+      ui.esc(g.mods.join('、')) + '</td></tr>';
+  }).join('');
+  var homeN = byModule['PC\u0000首页与全局能力'] || 0;
+  navSum += homeN;
+  ui.qs('#ar-navgroups').innerHTML =
+    '<table class="ar-tbl"><thead><tr><th style="width:20%">一级导航分组</th><th style="width:12%">页数</th><th>构成</th></tr></thead><tbody>' +
+    navRows +
+    '<tr><td>首页与全局能力（不属于五个一级导航分组）</td><td class="ar-num">' + homeN + '</td><td>首页、全局搜索结果、消息列表、处理记录、处理结果详情、统一状态表达</td></tr>' +
+    '<tr><td><b>合计</b></td><td class="ar-num"><b>' + navSum + '</b></td><td><b>等于统一 PC 应用页数</b></td></tr>' +
+    '</tbody></table>';
+
+  /* ---------------------------------------------- 数字口径与文档差异 */
+  var numbers = [
+    { n: v.total, d: '页面总数', s: 'page-manifest.js verify() → total' },
+    { n: v.pc, d: '统一 PC 应用页数（含 pc.html）', s: 'page-manifest.js verify() → pc' },
+    { n: v.h5, d: '企业微信 H5 页数（含 index.html）', s: 'page-manifest.js verify() → h5' },
+    { n: Object.keys(byModule).length, d: '模块分组数（端 × module 去重）', s: 'page-manifest.js list 的 module 字段运行时计算' },
+    { n: 5, d: 'PC 一级导航分组数', s: 'prd/00 §1.2「五个一级导航为：客户管理、销售管理、工作管理、分析、系统管理」' },
+    { n: NAV5[4].mods.length, d: '系统管理下子分组数', s: 'prd/00 §3 最终导航树（含「AI 运行记录与失败治理（归 05／08）」）' },
+    { n: 2, d: '分析页面数', s: 'prd/06 §2「2 个分析页面 + 8 个业务配置页面 + 2 个指标配置页面 + 1 个 Agent 配置页面，共 13 个页面」' },
+    { n: 8, d: '业务配置页面数', s: 'prd/06 §2 同上' },
+    { n: 2, d: '指标配置页面数', s: 'prd/06 §2 同上' },
+    { n: 1, d: 'Agent 配置页面数（单页面四页签）', s: 'prd/06 §2 同上；prd/00 §3' },
+    { n: 24, d: '正式指标数', s: 'prd/06 §4；system-functional-modules.md §2「六主题 24 指标」' },
+    { n: 6, d: '管理分析主题数', s: 'prd/06 §3：客户经营、商机推进、商机结果、执行闭环、时效异常、数据质量' },
+    { n: 6, d: '权限角色数（R1～R6）', s: 'permission-model.md §1 角色定义表' },
+    { n: 13, d: 'system-overview.md §11 待确认条目数', s: 'assets/system-overview.md §11 逐条计数' },
+    { n: 31, d: '核心产品原则条数', s: 'assets/system-overview.md §7 逐条计数' },
+    { n: 4, d: '分析能力项数 / 配置能力项数', s: 'permission-model.md §4.1 两张能力表各 4 项' },
+    { n: 5, d: '商机统一管理阶段数', s: 'state-machine.md §2；system-overview.md §8' },
+    { n: 3, d: '商机关闭结果数', s: 'state-machine.md §3：赢单、输单、关闭' }
+  ];
+  ui.qs('#ar-numbers').innerHTML =
+    '<table class="ar-tbl"><thead><tr><th style="width:10%">数字</th><th style="width:34%">含义</th><th>来源</th></tr></thead><tbody>' +
+    numbers.map(function (x) {
+      return '<tr><td class="ar-num">' + x.n + '</td><td>' + ui.esc(x.d) + '</td><td>' + ui.esc(x.s) + '</td></tr>';
+    }).join('') +
+    '</tbody></table>';
+
+  /* ------------------------------------------------------ 固定演示账号提示 */
+  ui.qs('#ar-banner').insertAdjacentHTML('beforeend', ui.banner(
+    'PC 原型使用固定演示账号；正式权限与数据范围以产品规则和页面说明为准。',
+    'info'
+  ));
+})();
+</script>
+</body>
+</html>

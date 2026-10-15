@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AI 新增内容 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+<div class="ry-body ry-body--pad-bottom"><div id="m20-host"></div></div>
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var draft = { source: '', raw: '', phone: '', customerId: '', version: '' };
+  var result = null;
+  RY.nav.h5shell({ title: 'AI 新增内容', sub: 'M20 · 人工确认后调用正式创建流程', back: 'h5/agent/index.html', tabbar: false });
+  if (!P.page('h5.agent.create') || !P.can('lead.create')) {
+    ui.qs('#m20-host').innerHTML = ui.stateCard('no-permission', { title: '当前身份不能新增线索',
+      actions: '<a class="ry-btn" href="../../index.html">返回工作台</a>' });
+    return;
+  }
+  function duplicate() {
+    var text = draft.raw.trim().toLowerCase();
+    if (!text) return [];
+    return S.arr('leads').filter(function (l) {
+      return P.inScope('lead', l) && String(l.raw || '').trim().toLowerCase() === text;
+    });
+  }
+  function sourceInput() {
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>来源与目标对象</h3></div><div class="ry-hcard__body">' +
+      '<p>目标对象：<b>线索</b> ' + ui.tag('0.1 试点', 'info') + '</p>' +
+      ui.field('来源内容', ui.textarea('source', draft.source, '粘贴沟通文本或线索描述', 4), '原始来源保留，供逐字段核对。', true) +
+      '<div class="ry-acts-row"><button class="ry-btn ry-btn--primary" id="m20-generate">提取候选字段</button></div></div></div>';
+  }
+  function candidate() {
+    if (!draft.version) return '';
+    var dup = duplicate();
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>拟写字段与证据</h3></div><div class="ry-hcard__body">' +
+      ui.kv([['目标对象', '新建线索'], ['来源版本', ui.esc(draft.version)],
+        ['人工确认', '修改候选后才调用正式创建流程；每次提交重新校验权限、查重和关联']]) +
+      ui.field('原始内容', ui.textarea('raw', draft.raw, '线索原始内容', 3), '必填 · 来源：输入文本 · 事实', true) +
+      ui.field('联系电话', ui.input('phone', draft.phone, '可留空'), '来源未提及则标记缺失；不得由 AI 编造') +
+      ui.field('关联客户 ID', ui.input('customerId', draft.customerId, '可留空'), '推断关系需人工核对；无权对象不可关联') +
+      '<p class="ry-hint">字段标记：原始内容 ' + ui.tag('事实', 'ok') + ' · 电话 ' +
+        ui.tag(draft.phone ? '推断／待核对' : '缺失', draft.phone ? 'warn' : 'bad') +
+        ' · 关联客户 ' + ui.tag(draft.customerId ? '推断／待核对' : '缺失', draft.customerId ? 'warn' : 'bad') + '</p>' +
+      '<h4>重名匹配与必填缺口</h4>' +
+      (dup.length ? '<p class="ry-hint">相同原始内容：' + dup.map(function (l) { return ui.esc(l.id); }).join('、') + '。请核对是否已有线索。</p>' :
+        '<p class="ry-hint">当前权限范围未命中相同原始内容；提交时仍会重新查重。</p>') +
+      '<p class="ry-hint">必填缺口：' + (draft.raw.trim() ? '无' : '原始内容') + '</p>' +
+      '<div class="ry-acts-row"><button class="ry-btn ry-btn--primary" id="m20-confirm">人工确认并创建线索</button></div></div></div>';
+  }
+  function render() {
+    ui.qs('#m20-host').innerHTML =
+      '<div class="ry-brief"><b>M20：确认后直接创建</b><p class="ry-hint">本期先开放线索试点。客户、联系人、商机沿用同一候选字段与正式创建接口结构，待各自校验接入后开放。</p></div>' +
+      sourceInput() + candidate() +
+      (result ? '<div class="ry-hcard"><div class="ry-hcard__head"><h3>逐条结果</h3></div><div class="ry-hcard__body">' +
+        ui.tag(result.ok ? '创建成功' : '创建失败', result.ok ? 'ok' : 'bad') + ' ' + ui.esc(result.msg) +
+        (result.id ? '<p><a class="ry-btn" href="../lead/detail.html?id=' + encodeURIComponent(result.id) + '">打开正式线索 ' + ui.esc(result.id) + '</a></p>' : '') +
+        '</div></div>' : '');
+    ui.qs('#m20-generate').addEventListener('click', function () {
+      var value = ui.qs('[name=source]').value.trim();
+      if (!value) { ui.toast('请先填写来源内容', 'warn'); return; }
+      draft.source = value; draft.raw = value; draft.version = S.now();
+      result = null; render();
+    });
+    var confirm = ui.qs('#m20-confirm');
+    if (confirm) confirm.addEventListener('click', function () {
+      draft.raw = ui.qs('[name=raw]').value.trim();
+      draft.phone = ui.qs('[name=phone]').value.trim();
+      draft.customerId = ui.qs('[name=customerId]').value.trim();
+      if (!draft.raw) { ui.toast('原始内容必填', 'warn'); render(); return; }
+      var matches = duplicate();
+      var customer = draft.customerId ? S.customer(draft.customerId) : null;
+      if (draft.customerId && (!customer || !P.inScope('customer', customer))) {
+        result = { ok: false, msg: '关联客户不存在或当前身份无权访问' }; render(); return;
+      }
+      ui.confirm({
+        title: '确认创建正式线索',
+        message: ui.kv([['目标对象', '线索'], ['原始内容', ui.esc(draft.raw)],
+          ['联系电话', ui.esc(draft.phone || '缺失')], ['关联客户', ui.esc(draft.customerId || '未关联')],
+          ['重名匹配', matches.length ? matches.map(function (l) { return ui.esc(l.id); }).join('、') : '未命中'],
+          ['来源版本', ui.esc(draft.version)]]),
+        confirmText: '确认并创建',
+        onConfirm: function () {
+          if (!P.page('h5.agent.create') || !P.can('lead.create')) {
+            result = { ok: false, msg: '提交时权限已变化' }; render(); return;
+          }
+          if (duplicate().length) {
+            result = { ok: false, msg: '提交时查重命中已有线索，请到已有记录继续处理' }; render(); return;
+          }
+          if (draft.customerId && (!S.customer(draft.customerId) || !P.inScope('customer', S.customer(draft.customerId)))) {
+            result = { ok: false, msg: '关联客户已变化或失权' }; render(); return;
+          }
+          var rec = S.createLead({ raw: draft.raw, source: 'AI 人工确认', sourceRecord: 'M20 · ' + draft.version,
+            phone: draft.phone, customerId: draft.customerId, owner: S.currentUser().id,
+            idempotencyKey: 'M20-' + S.currentUser().id + '-' + draft.version });
+          result = { ok: true, id: rec.id, msg: '已按正式线索模型创建并返回记录 ID' };
+          render();
+        }
+      });
+    });
+  }
+  render();
+})();
+</script>
+</body>
+</html>

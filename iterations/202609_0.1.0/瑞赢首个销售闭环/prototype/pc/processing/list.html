@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>处理记录 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：处理记录 */
+  .pr-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .pr-bar select, .pr-bar input { width: auto; min-width: 150px; }
+  .pr-left { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div class="ry-tabs" id="pr-tabs"></div>
+      <div id="pr-filter"></div>
+      <div id="pr-body"></div>
+    
+      <!-- 本页契约：评审对照用，列出页面契约编号与边界，不承载业务事实 -->
+      <section class="ry-card ry-card--flat">
+        <header class="ry-card__head">
+          <h3>本页契约</h3>
+          <div class="ry-card__extra"><span class="ry-hint">PG-GLOBAL-PROCESSING</span></div>
+        </header>
+        <div class="ry-card__body">
+          <ul class="ry-kv ry-kv--tight">
+            <li><span>页面契约</span><b>PG-GLOBAL-PROCESSING · PC · 首页与全局能力</b></li>
+            <li><span>依据</span><b>prd/00 §4／§8</b></li>
+            <li><span>可进入角色</span><b>管理员（运营）</b></li>
+            <li><span>覆盖验收</span><b>AC-45</b></li>
+            <li><span>本页视图</span><b>只展示本人发起、批量／导入／导出处理记录、保留 7 天、不替代正式审计</b></li>
+          </ul>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+
+  var TABS = [['all', '全部'], ['active', '处理中'], ['done', '已完成'], ['partial', '部分成功'], ['failed', '失败']];
+  var st = S.listState('processing.list', { filters: { type: '', kw: '', mine: '1' } });
+  var tab = ui.hash() || 'all';
+  if (!TABS.some(function (t) { return t[0] === tab; })) tab = 'all';
+
+  RY.nav.shell({
+    nav: '',
+    title: '处理记录',
+    subtitle: '批量、导入、导出的统一处理结果入口。<b>仅展示当前操作人本人</b>提交的批次，保留 <b>7 天</b>。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '处理记录' }],
+    actions: '<a class="ry-btn" href="../../pc.html">返回工作台首页</a>'
+  });
+
+  function daysLeft(job) {
+    var d = String(job.expiresAt || '').slice(0, 10);
+    if (!d) return null;
+    var t = new Date(d.replace(/-/g, '/')), n = new Date(S.today().replace(/-/g, '/'));
+    if (isNaN(t.getTime())) return null;
+    return Math.round((t - n) / 86400000);
+  }
+  function statusTone(s) {
+    return s === '已完成' ? 'ok' : s === '部分成功' ? 'warn' : s === '失败' ? 'bad' : s === '处理中' ? 'info' : 'muted';
+  }
+
+  function jobs() {
+    var f = st.filters;
+    return S.all('jobs').filter(function (j) {
+      if (f.mine === '1' && j.operator !== u.id) return false;
+      if (f.type && j.type !== f.type) return false;
+      if (f.kw && !(j.id + j.action + j.object + (j.processId || '') + (j.fileName || '') + (j.sourceFile || '')).toLowerCase().indexOf(f.kw.toLowerCase()) >= 0) return false;
+      if (tab === 'active') return j.status === '处理中' || j.status === '待执行';
+      if (tab === 'done') return j.status === '已完成';
+      if (tab === 'partial') return j.status === '部分成功';
+      if (tab === 'failed') return j.status === '失败';
+      return true;
+    }).sort(function (a, b) { return String(b.submittedAt).localeCompare(String(a.submittedAt)); });
+  }
+
+  function renderTabs() {
+    var all = S.all('jobs').filter(function (j) { return st.filters.mine === '1' ? j.operator === u.id : true; });
+    ui.qs('#pr-tabs').innerHTML = TABS.map(function (t) {
+      var n = t[0] === 'all' ? all.length
+        : t[0] === 'active' ? all.filter(function (j) { return j.status === '处理中' || j.status === '待执行'; }).length
+        : t[0] === 'done' ? all.filter(function (j) { return j.status === '已完成'; }).length
+        : t[0] === 'partial' ? all.filter(function (j) { return j.status === '部分成功'; }).length
+        : all.filter(function (j) { return j.status === '失败'; }).length;
+      return '<a class="ry-tab' + (tab === t[0] ? ' is-on' : '') + '" href="#' + t[0] + '" data-pr-go="' + t[0] + '">' + t[1] + '<i>' + n + '</i></a>';
+    }).join('');
+    ui.qsa('[data-pr-go]').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        tab = a.getAttribute('data-pr-go');
+        window.location.hash = tab;
+        renderTabs(); renderBody();
+      });
+    });
+  }
+
+  function renderFilter() {
+    ui.qs('#pr-filter').innerHTML = ui.section('筛选',
+      '<div class="pr-bar">' +
+        ui.select('pr-type', [{ value: '', label: '全部类型' }].concat(S.all('dicts').jobType.map(function (x) { return { value: x, label: x }; })), st.filters.type) +
+        ui.input('pr-kw', st.filters.kw, '处理编号 / 动作 / 对象 / 文件名') +
+        '<label class="ry-check"><input type="checkbox" id="pr-mine"' + (st.filters.mine === '1' ? ' checked' : '') + '><span>只看我提交的</span></label>' +
+        '<button class="ry-btn ry-btn--sm" id="pr-apply">应用</button>' +
+        '<button class="ry-btn ry-btn--sm" id="pr-reset">重置条件</button>' +
+        '<span class="pr-left">数据范围：仅本人（' + ui.esc(u.name) + '）</span>' +
+      '</div>',
+      '<span class="ry-hint">共 ' + S.all('jobs').length + ' 个演示批次</span>');
+
+    ui.qs('#pr-apply').addEventListener('click', function () {
+      st = S.listState('processing.list', {
+        filters: {
+          type: ui.qs('[name=pr-type]').value,
+          kw: ui.qs('[name=pr-kw]').value,
+          mine: ui.qs('#pr-mine').checked ? '1' : '0'
+        }
+      });
+      renderTabs(); renderBody();
+      ui.toast('筛选条件已应用，且会在返回本页时保留。', 'info');
+    });
+    ui.qs('#pr-reset').addEventListener('click', function () {
+      st = S.listState('processing.list', { filters: { type: '', kw: '', mine: '1' } });
+      renderFilter(); renderTabs(); renderBody();
+    });
+  }
+
+  function renderBody() {
+    var list = jobs();
+    var rows = list.map(function (j) {
+      var left = daysLeft(j);
+      return '<tr>' +
+        '<td><code>' + ui.esc(j.id) + '</code><div class="ry-tl__b">' + ui.esc(j.processId || '—') + '</div></td>' +
+        '<td>' + ui.esc(j.type) + '</td>' +
+        '<td>' + ui.esc(j.action) + '<div class="ry-tl__b">对象：' + ui.esc(j.object) + (j.fileName ? '　结果文件：' + ui.esc(j.fileName) : '') + (j.sourceFile ? '　来源文件：' + ui.esc(j.sourceFile) : '') + (j.retryOf ? '　' + ui.tag('重试自 ' + j.retryOf, 'info') : '') + '</div></td>' +
+        '<td>' + ui.tag(j.status, statusTone(j.status)) + '</td>' +
+        '<td>' + ui.esc(j.submittedAt) + '<div class="ry-tl__b">操作人：' + ui.esc(S.userName(j.operator)) + '</div></td>' +
+        '<td>' + j.total + ' 条<div class="ry-tl__b">成功 ' + j.success + '　失败 ' + j.failed + '</div></td>' +
+        '<td>' + ui.esc(String(j.expiresAt || '').slice(0, 10)) + (left !== null ? '<div class="ry-tl__b">' + (left >= 0 ? '剩余 ' + left + ' 天' : '已过期') + '</div>' : '') + '</td>' +
+        '<td class="ry-tbl-act">' +
+          '<a class="ry-btn ry-btn--sm" href="detail.html?id=' + j.id + '&from=list">查看结果</a>' +
+          (j.failed > 0 ? '<button class="ry-btn ry-btn--sm" onclick="RY.ui.retryJob(\'' + j.id + '\')">只重试失败项</button>' : '') +
+        '</td></tr>';
+    }).join('');
+
+    ui.qs('#pr-body').innerHTML =
+      ui.section('处理批次（' + list.length + '）',
+        list.length ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+          '<th>处理编号</th><th>类型</th><th>动作</th><th>状态</th><th>提交时间</th><th>结果</th><th>有效期至</th><th style="width:170px">操作</th>' +
+          '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+          : ui.empty('当前筛选条件下没有处理批次。', '<a class="ry-btn" href="../../pc/customer/import.html?kind=customer">去客户导入</a><a class="ry-btn" href="../../pc/lead/list.html">去线索列表</a>'),
+        '<span class="ry-hint">保留 7 天</span>') +
+      ui.banner('处理记录口径（本轮已确认）：<br>' +
+        '1. 批量、导入、导出<b>全部异步</b>执行；提交后立即可离开页面，结果在这里查看；<br>' +
+        '2. <b>只保留当前操作人本人</b>提交的批次，<b>保留 7 天</b>；过期后不再提供逐项明细；<br>' +
+        '3. 处理记录<b>不是正式审计的替代</b>：审计为追加写入、业务不可删除，且 0.1 不提供审计导出；<br>' +
+        '4. 失败项可<b>只重试失败项</b>；已成功项不会重复执行，重试会重新做逐项预检。', 'info') +
+      ui.banner('正式使用时仅展示当前操作人自己提交的批次；他人的批次不展示名称、数量与结果。', 'muted');
+  }
+
+  renderTabs();
+  renderFilter();
+  renderBody();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>快速记录销售活动 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：销售活动快速记录（最少必填 + 关联对象选择器）。 */
+  .ac-pick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .ac-pick .ry-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ac-pick__empty { font-size: 12px; color: var(--faint); }
+  .ac-opt { border: 1px solid var(--line); border-radius: 12px; padding: 2px 12px; margin: 10px 0 0; background: var(--surface); }
+  .ac-opt summary { font-size: 12.5px; padding: 10px 0; cursor: pointer; color: var(--brand-ink); }
+  .ac-list { list-style: none; margin: 0; padding: 0 0 8px; }
+  .ac-list li { padding: 7px 0; border-top: 1px solid var(--line-soft); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+  .ac-list input { accent-color: var(--brand); width: 16px; height: 16px; }
+  .ac-list small { color: var(--faint); font-size: 11.5px; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+  <div id="ac-host"></div>
+
+  <!-- 本页契约：评审对照用，列出页面契约编号与边界，不承载业务事实 -->
+  <div class="ry-hcard ry-hcard--flat" style="margin-top:14px">
+    <div class="ry-hcard__head"><h3>本页契约</h3><div class="ry-hcard__extra"><span class="h5-sec-note">PG-ACT-CREATE</span></div></div>
+    <div class="ry-hcard__body">
+      <ul class="ry-kv ry-kv--tight">
+        <li><span>页面契约</span><b>PG-ACT-CREATE · 任务与销售活动 · H5</b></li>
+        <li><span>可进入角色</span><b>R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员（ALL5）；实际入口按 activity.create 动作权限判定</b></li>
+        <li><span>依据</span><b>prd/04 §3</b></li>
+        <li><span>覆盖验收</span><b>AC-30</b></li>
+        <li><span>本页视图</span><b>至少关联一个有效业务对象</b></li>
+        <li><span>最少必填</span><b>至少一个业务对象关联、活动类型、发生时间、内容摘要</b></li>
+        <li><span>事实边界</span><b>活动保存后不可删除，是已发生的历史事实；修改只走纠错并留痕</b></li>
+        <li><span>执行边界</span><b>H5 只做本人活动；不提供通用批量修改，不提供导出</b></li>
+      </ul>
+      <p class="ry-hint">本页入口同时校验销售活动创建页和 activity.create 动作权限。</p>
+    </div>
+  </div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.activity.create';
+  var CHANNELS = ['电话', '会议', '消息', '微信', '邮件', '上门', '客户面访'];
+  /* 最少必填：至少一个业务对象关联、活动类型、发生时间、内容摘要。 */
+  var picked = [], pickedFiles = [];
+
+  RY.nav.h5shell({
+    title: '快速记录活动',
+    back: 'h5/activity/list.html',
+    nav: 'home',
+    tabbar: true   /* 记录页保留底部五入口：这是录入页面，不是对象详情页 */
+  });
+
+  /* 创建页与创建动作分别鉴权。 */
+  if (!P.page(PAGE) || !P.can('activity.create')) {
+    ui.qs('#ac-host').innerHTML = ui.stateCard('no-permission', {
+      title: '没有快速记录销售活动的权限',
+      body: '<p>' + ui.esc(P.whyNot('activity.create') || '当前身份没有「新增销售活动」动作权限。') + '</p>' +
+        '<p class="ry-hint">页面权限、动作权限、数据范围与字段规则相互独立；销售活动必须至少关联一个有效业务对象，' +
+        '无权对象不能作为关联项，也不展示其数量与摘要。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/activity/list.html') + '">返回销售活动列表</a>'
+    });
+    return;
+  }
+
+  /* ---------------------------------------------------------- 可关联对象 */
+
+  /* 只列出当前数据范围内可见的对象；无权对象不出现在选择器中。 */
+  function candidates() {
+    var out = [];
+    S.arr('customers').filter(function (c) { return P.inScope('customer', c); }).slice(0, 12)
+      .forEach(function (c) { out.push({ type: '客户', id: c.id, name: c.name }); });
+    S.arr('leads').filter(function (l) { return P.inScope('lead', l); }).slice(0, 8)
+      .forEach(function (l) { out.push({ type: '线索', id: l.id, name: l.raw || l.name || l.id }); });
+    S.arr('opportunities').filter(function (o) { return P.inScope('opp', o); }).slice(0, 8)
+      .forEach(function (o) { out.push({ type: '商机', id: o.id, name: o.name }); });
+    var rels = S.all('contactRelations').filter(function (r) { return r.status === '有效'; });
+    rels.slice(0, 8).forEach(function (r) {
+      var ct = S.contact(r.contactId);
+      if (ct && P.inScope('contact', ct) && !out.some(function (x) { return x.id === ct.id; })) {
+        out.push({ type: '联系人', id: ct.id, name: ct.name });
+      }
+    });
+    return out;
+  }
+
+  function pickHtml() {
+    if (!picked.length) return '<span class="ac-pick__empty">尚未关联对象（至少关联一个有效业务对象才能保存）</span>';
+    return picked.map(function (p) {
+      return '<button type="button" class="ry-chip is-on" data-unpick="' + ui.esc(p.id) + '">' +
+        ui.esc(p.type + '：' + p.name) + ' ✕</button>';
+    }).join('');
+  }
+
+  function fileHtml() {
+    return pickedFiles.length ? pickedFiles.map(function (f) {
+      return '<span class="ry-chip">' + ui.esc(f.name) + '</span>';
+    }).join('') : '<span class="ac-pick__empty">未选择资料</span>';
+  }
+
+  /* ---------------------------------------------------------- 表单 */
+
+  function formHtml() {
+    var cands = candidates();
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>快速记录</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">最少必填</span></div></div>' +
+      '<div class="ry-hcard__body"><div class="ry-hform">' +
+        ui.field('关联业务对象', '<div class="ac-pick" id="ac-pick">' + pickHtml() + '</div>' +
+          '<button type="button" class="ry-btn" id="ac-pick-btn" style="margin-top:8px">选择关联对象</button>',
+          '至少关联一个有效业务对象，否则不能保存；关联受数据范围约束', true) +
+        ui.field('活动类型', ui.select('channel', CHANNELS, '电话'), '', true) +
+        ui.field('发生时间', ui.input('at', S.now(), 'YYYY-MM-DD HH:mm'), '按业务发生时间归属日报日期；后补纪要或附件不改变原日期', true) +
+        ui.field('内容摘要', ui.textarea('content', '', '本次沟通的内容摘要（必填）', 4), '', true) +
+        ui.field('活动资料', '<input class="ry-input" type="file" id="ac-files" multiple accept="image/*,.pdf,.doc,.docx,.txt,.md,.xls,.xlsx,.ppt,.pptx">' +
+          '<div class="ac-pick" id="ac-file-list">' + fileHtml() + '</div>', '可选择图片或文档；原型仅记录文件名称与大小，不保存文件内容', false) +
+        '<details class="ac-opt"><summary>补充信息（选填）</summary>' +
+          ui.field('沟通对象', ui.input('target', '', '如：采购总监赵敏'), '', false) +
+          ui.field('客户诉求', ui.textarea('request', '', '客户关注点与诉求', 2), '', false) +
+          ui.field('共识与承诺', ui.textarea('agreement', '', '已达成的共识或承诺', 2), '', false) +
+          ui.field('下一步动作', ui.input('nextAction', '', '如：9 月 23 日前提交技术方案初稿'), '', false) +
+        '</details>' +
+      '</div>' +
+      '<p class="ry-hint">销售活动是已发生的历史事实：保存后不可删除，修改只走纠错并留痕。' +
+        '活动不改写正式事实，也不能替代正式拜访（正式拜访是独立业务对象，需要签到、签退与复核）。</p>' +
+      '</div></div>' +
+      '<p class="h5-sec-note">可选关联对象 ' + cands.length + ' 个（受当前数据范围限制）</p>';
+  }
+
+  function render() {
+    ui.qs('#ac-host').innerHTML = formHtml() +
+      '<div class="ry-footbar" style="margin-top:12px">' +
+        '<button class="ry-btn" id="ac-reset">清空</button>' +
+        '<button class="ry-btn ry-btn--primary" id="ac-save">保存活动</button>' +
+      '</div>';
+
+    ui.qs('#ac-pick-btn').addEventListener('click', pickSheet);
+    ui.qs('#ac-files').addEventListener('change', function () {
+      pickedFiles = Array.from(this.files || []).map(function (file) { return { name:file.name, size:Math.ceil(file.size / 1024) + ' KB', type:file.type || '' }; });
+      ui.qs('#ac-file-list').innerHTML = fileHtml();
+    });
+    ui.qsa('#ac-host [data-unpick]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var pid = b.getAttribute('data-unpick');
+        picked = picked.filter(function (p) { return p.id !== pid; });
+        ui.qs('#ac-pick').innerHTML = pickHtml();
+        bindUnpick();
+      });
+    });
+    ui.qs('#ac-reset').addEventListener('click', function () {
+      picked = []; pickedFiles = [];
+      render();
+    });
+    ui.qs('#ac-save').addEventListener('click', save);
+  }
+
+  function bindUnpick() {
+    ui.qsa('#ac-host [data-unpick]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var pid = b.getAttribute('data-unpick');
+        picked = picked.filter(function (p) { return p.id !== pid; });
+        ui.qs('#ac-pick').innerHTML = pickHtml();
+        bindUnpick();
+      });
+    });
+  }
+
+  /* 关联对象选择：底部抽屉多选，只列数据范围内对象。 */
+  function pickSheet() {
+    var cands = candidates();
+    if (!cands.length) { ui.toast('当前数据范围内没有可关联的对象', 'warn'); return; }
+    var byType = {};
+    cands.forEach(function (c) { (byType[c.type] = byType[c.type] || []).push(c); });
+    var body = Object.keys(byType).map(function (t) {
+      return '<div class="ry-field__label">' + ui.esc(t) + '</div><ul class="ac-list">' +
+        byType[t].map(function (c) {
+          var on = picked.some(function (p) { return p.id === c.id; });
+          return '<li><input type="checkbox" data-type="' + ui.esc(c.type) + '" value="' + ui.esc(c.id) + '"' + (on ? ' checked' : '') + '>' +
+            '<span>' + ui.esc(c.name) + '</span><small>' + ui.esc(c.id) + '</small></li>';
+        }).join('') + '</ul>';
+    }).join('') +
+      '<p class="ry-hint">只列出当前数据范围内可见的对象；保存时后端仍会重新校验关联有效性，' +
+      '无权对象不返回，也不展示其数量与摘要。</p>';
+    RY.nav.sheet({
+      title: '选择关联对象', sub: '至少一个',
+      body: body,
+      footer: '<button class="ry-btn" data-close>关闭</button><button class="ry-btn ry-btn--primary" id="ac-pick-ok">确定</button>',
+      onOpen: function (host, close) {
+        host.addEventListener('click', function (e) {
+          if (!e.target.closest('#ac-pick-ok')) return;
+          picked = ui.qsa('input[type=checkbox]', host).filter(function (c) { return c.checked; })
+            .map(function (c) {
+              var o = cands.filter(function (x) { return x.id === c.value; })[0] || { type: c.getAttribute('data-type'), id: c.value, name: c.value };
+              return { type: o.type, id: o.id, name: o.name };
+            });
+          close();
+          ui.qs('#ac-pick').innerHTML = pickHtml();
+          bindUnpick();
+        });
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------- 保存 */
+
+  function save() {
+    var v = ui.formValues(ui.qs('#ac-host'));
+    if (!picked.length) { ui.toast('销售活动至少关联一个有效业务对象', 'warn'); return; }
+    if (!v.channel) { ui.toast('活动类型必填', 'warn'); return; }
+    if (!(v.at || '').trim()) { ui.toast('发生时间必填', 'warn'); return; }
+    if (!(v.content || '').trim()) { ui.toast('内容摘要必填', 'warn'); return; }
+    var r = S.createActivity({
+      channel: v.channel, at: v.at.trim(), target: v.target, content: v.content.trim(),
+      request: v.request, agreement: v.agreement, nextAction: v.nextAction,
+      related: picked.map(function (p) { return { type: p.type, id: p.id, name: p.name }; }),
+      evidence: pickedFiles,
+      origin: '手工录入'
+    });
+    if (!r.ok) { ui.toast(r.msg || '保存失败', 'warn'); return; }
+    ui.toast('已保存销售活动 ' + r.activity.id + '，不可删除，修改请走纠错', 'ok');
+    picked = []; pickedFiles = [];
+    setTimeout(function () {
+      RY.nav.go('h5/activity/detail.html?id=' + encodeURIComponent(r.activity.id));
+    }, 600);
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

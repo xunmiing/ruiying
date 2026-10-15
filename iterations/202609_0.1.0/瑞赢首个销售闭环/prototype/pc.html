@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>瑞赢 0.1 · PC 统一工作台（原型）</title>
+<link rel="stylesheet" href="assets/css/common.css">
+<link rel="stylesheet" href="assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：工作台首页（轻量导航页，不承载业务事实） */
+  .home-hero { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 20px; margin-bottom: 14px; }
+  .home-hero__line { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .home-hero__hello { font-size: 18px; font-weight: 600; }
+  .home-hero__date { font-size: 12.5px; color: var(--muted); }
+  .home-hero__scope { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+  .home-quick { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 16px; }
+  .home-quick__i { display: flex; flex-direction: column; gap: 4px; padding: 14px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); color: var(--ink); }
+  .home-quick__i:hover { border-color: var(--brand-line); text-decoration: none; }
+  .home-quick__i b { font-size: 13px; }
+  .home-quick__i span { font-size: 11.5px; color: var(--faint); }
+  .home-quick__i.is-off { color: var(--faint); cursor: not-allowed; background: #FAFBFB; }
+  .home-quick__i.is-off b { font-weight: 500; }
+  .home-quick__no { display: block; font-style: normal; font-size: 11px; color: var(--faint); }
+  @media (max-width: 1180px) { .home-quick { grid-template-columns: repeat(3, 1fr); } }
+</style>
+</head>
+<body data-root="">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+
+      <div id="home-hero"></div>
+
+      <!-- 固定快捷入口：六项，所有用户同一套，按当前页面权限过滤 -->
+      <div class="home-quick" id="home-quick"></div>
+
+      <section class="ry-card">
+        <header class="ry-card__head">
+          <h3>本页契约</h3>
+          <div class="ry-card__extra"><span class="ry-hint">PC-HOME</span></div>
+        </header>
+        <div class="ry-card__body">
+          <ul class="ry-kv ry-kv--tight">
+            <li><span>页面契约</span><b>PC-HOME · PC · 首页与全局能力</b></li>
+            <li><span>依据</span><b>prd/00 §2.1／§2.2；prd/06 §2</b></li>
+            <li><span>可进入角色</span><b>ALL5</b></li>
+            <li><span>覆盖验收</span><b>AC-01</b></li>
+            <li><span>本页视图</span><b>欢迎信息、按权限过滤的固定快捷入口、右上角全局入口（搜索／消息／处理记录／头像）、不显示指标、待办聚合与最近访问</b></li>
+            <li><span>本页包含</span><b>姓名、日期等基础欢迎信息；固定快捷入口：客户、线索、商机、任务、销售活动、日报</b></li>
+            <li><span>本页不含</span><b>最近访问、待办聚合、经营指标、业务统计、Dashboard、个性化数据卡片、拖拽布局</b></li>
+            <li><span>快捷入口</span><b>所有用户同一套，按当前页面权限过滤，管理员（运营）可看到全部；0.1 不支持增加、删除或排序</b></li>
+            <li><span>右上角全局入口</span><b>全局搜索、消息、处理记录、用户头像</b></li>
+            <li><span>对象性质</span><b>首页是轻量导航页，不是业务对象，不产生业务事实</b></li>
+          </ul>
+          <p class="ry-hint">
+            瑞赢 0.1 是公司自建的前签约销售经营与任务闭环系统。Agent 是 CRM 之上的可信辅助层，不构成第二个 CRM。
+            本原型只用于评审页面结构、业务规则与交互分工，不代表生产实现或技术承诺；全部数据为合成脱敏样例。
+          </p>
+          <p class="ry-hint" id="home-datarange"></p>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script src="assets/js/demo-data.js"></script>
+<script src="assets/js/prototype-store.js"></script>
+<script src="assets/js/permissions.js"></script>
+<script src="assets/js/pc-permissions-0-1.js"></script>
+<script src="assets/js/common-actions.js"></script>
+<script src="assets/js/navigation.js"></script>
+<script src="assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store;
+
+  RY.nav.shell({
+    nav: 'home',
+    title: '工作台首页',
+    subtitle: '统一 PC 应用入口：一个应用、一个工作区、一个首页、五个一级导航分组。',
+    crumbs: [{ label: '首页' }],
+    actions: '<a class="ry-btn" href="pc/search.html">全局搜索</a>' +
+             '<a class="ry-btn" href="pc/message/list.html">消息</a>' +
+             '<a class="ry-btn" href="pc/processing/list.html">处理记录</a>'
+  });
+
+  var u = S.currentUser();
+  var scope = RY.perm.dataScope(u);
+
+  /* 欢迎信息：姓名与日期，不含任何经营统计。 */
+  ui.qs('#home-hero').innerHTML =
+    '<div class="home-hero__line">' +
+      '<span class="home-hero__hello">' + ui.esc(u.name) + '，欢迎回来</span>' +
+      ui.tag('固定演示账号', 'brand') +
+      '<span class="home-hero__date">' + S.today() + '</span>' +
+    '</div>' +
+    '<p class="home-hero__scope">当前数据范围：' + ui.esc(scope.label) +
+      '　每一次进入（快捷入口、全局搜索、消息、深链、列表进详情、下载与重试）都会重新鉴权。</p>';
+
+  /* 固定快捷入口六项（prd/00 §2.1）。顺序固定，不由用户增删或排序。
+     无权限时保留入口位置并显式标注原因，不以隐藏代替权限表达。 */
+  var QUICK = [
+    { n: '客户', d: '客户与联系人主数据', href: 'pc/customer/list.html?menu=1', page: 'customer.list' },
+    { n: '线索', d: '线索与线索池', href: 'pc/lead/list.html?menu=1', page: 'lead.list' },
+    { n: '商机', d: '商机与流程模板', href: 'pc/opportunity/list.html?menu=1', page: 'opp.list' },
+    { n: '任务', d: '任务与参与', href: 'pc/task/list.html?menu=1', page: 'task.list' },
+    { n: '销售活动', d: '普通活动与正式拜访', href: 'pc/activity/list.html', page: 'activity.list' },
+    { n: '日报', d: '我的日报与团队日报', href: 'pc/report/list.html?menu=1', page: 'report.list' }
+  ];
+
+  ui.qs('#home-quick').innerHTML = QUICK.map(function (q) {
+    if (!RY.perm.page(q.page)) {
+      return '<span class="home-quick__i is-off" title="当前身份没有该页面权限">' +
+        '<b>' + ui.esc(q.n) + '</b><span>' + ui.esc(q.d) + '</span>' +
+        '<i class="home-quick__no">无页面权限</i></span>';
+    }
+    return '<a class="home-quick__i" href="' + ui.esc(q.href) + '">' +
+      '<b>' + ui.esc(q.n) + '</b><span>' + ui.esc(q.d) + '</span></a>';
+  }).join('');
+
+  ui.qs('#home-datarange').textContent =
+    'PC 原型使用固定演示账号。正式权限与数据范围以产品规则和页面说明为准。';
+})();
+</script>
+<script src="assets/js/pc-page-notes.js"></script>
+</body>
+</html>

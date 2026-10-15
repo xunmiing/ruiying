@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>沟通整理 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：沟通整理（来源输入 / 上下文 / 对象匹配 / 生成结果）。 */
+  .ao-box { border: 1px solid var(--line); border-radius: 12px; padding: 10px 11px; background: var(--surface); margin-bottom: 10px; }
+  .ao-src { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 0; }
+  .ao-pick { border: 1px solid var(--line); border-radius: 12px; padding: 10px 11px; background: var(--surface); }
+  .ao-pick__t { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13.5px; font-weight: 600; }
+  .ao-cand { border: 1px solid var(--line); border-radius: 12px; padding: 10px 11px; margin-bottom: 8px; background: var(--surface); }
+  .ao-cand.is-invalid { opacity: .55; }
+  .ao-cand__t { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .ao-cand__t b { font-size: 13px; }
+  .ao-fv { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; font-size: 12px; padding: 5px 0; border-bottom: 1px dashed var(--line-soft); }
+  .ao-fv:last-child { border-bottom: 0; }
+  .ao-fv__k { color: var(--muted); flex: 0 0 78px; }
+  .ao-fv__v { flex: 1; min-width: 0; word-break: break-all; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+  <div id="ao-host"></div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.agent.organize';
+
+  RY.nav.h5shell({
+    title: '沟通整理',
+    sub: '来源输入 → 对象匹配 → 候选生成',
+    back: 'h5/agent/index.html',
+    nav: 'more',
+    tabbar: true
+  });
+
+  /* ---------------------------------------------------------- 鉴权 */
+  if (!P.page(PAGE)) {
+    ui.qs('#ao-host').innerHTML = ui.stateCard('no-permission', {
+      title: '没有沟通整理的访问权限',
+      body: '<p>' + ui.esc(P.whyNot('agent.organize') || '当前身份没有「沟通整理」页面权限。') + '</p>' +
+            '<p class="ry-hint">Agent 不能成为权限旁路：用户主动调用的有效能力取「当前用户业务权限 ∩ R6 服务身份能力」。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/agent/index.html') + '">返回瑞赢 AI</a>'
+    });
+    return;
+  }
+
+  /* ---------------------------------------------------------- 状态 */
+  var state = {
+    source: '文字输入',
+    text: '',
+    uploaded: null,
+    extra: [],        /* 已选增强来源（原型只记录来源类型与开关，不产生真实文件） */
+    ctx: null,        /* 主上下文对象：{type,id,name,note} */
+    matched: null,    /* 对象匹配结果 {kind:'exact'|'fuzzy'|'none'|'multi', list:[]} */
+    generated: null,  /* 生成结果（仅本次页面展示） */
+    invalid: false    /* 来源更新 / 上下文切换后原候选失效 */
+  };
+  try {
+    state.text = sessionStorage.getItem('ry_ai_organize_draft') || '';
+    sessionStorage.removeItem('ry_ai_organize_draft');
+  } catch (e) { /* 私密模式下仍可手工输入 */ }
+
+  /* Agent 输入范围（prd/05 §2.3）：
+     文字为必需来源；其余为 0.1 正式增强输入，分项 POC 与开关启用，单项不可用不阻塞文字核心闭环。
+     工作手机自动采集本期不进入，无入口、接口、配置与验收。 */
+  var SOURCES = [
+    { k: '文字输入', core: true, on: true, note: '必需来源（粘贴文本同等对待）' },
+    { k: '大圆企微文档', core: false, on: true, note: '增强输入：授权读取，保存来源 ID 与当次版本' },
+    { k: '录音文件', core: false, on: true, note: '增强输入：转写后进入统一来源层' },
+    { k: '图片', core: false, on: true, note: '增强输入：OCR／多模态识别' },
+    { k: '文件', core: false, on: false, note: '增强输入：解析开关未启用（POC 未通过），不影响文字闭环' }
+  ];
+
+  /* 相似候选提示：多来源指向同一事实时不自动合并候选，仅提示相关来源或相似候选。 */
+  function similarCandidates() {
+    if (!state.ctx) return [];
+    return S.arr('agentCandidates').filter(function (c) {
+      return (c.relatedObjects || []).some(function (r) { return r.id === state.ctx.id; });
+    });
+  }
+
+  /* 权限内检索：只在当前用户有权数据范围内执行。无权对象不返回结果、数量与摘要。 */
+  function search(term) {
+    var q = (term || '').trim().toLowerCase();
+    if (!q) return [];
+    var out = [];
+    S.arr('customers').forEach(function (c) {
+      if (!P.inScope('customer', c)) return;
+      var hay = [c.name, c.alias, c.creditCode, c.id].join(' ').toLowerCase();
+      if (hay.indexOf(q) >= 0) out.push({ type: '客户', id: c.id, name: c.name, exact: (c.name + '').toLowerCase() === q || (c.alias || '').toLowerCase() === q || c.id.toLowerCase() === q });
+    });
+    S.arr('leads').forEach(function (l) {
+      if (!P.inScope('lead', l)) return;
+      var hay = [l.id, l.raw, l.source].join(' ').toLowerCase();
+      if (hay.indexOf(q) >= 0) out.push({ type: '线索', id: l.id, name: (l.raw || '').slice(0, 24) + '…', exact: l.id.toLowerCase() === q });
+    });
+    S.arr('opportunities').forEach(function (o) {
+      if (!P.inScope('opp', o)) return;
+      var hay = [o.name, o.id, o.nextAction].join(' ').toLowerCase();
+      if (hay.indexOf(q) >= 0) out.push({ type: '商机', id: o.id, name: o.name, exact: o.id.toLowerCase() === q });
+    });
+    return out;
+  }
+
+  /* ---------------------------------------------------------- 对象匹配 */
+
+  function doMatch(term) {
+    var list = search(term);
+    if (!list.length) { state.matched = { kind: 'none', list: [] }; return; }
+    var exact = list.filter(function (x) { return x.exact; });
+    state.matched = { kind: exact.length === 1 ? 'exact' : 'multi', list: list, exact: exact };
+  }
+
+  /* ---------------------------------------------------------- 生成结果 */
+  /* 生成只做字段映射与证据标注：来源内容始终不等于正式业务事实。
+     联系人只关联已有联系人，不自动创建；无合法业务对象不能写入。
+     截止时间没有来源依据时不得由 AI 编造，缺失未补齐前不得写入。 */
+  function generate() {
+    var text = state.text.trim();
+    var ctx = state.ctx;
+    var when = (text.match(/\d{4}-\d{1,2}-\d{1,2}|\d{1,2}月\d{1,2}日/) || [''])[0];
+    var channel = (text.match(/电话|沟通|面访|拜访|会议|微信|邮件/) || [''])[0];
+    var next = (text.match(/[^。；]*?(下一步|下周|明天|计划|需要|需)[^。；]*/g) || [])[0] || '';
+
+    var fields = [
+      { k: '沟通方式', v: channel || '', c: channel ? '事实' : '缺失', e: channel ? '原文出现「' + channel + '」' : '原文未提及沟通方式' },
+      { k: '沟通对象', v: ctx ? ctx.name : '', c: ctx ? '推断' : '缺失', e: ctx ? '按已选主上下文「' + ctx.name + '」推断对接对象，联系人只关联已有联系人，不自动创建' : '尚未确定业务对象' },
+      { k: '沟通时间', v: when || '', c: when ? '事实' : '缺失', e: when ? '原文出现时间表述「' + when + '」' : '原文未出现时间表述' },
+      { k: '沟通内容', v: text, c: '事实', e: '本次原始输入（文字为必需来源）' },
+      { k: '客户诉求', v: '', c: '缺失', e: '原文未结构化为明确诉求，须人工补齐' },
+      { k: '共识与承诺', v: '', c: '缺失', e: '原文未出现双方共识表述' },
+      { k: '下一步动作', v: next, c: next ? '推断' : '缺失', e: next ? '原文出现「' + next + '」，作为候选任务来源' : '原文未出现下一步表述，不生成候选任务' }
+    ];
+
+    var tasks = [];
+    if (next) {
+      tasks.push({
+        fields: [
+          { k: '任务名称', v: next, c: '推断', e: '来自原文下一步表述' },
+          { k: '截止时间', v: '', c: '缺失', e: '原文没有可依据的截止时间，AI 不得编造；缺失未补齐前不得写入' },
+          { k: '业务类型', v: ctx && ctx.type === '商机' ? '商机推进' : '客户跟进', c: '推断', e: '按主上下文对象类型推断' },
+          { k: '责任人', v: S.currentUser().name, c: '事实', e: '谁发起 Agent 提炼谁确认候选；正式责任人可在此改为他人' }
+        ]
+      });
+    }
+
+    state.generated = {
+      at: S.now(),
+      sourceVersion: state.source === '文字输入'
+        ? '文字输入 ' + S.now() + '（本次原始输入）'
+        : state.source + '（当次解析版本，原型不复制原件，只保存来源 ID 与版本）',
+      activity: { fields: fields },
+      tasks: tasks,
+      missing: fields.filter(function (f) { return f.c === '缺失'; }).length
+    };
+    state.invalid = false;
+  }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function certaintyTag(c) {
+    return c === '事实' ? ui.tag('事实', 'ok') : c === '推断' ? ui.tag('推断', 'warn') : ui.tag('缺失', 'bad');
+  }
+
+  function fieldRows(fields) {
+    return fields.map(function (f) {
+      return '<div class="ao-fv"><span class="ao-fv__k">' + ui.esc(f.k) + '</span>' +
+        '<span class="ao-fv__v">' + (f.v ? ui.esc(f.v) : '<span class="ry-hint">待人工补齐</span>') +
+        ' ' + certaintyTag(f.c) + '<br><span class="ry-hint">' + ui.esc(f.e) + '</span></span></div>';
+    }).join('');
+  }
+
+  function render() {
+    var html = '';
+
+    html += ui.banner('外部材料、AI 推断和未确认候选都不是正式业务事实。所有正式写入都必须由人逐条确认；' +
+      'Agent 不新建正式客户、联系人、线索或商机。', 'warn');
+
+    /* 来源输入 */
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>来源输入</h3>' +
+      '<div class="ry-hcard__extra">' + ui.tag('文字为必需来源', 'info') + '</div></div>' +
+      '<div class="ry-hcard__body">' +
+      '<div class="ao-src">' + SOURCES.map(function (s) {
+        var cls = 'ry-chip' + (state.source === s.k ? ' is-on' : '') + (s.on === false ? ' is-off' : '');
+        return '<button type="button" class="' + cls + '" data-src="' + ui.esc(s.k) + '">' + ui.esc(s.k) +
+          (s.core ? '（必需）' : '') + (s.on === false ? '·未启用' : '') + '</button>';
+      }).join('') + '</div>' +
+      '<div class="ry-field" style="margin-top:10px"><label class="ry-field__label">沟通原文<i class="ry-req">必填</i></label>' +
+        '<textarea class="ry-input" id="ao-text" rows="5" placeholder="粘贴或输入本次沟通的原始文字，例如：今天下午电话联系了对方，客户咨询…，下周再确认…">' +
+        ui.esc(state.text) + '</textarea></div>' +
+      '<div class="ry-acts-row"><button class="ry-btn ry-btn--sm" id="ao-sample">填入示例文字</button>' +
+        '<label class="ry-btn ry-btn--sm" for="ao-upload">上传文字记录</label>' +
+        '<input id="ao-upload" type="file" accept=".txt,.md,text/plain,text/markdown" style="position:absolute;width:1px;height:1px;opacity:0" aria-label="上传文字记录">' +
+        '<button class="ry-btn ry-btn--sm" id="ao-extra">选择增强来源</button></div>' +
+      (state.uploaded ? '<p class="ry-hint">已导入：' + ui.esc(state.uploaded) + '。文字已填入沟通原文，可继续编辑；原型不保存原文件。</p>' : '') +
+      '<p class="ry-hint" id="ao-src-note">' + ui.esc(SOURCES.filter(function (s) { return s.k === state.source; })[0].note) + '</p>' +
+      (state.extra.length ? '<div class="ao-src">' + state.extra.map(function (x) {
+        return '<span class="ry-chip is-on">' + ui.esc(x) + '</span>';
+      }).join('') + '</div><p class="ry-hint">已在大圆、瑞赢或统一文件存储中的原件不在 Agent 重复复制，只保存来源 ID、版本、类型和时间。</p>' : '') +
+      '<p class="ry-hint">工作手机自动采集本期不进入：无入口、接口、配置和验收。</p>' +
+      '</div></div>';
+
+    /* 上下文 */
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>业务上下文</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">权限内检索</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+      (state.ctx ?
+        '<div class="ao-pick"><div class="ao-pick__t"><span>' + ui.tag(state.ctx.type, 'info') + ' ' + ui.esc(state.ctx.name) + '</span>' +
+          '<button class="ry-btn ry-btn--sm" id="ao-ctx-change">更换</button></div>' +
+        '<p class="ry-hint">' + ui.esc(state.ctx.id) + ' · 主上下文；关联对象仅作参考。从对象详情进入时自动带入当前对象。</p></div>'
+        :
+        '<button class="ry-btn ry-btn--primary" id="ao-ctx-pick">选择主上下文对象</button>' +
+        '<p class="ry-hint">从统一 AI 入口进入时，由用户选择对象，或由系统匹配后交用户确认；无匹配不得自动创建客户、联系人、线索或商机。</p>') +
+      '</div></div>';
+
+    /* 对象匹配 */
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>对象匹配</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">精确优先 · 歧义人工选择</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+      '<div class="cl-search__box" style="display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--surface)">' +
+        '<input id="ao-q" type="search" placeholder="输入客户名称／别名／统一社会信用代码／对象编号" autocomplete="off" style="flex:1;border:0;outline:0;font-size:14px;background:transparent">' +
+        '<button class="ry-btn ry-btn--sm" id="ao-go">匹配</button></div>' +
+      (state.matched ? matchHtml() : '<p class="ry-hint">只在当前用户有权数据范围内匹配；无权对象不返回名称、数量与摘要。</p>') +
+      '</div></div>';
+
+    /* 生成结果 */
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>生成结果</h3>' +
+      '<div class="ry-hcard__extra">' + ui.tag('未确认候选', 'warn') + '</div></div>' +
+      '<div class="ry-hcard__body">' +
+      '<div class="ry-acts-row"><button class="ry-btn ry-btn--primary" id="ao-gen">生成候选</button>' +
+        (state.generated ? '<button class="ry-btn" id="ao-regen">重新生成</button>' : '') + '</div>' +
+      generatedHtml() +
+      '</div></div>';
+
+    /* 本页契约 */
+    html += '<div class="ry-hcard ry-hcard--flat" style="margin-top:14px">' +
+      '<div class="ry-hcard__head"><h3>本页契约</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">PG-AI-ORGANIZE</span></div></div>' +
+      '<div class="ry-hcard__body">' + ui.kv([
+        ['页面契约', 'PG-AI-ORGANIZE · 沟通整理'],
+        ['所属模块', 'Agent（05 Agent 候选与人工确认）'],
+        ['端', '企业微信 H5'],
+        ['可进入角色', 'ALL5：R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员'],
+        ['PRD 来源', 'prd/05 §3～§4（§3 端职责与页面、§4 主动触发与系统预生成）'],
+        ['覆盖 AC', 'AI-01 AI-13 AI-17 AI-18 AI-44 AI-47'],
+        ['本页视图', '沟通整理｜文字输入或本地文字记录导入为必需来源｜大圆文档／录音／图片／会议纪要｜候选生成｜来源版本｜权限内检索'],
+        ['关键边界', 'AI 只生成候选；无匹配不强绑、不自动创建；来源更新旧候选失效并重新生成；未确认候选不得进入日报正式事实正文']
+      ]) + '</div></div>';
+
+    ui.qs('#ao-host').innerHTML = html;
+    bind();
+  }
+
+  function matchHtml() {
+    var m = state.matched;
+    if (m.kind === 'none') {
+      return '<p class="ry-hint">没有匹配到有权对象。<b>无匹配不得自动创建客户、联系人、线索或商机</b>，也不强绑；' +
+        '可改为手工录入，或先到正式入口创建对象后再整理。</p>' +
+        '<div class="ry-acts-row" style="margin-top:8px"><a class="ry-btn" href="' + RY.nav.href('h5/lead/create.html') + '">手工新建线索</a>' +
+        '<a class="ry-btn" href="' + RY.nav.href('h5/agent/index.html') + '">返回瑞赢 AI</a></div>';
+    }
+    var head = m.kind === 'exact'
+      ? '<p class="ry-hint">单一可信结果，已默认选中并明确展示；可人工改选。</p>'
+      : '<p class="ry-hint">多个匹配结果必须人工选择；系统只推荐，不自动绑定。</p>';
+    return head + m.list.map(function (x) {
+      var on = state.ctx && state.ctx.id === x.id;
+      return '<div class="ao-pick" style="margin-bottom:8px">' +
+        '<div class="ao-pick__t"><span>' + ui.tag(x.type, x.exact ? 'ok' : 'muted') + ' ' + ui.esc(x.name) + '</span>' +
+        '<button class="ry-btn ry-btn--sm' + (on ? ' is-on' : '') + '" data-pick="' + ui.esc(x.id) + '">' + (on ? '已选为主上下文' : '选为主上下文') + '</button></div>' +
+        '<p class="ry-hint">' + ui.esc(x.id) + (x.exact ? ' · 唯一标识精确匹配' : ' · 模糊匹配，仅推荐') + '</p></div>';
+    }).join('') +
+      '<p class="ry-hint">用户可人工改选，不要求填写理由；系统保存原推荐与最终选择。仍无合适对象时不得强绑。</p>';
+  }
+
+  function generatedHtml() {
+    var g = state.generated;
+    if (!g) {
+      return '<p class="ry-hint">尚未生成。生成前请确认来源输入与主上下文；上下文切换后原输入可以保留，但已生成候选立即失效并须重新生成。</p>';
+    }
+    var html = '<div class="ry-brief ry-brief--' + (state.invalid ? 'bad' : 'info') + '">' +
+      '<div class="ry-brief__row"><span class="ry-brief__k">来源版本</span><span>' + ui.esc(g.sourceVersion) + '</span></div>' +
+      '<p class="ry-hint" style="margin:6px 0 0">生成时间 ' + ui.esc(g.at) + '　缺失字段 ' + g.missing + ' 项（缺失未补齐前不得写入）</p>' +
+      '</div>';
+
+    if (state.invalid) {
+      html += ui.banner('来源版本已更新（v2 → v3），本次候选已失效并不可确认。来源变化不得原地覆盖：' +
+        '旧候选失效，须基于最新来源重新生成。', 'bad') +
+        '<div class="ry-acts-row"><button class="ry-btn ry-btn--primary" id="ao-regen2">基于最新来源重新生成</button></div>';
+      return html;
+    }
+
+    html += '<div class="ao-cand"><div class="ao-cand__t"><b>候选销售活动（1 条）</b>' + ui.tag('待确认', 'warn') + '</div>' +
+      '<p class="ry-hint">一次沟通默认生成一条候选销售活动；字段严格映射正式销售活动字段，不建立第二套业务模型。</p>' +
+      fieldRows(g.activity.fields) + '</div>';
+
+    if (g.tasks.length) {
+      html += g.tasks.map(function (t, i) {
+        return '<div class="ao-cand"><div class="ao-cand__t"><b>候选任务（' + (i + 1) + '）</b>' + ui.tag('待确认', 'warn') + '</div>' +
+          fieldRows(t.fields) + '</div>';
+      }).join('');
+    } else {
+      html += '<p class="ry-hint">本次输入没有出现「下一步」类表述，因此不生成候选任务：截止时间与责任人没有来源依据时，AI 不编造。</p>';
+    }
+
+    var sim = similarCandidates();
+    if (sim.length) {
+      html += '<div class="ry-brief ry-brief--muted"><p class="ry-hint">检测到 ' + sim.length +
+        ' 条与主上下文相关的候选或来源（' + ui.esc(sim.map(function (c) { return c.id; }).join('、')) +
+        '）。多来源指向同一事实时不自动合并候选，仅提示相关来源或相似候选。</p></div>';
+    }
+
+    html += '<div class="ry-acts-row" style="margin-top:10px">' +
+      '<a class="ry-btn ry-btn--primary" href="' + RY.nav.href('h5/agent/confirm.html') + '">去逐条确认</a>' +
+      '<button class="ry-btn" id="ao-src-upd">演示：来源版本更新</button>' +
+      '<button class="ry-btn" id="ao-revoke">演示：来源撤权</button></div>' +
+      '<p class="ry-hint">原型说明：本页展示的是生成结果本身；候选记录的落库与状态机由服务端候选层承担，' +
+      '逐条确认与正式写入在「候选确认」页对当前待确认候选执行，确认前不会产生任何正式业务对象。</p>';
+    return html;
+  }
+
+  /* ---------------------------------------------------------- 交互 */
+
+  function bind() {
+    ui.qsa('[data-src]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var k = b.getAttribute('data-src');
+        var s = SOURCES.filter(function (x) { return x.k === k; })[0];
+        if (!s.on) { ui.toast('「' + k + '」解析开关未启用（POC 未通过），不阻塞文字核心闭环。', 'warn'); return; }
+        state.source = k;
+        render();
+      });
+    });
+
+    var ta = ui.qs('#ao-text');
+    if (ta) ta.addEventListener('input', function () { state.text = ta.value; });
+
+    var upload = ui.qs('#ao-upload');
+    if (upload) upload.addEventListener('change', function () {
+      var file = upload.files && upload.files[0];
+      if (!file) return;
+      if (!/\.(txt|md)$/i.test(file.name) || file.size > 1024 * 1024) {
+        ui.toast('请选择 1 MB 以内的 .txt 或 .md 文字记录。', 'warn'); return;
+      }
+      var reader = new FileReader();
+      reader.onload = function () {
+        state.text = String(reader.result || '');
+        state.source = '文字输入';
+        state.uploaded = file.name;
+        if (state.generated) state.invalid = true;
+        render();
+        ui.toast('文字记录已导入，请核对原文后生成候选。', 'ok');
+      };
+      reader.onerror = function () { ui.toast('读取文字记录失败，请重试。', 'warn'); };
+      reader.readAsText(file);
+    });
+
+    var sm = ui.qs('#ao-sample');
+    if (sm) sm.addEventListener('click', function () {
+      state.text = '今天下午电话联系了对方，客户计划 9 月 28 日安排现场交流，' +
+        '下一步由张岚整理技术方案初稿并确认采购主体。';
+      render();
+    });
+
+    var ex = ui.qs('#ao-extra');
+    if (ex) ex.addEventListener('click', function () {
+      RY.nav.sheet({
+        title: '选择增强来源', sub: '0.1 正式增强输入 · 分项 POC 与开关启用',
+        body: '<div class="ao-src">' + ['大圆企微文档', '录音文件', '图片', '文件'].map(function (k) {
+          return '<button type="button" class="ry-chip' + (state.extra.indexOf(k) >= 0 ? ' is-on' : '') + '" data-extra="' + k + '">' + k + '</button>';
+        }).join('') + '</div>' +
+        '<p class="ry-hint" style="margin-top:10px">原型不产生真实文件：录音、图片和文件统一进入文件存储，Agent 只保存文件 ID；' +
+        '保存当次实际用于生成的转写、OCR 或解析结果版本，以及候选使用的必要证据片段或定位信息。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>确定</button>',
+        onOpen: function (host, close) {
+          host.addEventListener('click', function (e) {
+            var b = e.target.closest('[data-extra]');
+            if (!b) return;
+            var k = b.getAttribute('data-extra');
+            var i = state.extra.indexOf(k);
+            if (i >= 0) state.extra.splice(i, 1); else state.extra.push(k);
+            b.classList.toggle('is-on');
+          });
+        }
+      });
+    });
+
+    var cp = ui.qs('#ao-ctx-pick') || ui.qs('#ao-ctx-change');
+    if (cp) cp.addEventListener('click', pickContext);
+
+    var go = ui.qs('#ao-go');
+    if (go) go.addEventListener('click', function () { doMatch(ui.qs('#ao-q').value); render(); });
+
+    ui.qsa('[data-pick]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-pick');
+        var x = state.matched.list.filter(function (y) { return y.id === id; })[0];
+        if (!x) return;
+        state.ctx = { type: x.type, id: x.id, name: x.name };
+        if (state.generated) { state.invalid = true; ui.toast('上下文已切换，已生成候选立即失效，须重新生成。', 'warn'); }
+        render();
+      });
+    });
+
+    var gn = ui.qs('#ao-gen');
+    if (gn) gn.addEventListener('click', function () {
+      state.text = ui.qs('#ao-text').value;
+      if (!state.text.trim()) { ui.toast('文字输入为必需来源，请先填写沟通原文。', 'warn'); return; }
+      if (!state.ctx) { ui.toast('请先选择主上下文对象：无合法业务对象不能正式写入销售活动。', 'warn'); return; }
+      generate();
+      render();
+      ui.toast('已生成候选结果（未确认，不是正式业务事实）。', 'ok');
+    });
+
+    var rg = ui.qs('#ao-regen') || ui.qs('#ao-regen2');
+    if (rg) rg.addEventListener('click', function () { generate(); render(); ui.toast('已基于当前来源重新生成候选。', 'ok'); });
+
+    var su = ui.qs('#ao-src-upd');
+    if (su) su.addEventListener('click', function () {
+      state.invalid = true;
+      render();
+      ui.toast('来源版本已更新，原候选失效。', 'warn');
+    });
+
+    var rv = ui.qs('#ao-revoke');
+    if (rv) rv.addEventListener('click', function () {
+      ui.modal({
+        title: '来源撤权后的行为',
+        size: 'sm',
+        body: '<p>候选未确认前撤权：不再展示无权原文、不允许确认、候选失效，只保留最小审计元数据。</p>' +
+          '<p class="ry-hint">正式写入后撤权完全回归原业务模块权限，不因对象由 AI 辅助创建而保留额外访问权。' +
+          '撤权后前台不继续展示无权原文；审计只保留最小必要元数据。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+      });
+    });
+  }
+
+  /* 上下文选择：权限内检索 + 人工选择，禁止无匹配强绑。 */
+  function pickContext() {
+    RY.nav.sheet({
+      title: '选择主上下文对象', sub: '只在当前用户有权数据范围内检索',
+      body: '<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--surface)">' +
+          '<input id="ao-ctx-q" type="search" placeholder="输入客户名称／别名／信用代码／对象编号" style="flex:1;border:0;outline:0;font-size:14px;background:transparent">' +
+          '<button class="ry-btn ry-btn--sm" id="ao-ctx-go">检索</button></div>' +
+        '<div id="ao-ctx-list" style="margin-top:10px"></div>' +
+        '<p class="ry-hint">匹配到无权对象时不侧漏名称、数量和正文；无匹配不强绑、不自动创建。</p>',
+      footer: '<button class="ry-btn" data-close>取消</button>',
+      onOpen: function (host, close) {
+        function run() {
+          var term = ui.qs('#ao-ctx-q', host).value;
+          var list = search(term);
+          ui.qs('#ao-ctx-list', host).innerHTML = !term.trim()
+            ? '<p class="ry-hint">输入关键词开始检索。可先试「远驰」「盈川」或对象编号。</p>'
+            : (list.length
+              ? list.map(function (x) {
+                return '<div class="ao-pick" style="margin-bottom:8px"><div class="ao-pick__t"><span>' +
+                  ui.tag(x.type, x.exact ? 'ok' : 'muted') + ' ' + ui.esc(x.name) + '</span>' +
+                  '<button class="ry-btn ry-btn--sm ry-btn--primary" data-ctx="' + ui.esc(x.id) + '">选为上下文</button></div>' +
+                  '<p class="ry-hint">' + ui.esc(x.id) + '</p></div>';
+              }).join('')
+              : '<p class="ry-hint">没有匹配到有权对象。无匹配不得自动创建客户、联系人、线索或商机，也不强绑。</p>');
+          ui.qsa('[data-ctx]', host).forEach(function (b) {
+            b.addEventListener('click', function () {
+              var id = b.getAttribute('data-ctx');
+              var x = list.filter(function (y) { return y.id === id; })[0];
+              state.ctx = { type: x.type, id: x.id, name: x.name };
+              if (state.generated) state.invalid = true;
+              close();
+              render();
+            });
+          });
+        }
+        ui.qs('#ao-ctx-go', host).addEventListener('click', run);
+        ui.qs('#ao-ctx-q', host).addEventListener('input', run);
+        run();
+      }
+    });
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

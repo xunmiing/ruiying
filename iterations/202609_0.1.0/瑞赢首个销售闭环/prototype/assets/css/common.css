@@ -1,0 +1,286 @@
+/* ==========================================================================
+ * 瑞赢 0.1 · 原型公共基础样式（common.css）
+ * --------------------------------------------------------------------------
+ * 设计变量沿用既有原型「同步区」的 :root 令牌，保证同一套视觉语言；
+ * 本文件只放跨页复用的基础元素：变量、重置、排版、按钮、标签、表单、
+ * 键值列表、提示条、脱敏、空态与状态卡。
+ * 页面专属样式写在各自 HTML 的 <style> 中。
+ * ========================================================================== */
+
+:root {
+  --brand: #0E6E62;
+  --brand-ink: #0A5449;
+  --brand-soft: #E8F2F0;
+  --brand-line: #BFDCD7;
+  --ink: #161B1F;
+  --muted: #5C6A72;
+  --faint: #8A969C;
+  --line: #DCE3E6;
+  --line-soft: #EDF1F2;
+  --bg: #F5F7F8;
+  --surface: #FFFFFF;
+  --warn: #B7791F;
+  --warn-soft: #FDF4E3;
+  --warn-line: #EFDCB4;
+  --danger: #B4423A;
+  --danger-soft: #FBECEA;
+  --danger-line: #EEC7C3;
+  --info: #2B6CB0;
+  --info-soft: #EBF2FA;
+  --info-line: #C5DBF0;
+  --ok: #2F7D5C;
+  --ok-soft: #E9F5EF;
+  --ok-line: #C3E2D3;
+  --r-card: 12px;
+  --r-btn: 10px;
+  --r-tag: 6px;
+  --sh: 0 8px 24px rgba(16, 24, 32, .10);
+  --sh-sm: 0 2px 8px rgba(16, 24, 32, .06);
+  --mono: ui-monospace, "SF Mono", "Roboto Mono", "Menlo", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+body.ry-locked { overflow: hidden; }
+
+a { color: var(--brand); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.35; }
+h1 { font-size: 19px; }
+h2 { font-size: 16px; }
+h3 { font-size: 14px; }
+h4 { font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
+p { margin: 0 0 8px; }
+
+code { font-family: var(--mono); font-size: 12px; background: var(--line-soft); padding: 1px 5px; border-radius: 4px; }
+
+.ry-muted { color: var(--muted); }
+.ry-faint { color: var(--faint); }
+.ry-hint { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.ry-mono { font-family: var(--mono); }
+
+/* ------------------------------------------------------------------ 按钮 */
+
+.ry-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 12px; font-size: 12.5px; font-family: inherit;
+  color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--r-btn);
+  cursor: pointer; transition: .16s; white-space: nowrap;
+}
+.ry-btn:hover { border-color: var(--brand-line); color: var(--brand-ink); }
+.ry-btn--primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+.ry-btn--primary:hover { background: var(--brand-ink); border-color: var(--brand-ink); color: #fff; }
+.ry-btn--danger { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
+.ry-btn--danger:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+.ry-btn--ghost { background: transparent; border-color: transparent; color: var(--brand); padding: 4px 6px; }
+.ry-btn--ghost:hover { background: var(--brand-soft); }
+.ry-btn--sm { padding: 4px 9px; font-size: 12px; }
+.ry-btn--block { width: 100%; justify-content: center; }
+.ry-btn:disabled, .ry-btn[disabled] { opacity: .5; cursor: not-allowed; }
+.ry-btn__lock { font-size: 10px; padding: 0 4px; border-radius: 4px; background: var(--line-soft); color: var(--faint); font-style: normal; }
+
+.ry-iconbtn {
+  width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); background: var(--surface); border-radius: 8px;
+  cursor: pointer; color: var(--muted); font-size: 12px;
+}
+.ry-iconbtn:hover { border-color: var(--brand-line); color: var(--brand-ink); }
+
+.ry-inline-btn {
+  border: 0; background: none; color: var(--brand); font-size: 12px; cursor: pointer;
+  padding: 0 4px; font-family: inherit;
+}
+.ry-inline-btn:hover { text-decoration: underline; }
+
+.ry-actions-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
+.ry-hr { border: 0; border-top: 1px dashed var(--line); margin: 16px 0; }
+
+.ry-noperm { color: var(--faint); font-size: 12px; }
+.ry-noperm i { font-style: normal; margin-left: 4px; color: var(--warn); }
+
+/* ------------------------------------------------------------------ 标签 */
+
+.ry-tag {
+  display: inline-flex; align-items: center; padding: 1px 7px; border-radius: var(--r-tag);
+  font-size: 11.5px; line-height: 1.7; background: var(--line-soft); color: var(--muted);
+  border: 1px solid transparent; white-space: nowrap;
+}
+.ry-tag--ok { background: var(--ok-soft); color: var(--ok); border-color: var(--ok-line); }
+.ry-tag--warn { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
+.ry-tag--bad { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-line); }
+.ry-tag--info { background: var(--info-soft); color: var(--info); border-color: var(--info-line); }
+.ry-tag--brand { background: var(--brand-soft); color: var(--brand-ink); border-color: var(--brand-line); }
+.ry-tag--muted { background: var(--line-soft); color: var(--faint); }
+
+.ry-req { font-style: normal; font-size: 10px; color: var(--danger); margin-left: 4px; }
+.ry-flag { font-style: normal; font-size: 11px; color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: var(--r-tag); padding: 0 5px; margin-left: 5px; }
+.ry-flag--muted { color: var(--faint); background: var(--line-soft); border-color: var(--line); }
+
+/* ------------------------------------------------------------------ 表单 */
+
+.ry-input {
+  width: 100%; padding: 6px 10px; font-size: 12.5px; font-family: inherit; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-btn);
+  outline: none; transition: .16s;
+}
+.ry-input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.ry-input::placeholder { color: var(--faint); }
+select.ry-input { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 14px) 13px, calc(100% - 9px) 13px; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 26px; }
+textarea.ry-input { resize: vertical; line-height: 1.65; }
+
+.ry-field { display: block; margin-bottom: 12px; }
+.ry-field__label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.ry-field__hint { display: block; font-size: 11.5px; color: var(--faint); margin-top: 4px; line-height: 1.6; }
+.ry-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.ry-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 16px; }
+
+.ry-check { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.ry-check input { accent-color: var(--brand); }
+
+.ry-switch { display: flex; align-items: flex-start; gap: 8px; padding: 7px 0; font-size: 12.5px; cursor: pointer; border-bottom: 1px dashed var(--line-soft); }
+.ry-switch input { accent-color: var(--brand); margin-top: 2px; }
+
+/* ------------------------------------------------------------- 键值列表 */
+
+.ry-kv { list-style: none; margin: 0; padding: 0; }
+.ry-kv li { display: flex; gap: 12px; padding: 7px 0; border-bottom: 1px dashed var(--line-soft); font-size: 12.5px; }
+.ry-kv li:last-child { border-bottom: 0; }
+.ry-kv li > span { flex: 0 0 132px; color: var(--muted); }
+.ry-kv li > b { flex: 1; font-weight: 500; word-break: break-all; }
+.ry-kv--tight li { padding: 5px 0; }
+.ry-kv--tight li > span { flex-basis: 108px; }
+
+/* ------------------------------------------------------------- 提示与横幅 */
+
+.ry-banner {
+  display: flex; gap: 12px; align-items: flex-start; justify-content: space-between;
+  padding: 10px 14px; border-radius: var(--r-card); border: 1px solid var(--line);
+  background: var(--surface); margin-bottom: 14px; font-size: 12.5px;
+}
+.ry-banner--info { background: var(--info-soft); border-color: var(--info-line); }
+.ry-banner--warn { background: var(--warn-soft); border-color: var(--warn-line); }
+.ry-banner--danger { background: var(--danger-soft); border-color: var(--danger-line); }
+.ry-banner--brand { background: var(--brand-soft); border-color: var(--brand-line); }
+.ry-banner__body { flex: 1; }
+.ry-banner__actions { flex: 0 0 auto; display: flex; gap: 8px; }
+
+.ry-toast-host { position: fixed; left: 50%; bottom: 42px; transform: translateX(-50%); z-index: 300; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+.ry-toast {
+  padding: 8px 16px; border-radius: 999px; background: rgba(22, 27, 31, .92); color: #fff;
+  font-size: 12.5px; box-shadow: var(--sh); opacity: 0; transform: translateY(8px); transition: .24s; max-width: 620px;
+}
+.ry-toast.is-in { opacity: 1; transform: translateY(0); }
+.ry-toast--warn { background: var(--warn); }
+.ry-toast--danger { background: var(--danger); }
+.ry-toast--success { background: var(--brand-ink); }
+
+/* ---------------------------------------------------------- 脱敏与展示 */
+
+.ry-masked { display: inline-flex; align-items: center; gap: 2px; }
+.ry-masked__v { font-family: var(--mono); letter-spacing: 1px; }
+.ry-masked__v.is-plain { letter-spacing: 0; color: var(--brand-ink); }
+.ry-hl { background: var(--warn-soft); border-bottom: 1px solid var(--warn-line); }
+
+/* ------------------------------------------------------------------ 卡片 */
+
+.ry-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); margin-bottom: 14px; overflow: hidden; }
+.ry-card__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 16px; border-bottom: 1px solid var(--line-soft); background: #FBFCFC; }
+.ry-card__extra { display: flex; gap: 8px; align-items: center; }
+.ry-card__body { padding: 14px 16px; }
+.ry-card__body--flush { padding: 0; }
+
+/* 页面级说明文字：H5 与 PC 共用的通用表达，不随端变化 */
+.ry-note { font-size: 12px; color: var(--muted); line-height: 1.8; }
+.ry-note + .ry-note { margin-top: 4px; }
+
+/* ------------------------------------------------------------- 空态与状态 */
+
+.ry-state { text-align: center; padding: 54px 24px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); }
+.ry-state__icon { font-size: 30px; margin-bottom: 10px; }
+.ry-state__title { font-size: 16px; margin-bottom: 8px; }
+.ry-state__body { color: var(--muted); font-size: 12.5px; max-width: 640px; margin: 0 auto 14px; line-height: 1.8; }
+.ry-state__actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.ry-state--warn { border-color: var(--warn-line); background: #FFFDF8; }
+.ry-state--danger { border-color: var(--danger-line); background: #FFFCFB; }
+.ry-state--info { border-color: var(--info-line); background: #FBFDFF; }
+
+/* -------------------------------------------------------------- 覆盖层 */
+
+.ry-mask {
+  position: fixed; inset: 0; z-index: 1000; background: rgba(16, 24, 32, .34);
+  display: flex; opacity: 0; transition: opacity .2s;
+}
+.ry-mask.is-in { opacity: 1; }
+.ry-mask { justify-content: flex-end; align-items: stretch; }
+
+.ry-drawer {
+  width: 520px; max-width: 92vw; background: var(--bg); display: flex; flex-direction: column;
+  box-shadow: var(--sh); transform: translateX(24px); transition: transform .22s;
+}
+.ry-mask.is-in .ry-drawer { transform: translateX(0); }
+.ry-drawer--sm { width: 420px; }
+.ry-drawer--lg { width: 680px; }
+
+.ry-modal {
+  width: 520px; max-width: 92vw; margin: auto; background: var(--bg); border-radius: var(--r-card);
+  display: flex; flex-direction: column; box-shadow: var(--sh); transform: translateY(10px) scale(.99); transition: transform .2s;
+  max-height: 88vh;
+}
+.ry-mask.is-in .ry-modal { transform: translateY(0) scale(1); }
+.ry-modal--sm { width: 420px; }
+.ry-modal--lg { width: 720px; }
+.ry-mask:has(.ry-modal) { justify-content: center; align-items: center; }
+
+.ry-layer__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.ry-layer__head h3 { font-size: 15px; }
+.ry-layer__sub { font-size: 11.5px; color: var(--muted); margin: 4px 0 0; line-height: 1.65; max-width: 520px; }
+.ry-layer__body { flex: 1; overflow: auto; padding: 16px 18px; }
+.ry-layer__foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--surface); }
+.ry-modal .ry-layer__body { background: var(--surface); }
+
+.ry-confirm { font-size: 13px; line-height: 1.8; }
+.ry-conflict p { margin-bottom: 10px; }
+
+/* --------------------------------------------------------------------------
+ * 跨页复用的小部件补充
+ * 以下类名此前只被页面引用而缺少样式定义，会造成「分隔线不显示、动作行不换行、
+ * 编码不区隔」等静默的视觉缺失。它们被多个业务页面共用，因此统一放在公共样式，
+ * 而不是在各自 HTML 里重复定义。
+ * -------------------------------------------------------------------------- */
+
+.ry-divider { height: 1px; background: var(--line-soft); margin: 14px 0; }
+
+.ry-acts-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.ry-card--flat { background: transparent; border-color: var(--line-soft); }
+.ry-card--flat .ry-card__head { background: transparent; }
+
+.ry-code { font-family: var(--mono); font-size: 11.5px; color: var(--muted); background: var(--line-soft); padding: 1px 5px; border-radius: 4px; }
+
+.ry-checks { display: flex; flex-wrap: wrap; gap: 7px 18px; }
+
+.ry-person-picker { display: grid; gap: 8px; min-width: 0; }
+.ry-person-picker__selected { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 30px; color: var(--muted); font-size: 12px; }
+.ry-person-picker__chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 3px 7px 3px 10px; color: var(--ink); }
+.ry-person-picker__chip button { border: 0; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 17px; line-height: 1; padding: 0 2px; }
+.ry-person-picker__results { max-height: 210px; overflow-y: auto; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--muted); font-size: 12px; padding: 7px; }
+.ry-person-picker__result { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; border-radius: 7px; background: transparent; text-align: left; color: var(--ink); cursor: pointer; padding: 8px; font: inherit; }
+.ry-person-picker__result:hover, .ry-person-picker__result.is-selected { background: var(--brand-soft); }
+.ry-person-picker__result b { flex: 0 0 auto; }
+.ry-person-picker__result small { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.ry-person-picker__result span { flex: 0 0 auto; color: var(--brand); }

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>消息 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：站内消息 */
+  .ms-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-btn); background: var(--surface); margin-bottom: 9px; }
+  .ms-row.is-unread { border-color: var(--brand-line); background: var(--brand-soft); }
+  .ms-row__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); margin-top: 6px; flex: none; }
+  .ms-row.is-unread .ms-row__dot { background: var(--brand); }
+  .ms-row__main { flex: 1; min-width: 0; }
+  .ms-row__h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .ms-row__h b { font-size: 13.5px; }
+  .ms-row__b { font-size: 12.5px; color: var(--muted); margin-top: 4px; line-height: 1.75; }
+  .ms-row__f { font-size: 11.5px; color: var(--faint); margin-top: 5px; }
+  .ms-row__act { white-space: nowrap; display: flex; flex-direction: column; gap: 6px; }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div class="ry-tabs" id="ms-tabs"></div>
+      <div id="ms-body"></div>
+    
+      <!-- 本页契约：评审对照用，列出页面契约编号与边界，不承载业务事实 -->
+      <section class="ry-card ry-card--flat">
+        <header class="ry-card__head">
+          <h3>本页契约</h3>
+          <div class="ry-card__extra"><span class="ry-hint">PG-GLOBAL-MESSAGE</span></div>
+        </header>
+        <div class="ry-card__body">
+          <ul class="ry-kv ry-kv--tight">
+            <li><span>页面契约</span><b>PG-GLOBAL-MESSAGE · PC · 首页与全局能力</b></li>
+            <li><span>依据</span><b>prd/00 §4；prd/07 §7；prd/08 §9</b></li>
+            <li><span>可进入角色</span><b>管理员（运营）</b></li>
+            <li><span>覆盖验收</span><b>AC-70</b></li>
+            <li><span>本页视图</span><b>站内消息、已读未读、来源深链、打开目标重新鉴权</b></li>
+          </ul>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+
+  /* 消息是当前账号本人的提醒。 */
+  var TABS = [['all', '全部'], ['unread', '未读'], ['read', '已读']];
+  var tab = ui.hash() || 'all';
+  if (!TABS.some(function (t) { return t[0] === tab; })) tab = 'all';
+
+  /* 消息深链目标 → 统一入口鉴权所需的页面契约。消息只做提醒与深链，不承载业务处理。 */
+  var LINK_PAGE = [
+    ['pc/customer/detail.html', 'customer.detail'],
+    ['pc/contact/detail.html', 'contact.detail'],
+    ['pc/lead/detail.html', 'lead.detail'],
+    ['pc/opportunity/detail.html', 'opp.detail'],
+    ['pc/processing/detail.html', 'processing'],
+    ['pc/processing/list.html', 'processing']
+  ];
+  function pageOf(link) {
+    for (var i = 0; i < LINK_PAGE.length; i++) if (link.indexOf(LINK_PAGE[i][0]) === 0) return LINK_PAGE[i][1];
+    return '';
+  }
+  function localHref(link) {
+    /* 消息里的深链按 PC 根写；本页在 pc/message/ 下，需要回到 pc/ 根相对定位。 */
+    return link.replace(/^pc\//, '../');
+  }
+
+  function msgs() {
+    /* 仅本人消息：原型按当前模拟身份筛选演示消息。 */
+    return S.all('messages').slice().sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
+  }
+
+  RY.nav.shell({
+    nav: '',
+    title: '消息',
+    subtitle: '站内消息只做<b>提醒与深链</b>，不承载业务处理；真正的处理动作都在目标业务页面完成并重新鉴权。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '消息' }],
+    actions: '<a class="ry-btn" href="../../pc.html">返回工作台首页</a><button class="ry-btn" id="ms-readall">全部标为已读</button>'
+  });
+
+  function renderTabs() {
+    var list = msgs();
+    ui.qs('#ms-tabs').innerHTML = TABS.map(function (t) {
+      var n = t[0] === 'all' ? list.length : t[0] === 'unread' ? list.filter(function (m) { return !m.read; }).length : list.filter(function (m) { return m.read; }).length;
+      return '<a class="ry-tab' + (tab === t[0] ? ' is-on' : '') + '" href="#' + t[0] + '" data-ms-go="' + t[0] + '">' + t[1] + '<i>' + n + '</i></a>';
+    }).join('');
+    ui.qsa('[data-ms-go]').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        tab = a.getAttribute('data-ms-go');
+        window.location.hash = tab;
+        renderTabs(); renderBody();
+      });
+    });
+  }
+
+  function renderBody() {
+    var list = msgs().filter(function (m) {
+      if (tab === 'unread') return !m.read;
+      if (tab === 'read') return m.read;
+      return true;
+    });
+    var unread = msgs().filter(function (m) { return !m.read; }).length;
+
+    var rows = list.map(function (m) {
+      var pk = pageOf(m.link || '');
+      var pageOk = pk ? RY.perm.page(pk) : true;
+      return '<div class="ms-row' + (m.read ? '' : ' is-unread') + '">' +
+        '<span class="ms-row__dot"></span>' +
+        '<div class="ms-row__main">' +
+          '<div class="ms-row__h">' + ui.tag(m.event, 'info') + '<b>' + ui.esc(m.title) + '</b>' + (m.read ? '' : ui.tag('未读', 'brand')) + '</div>' +
+          '<div class="ms-row__b">' + ui.esc(m.body) + '</div>' +
+          '<div class="ms-row__f">' + ui.esc(m.at) + '　消息编号 <code>' + ui.esc(m.id) + '</code>' +
+            (m.link ? '　深链目标：<code>' + ui.esc(m.link) + '</code>' : '　无跳转目标') + '</div>' +
+        '</div>' +
+        '<div class="ms-row__act">' +
+          (m.link
+            ? (pageOk
+              ? '<a class="ry-btn ry-btn--sm ry-btn--primary" href="' + localHref(m.link) + '">前往处理</a>'
+              : '<span class="ry-noperm" title="当前角色没有该目标页面的权限，跳转将被拒绝">前往处理<i>无权限</i></span>')
+            : '<span class="ry-hint">无需处理</span>') +
+          '<button class="ry-btn ry-btn--sm" data-ms-read="' + m.id + '" data-val="' + (m.read ? '0' : '1') + '">' + (m.read ? '标为未读' : '标为已读') + '</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    ui.qs('#ms-body').innerHTML =
+      ui.section('消息列表（' + list.length + '）',
+        rows || ui.empty(tab === 'unread' ? '当前没有未读消息。' : '当前没有消息。'),
+        '<span class="ry-hint">未读 ' + unread + ' 条 / 全部 ' + msgs().length + ' 条</span>') +
+      ui.banner('消息口径（本轮已确认）：<br>' +
+        '1. 消息只做<b>提醒与深链</b>，不承载审批、确认等业务处理；<br>' +
+        '2. 点击深链后，目标页面会按统一入口<b>重新鉴权</b>；对象被合并、删除或权限收敛时，目标页展示「对象不可用」而不是空白；<br>' +
+        '3. 消息为<b>本人可见</b>；正式使用时按当前登录账号过滤；<br>' +
+        '4. 消息模板、投递记录与企微事件白名单由<b>消息投递</b>管理页面维护；0.1 不建设消息静默合并与个人偏好设置。', 'info') +
+      ui.banner('处理记录与消息相互独立：批量、导入、导出的结果可以通过消息提醒进入，但结果明细只在<b>处理记录</b>中查看，且仅本人可见、保留 7 天。', 'muted');
+
+    ui.qsa('[data-ms-read]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        S.markMessageRead(b.getAttribute('data-ms-read'), b.getAttribute('data-val') === '1');
+        renderTabs(); renderBody();
+        /* 重复渲染页头是为了重建右上角的操作按钮：shell() 覆盖写入 #ry-top，
+           旧按钮随旧 DOM 一并移除，因此页面上始终只有一个 #ms-readall，
+           不会出现同名 id 并存。 */
+        RY.nav.shell({
+          nav: '', title: '消息',
+          subtitle: '站内消息只做<b>提醒与深链</b>，不承载业务处理；真正的处理动作都在目标业务页面完成并重新鉴权。',
+          crumbs: [{ label: '首页', href: 'pc.html' }, { label: '消息' }],
+          actions: '<a class="ry-btn" href="../../pc.html">返回工作台首页</a><button class="ry-btn" id="ms-readall">全部标为已读</button>'
+        });
+        bindReadAll();
+      });
+    });
+  }
+
+  function bindReadAll() {
+    var b = ui.qs('#ms-readall');
+    if (!b) return;
+    b.addEventListener('click', function () {
+      var n = msgs().filter(function (m) { return !m.read; }).length;
+      if (!n) { ui.toast('当前没有未读消息。', 'info'); return; }
+      ui.confirm({
+        title: '全部标为已读',
+        message: '<p>将把当前身份下的 <b>' + n + '</b> 条未读消息标为已读。</p><p class="ry-hint">标记只影响消息的已读状态，不改变任何业务对象与处理记录。</p>',
+        confirmText: '确认标记',
+        onConfirm: function () {
+          S.markAllMessagesRead();
+          ui.toast('已全部标为已读。', 'success');
+          renderTabs(); renderBody(); bindReadAll();
+        }
+      });
+    });
+  }
+
+  renderTabs();
+  renderBody();
+  bindReadAll();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

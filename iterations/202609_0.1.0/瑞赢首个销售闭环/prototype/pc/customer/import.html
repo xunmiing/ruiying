@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>固定模板导入（客户 / 联系人 / 线索） · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：固定模板导入 */
+  .imp-steps { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .imp-step { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--r-btn); background: var(--surface); font-size: 12.5px; color: var(--muted); }
+  .imp-step b { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; border-radius: 50%; background: var(--line-soft); color: var(--muted); font-size: 11px; }
+  .imp-step.is-on { border-color: var(--brand-line); background: var(--brand-soft); color: var(--brand-ink); }
+  .imp-step.is-on b { background: var(--brand); color: #fff; }
+  .imp-drop { border: 1px dashed var(--brand-line); border-radius: var(--r-card); padding: 22px; text-align: center; background: var(--brand-soft); }
+  .imp-drop__t { font-size: 13.5px; font-weight: 600; }
+  .imp-drop__s { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .imp-cols { font-size: 11.5px; color: var(--muted); font-family: var(--mono); word-break: break-all; }
+  .r-bad { background: #FFFDFD; }
+  .r-warn { background: #FFFEF8; }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="imp-state"></div>
+      <div id="imp-body">
+        <div class="imp-steps" id="imp-steps"></div>
+        <div id="imp-panel"></div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/customer-review-mode.js"></script>
+<script src="../../assets/js/contact-review-mode.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  function can(a, o) { return RY.perm.can(a, o); }
+  function deny(a) { return RY.perm.whyNot(a); }
+
+  var kindQ = ui.q('kind');
+  var kind = (kindQ === 'contact' || kindQ === 'lead') ? kindQ : 'customer';
+  var step = 1;
+  var rows = [];
+  var fileName = '', fileTags = [];
+
+  var NEED = { customer: 'customer.import', contact: 'contact.import', lead: 'lead.import' };
+  var BACK = { customer: 'list.html', contact: '../contact/list.html', lead: '../lead/list.html' };
+  var KIND_LABEL = { customer: '客户', contact: '联系人', lead: '线索' };
+  var PAGE_KEY = { customer: 'customer.create', contact: 'contact.list', lead: 'lead.create' };
+  var NAV_KEY = { customer: 'customer.list', contact: 'contact.list', lead: 'lead.list' };
+  var GROUP = { customer: '客户管理', contact: '客户管理', lead: '销售管理' };
+  /* 面包屑的 href 会被 navigation.js 加上 data-root 前缀，必须是「相对原型根」的路径。
+     三个入口（?kind=customer／contact／lead）都要正确，不能只对默认值正确。 */
+  var LIST_CRUMB = {
+    customer: { label: '客户列表', href: 'pc/customer/list.html' },
+    contact: { label: '联系人列表', href: 'pc/contact/list.html' },
+    lead: { label: '线索列表', href: 'pc/lead/list.html' }
+  };
+
+  RY.nav.shell({
+    nav: NAV_KEY[kind],
+    title: '固定模板导入',
+    subtitle: '只支持固定模板：模板字段由系统提供，不支持自定义字段映射，也不支持列顺序自动识别。',
+    crumbs: [{ label: '首页', href: 'pc.html' },
+      { label: GROUP[kind] },
+      LIST_CRUMB[kind],
+      { label: '固定模板导入' }],
+    actions: '<a class="ry-btn" href="' + BACK[kind] + '">返回列表</a>' +
+      ['customer', 'contact', 'lead'].map(function (k) {
+        return '<button class="ry-btn' + (k === kind ? ' ry-btn--primary' : '') + '" data-imp-switch="' + k + '">' + KIND_LABEL[k] + '导入</button>';
+      }).join('')
+  });
+
+  ui.qsa('[data-imp-switch]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var k = b.getAttribute('data-imp-switch');
+      if (k !== kind) window.location.href = 'import.html?kind=' + k;
+    });
+  });
+
+  if (!RY.perm.page(PAGE_KEY[kind]) || !can(NEED[kind])) {
+    ui.renderState('#imp-state', 'no-permission', {
+      title: '没有导入权限',
+      body: '<p>' + ui.esc(deny(NEED[kind])) + '</p>' +
+        '<p class="ry-hint">导入属于批量写入动作，需要独立于页面权限的动作权限；未授权时入口保留但不可执行。</p>',
+      actions: '<a class="ry-btn" href="' + BACK[kind] + '">返回列表</a>'
+    });
+    return;
+  }
+
+  /* 固定模板定义：客户、联系人、线索三套固定模板共用同一页契约与同一套逐行预检流程 */
+  var TPL = {
+    customer: {
+      title: '客户固定模板',
+      cols: ['客户名称*', '客户类型*', '统一社会信用代码', '客户来源', '经营区域*', '业务线*', '负责人*', '备注'],
+      sample: [
+        { r: 2, name: '宁波甬通汽车服务有限公司', type: '组织客户', credit: '91330200MA2AB1CD3E', source: '市场活动', region: 'RG-EAST', line: 'BL-UNSPECIFIED', owner: '张岚', note: '' },
+        { r: 3, name: '上海远驰汽车科技有限公司', type: '组织客户', credit: '91310115MA1K3XYZ7Q', region: 'RG-EAST', line: 'BL-CE', owner: '张岚', source: '转介绍', note: '' },
+        { r: 4, name: '', type: '组织客户', credit: '', region: 'RG-EAST', line: 'BL-CE', owner: '张岚', source: '市场活动', note: '' },
+        { r: 5, name: '合肥新能汽车服务有限公司', type: '组织客户', credit: '', region: '', line: 'BL-XNY', owner: '陈默', source: '销售挖掘', note: '' },
+        { r: 6, name: '杭州齐远汽车科技有限公司', type: '组织客户', credit: '91330100MA2XYZ8K9L', region: 'RG-EAST', line: 'BL-XNY', owner: '陈默', source: '市场活动', note: '' },
+        { r: 7, name: '苏州弘远车务有限公司', type: '组织客户', credit: '91320594MA1MN2PQ4R', region: 'RG-EAST', line: 'BL-CW', owner: '不存在用户', source: '市场活动', note: '' },
+        { r: 8, name: '广州盈川新能源集团有限公司', type: '集团客户', credit: '91440101MA5CD6EF8G', region: 'RG-SOUTH', line: 'BL-XNY', owner: '陈默', source: '其他', note: '' }
+      ],
+      key: function (x) { return x.credit || x.name; },
+      label: function (x) { return x.name || '（第 ' + x.r + ' 行，客户名称为空）'; }
+    },
+    contact: {
+      title: '联系人固定模板',
+      cols: ['联系人姓名*', '主要手机号', '其他手机号（顿号分隔）', '主要微信号', '其他微信号（顿号分隔）', '所属客户*', '客户角色*', '部门', '职务', '主要联系人'],
+      sample: [
+        { r: 2, name: '陈立', phone: '13500001234', otherPhones: '13600001234', wechat: 'chenli_work', otherWechats: 'chenli_private', customer: '上海远驰汽车科技有限公司', roles: '技术', dept: '技术中心', title: '技术经理', primary: '' },
+        { r: 3, name: '赵敏', phone: '13800006021', customer: '上海远驰汽车科技有限公司', roles: '决策、采购', dept: '采购中心', title: '采购总监', primary: '是' },
+        { r: 4, name: '吴楠', phone: '', customer: '宁波甬通汽车服务有限公司', roles: '使用', dept: '', title: '服务顾问', primary: '' },
+        { r: 5, name: '孙倩', phone: '13900003388', customer: '不存在的客户名称', roles: '财务', dept: '财务部', title: '财务经理', primary: '' },
+        { r: 6, name: '周敏', phone: '13600007742', customer: '杭州齐远汽车科技有限公司', roles: '使用', dept: '运营部', title: '运营负责人', primary: '是' }
+      ],
+      key: function (x) { return x.phone || x.name; },
+      label: function (x) { return x.name || '（第 ' + x.r + ' 行，姓名为空）'; }
+    },
+    lead: {
+      title: '线索固定模板',
+      cols: ['原始内容*', '来源*', '来源记录说明', '外部记录 ID', '候选业务线*', '归属方式*（负责人 或 线索池）', '负责人／线索池', '联系电话'],
+      sample: [
+        { r: 2, raw: '展会现场沟通：客户正在评估车务服务续约，希望本月内报价。', source: '市场活动', sourceRecord: '2026 秋季行业展会名单', ext: 'EXPO-2026-0918-0031', lines: 'BL-CW', own: '负责人', ownTo: '张岚', phone: '135****1111' },
+        { r: 3, raw: '400 来电咨询新能源充电设施集采，属新建项目，尚未立项。', source: '其他', sourceRecord: '400 来电记录', ext: '', lines: 'BL-XNY', own: '线索池', ownTo: 'POOL-XNY', phone: '' },
+        { r: 4, raw: '', source: '外部名单', sourceRecord: '第三方名录', ext: '', lines: 'BL-CE', own: '负责人', ownTo: '张岚', phone: '' },
+        { r: 5, raw: '客户明确拒绝车电业务对接，短期内无合作可能。', source: '销售挖掘', sourceRecord: '一线拜访记录', ext: '', lines: 'BL-CE', own: '负责人＋线索池', ownTo: '张岚 ／ POOL-CE', phone: '' },
+        { r: 6, raw: '某汽车城车务合作线索，与既有线索指向同一主体。', source: '外部名单', sourceRecord: '批量名单第二轮', ext: '', lines: 'BL-CW', own: '负责人', ownTo: '张岚', phone: '' },
+        { r: 7, raw: '受控试迁移批次中的历史线索，外部记录 ID 与既有记录一致。', source: '纷享销客迁移', sourceRecord: '受控试迁移', ext: 'FS-MIG-000137', lines: 'BL-CE', own: '负责人', ownTo: '张岚', phone: '' },
+        { r: 8, raw: '老客户推荐：其关联企业有车电零部件年度供货需求。', source: '转介绍', sourceRecord: '远驰科技 赵敏推荐', ext: '', lines: 'BL-CE,BL-CW', own: '负责人', ownTo: '陈默', phone: '136****2222' }
+      ],
+      key: function (x) { return x.ext || (x.ownTo + '｜' + x.lines); },
+      label: function (x) { return x.raw ? x.raw.slice(0, 24) + (x.raw.length > 24 ? '…' : '') : '（第 ' + x.r + ' 行，原始内容为空）'; }
+    }
+  };
+  var T = TPL[kind];
+
+  /* ---------------------------------------------------------------- 步骤条 */
+
+  function renderSteps() {
+    var names = ['下载固定模板', '上传并逐行预检', '人工确认', '异步执行与结果'];
+    ui.qs('#imp-steps').innerHTML = names.map(function (n, i) {
+      return '<span class="imp-step' + (step === i + 1 ? ' is-on' : '') + '"><b>' + (i + 1) + '</b>' + n + '</span>';
+    }).join('');
+  }
+
+  /* ------------------------------------------------------------ 步骤 1：模板 */
+
+  function panelTemplate() {
+    return ui.section('第 1 步：下载固定模板',
+      ui.banner('只支持系统提供的固定模板。模板字段、列顺序、必填项由系统定义；导入时<b>不做列名自动映射</b>，也不支持自定义字段。修改模板列名或增删列会导致整份文件校验不通过。', 'warn') +
+      ui.kv([
+        ['模板名称', T.title],
+        ['模板字段', '<span class="imp-cols">' + ui.esc(T.cols.join('　|　')) + '</span>'],
+        ['文件格式', 'CSV（UTF-8）；单次上限 100 行，超出需拆分'],
+        ['带 * 的列', '必填项，缺项该行预检不通过'],
+        ['不做的事', '不做字段映射配置、不做自动建档、不做重复数据自动合并']
+      ]) +
+      (kind === 'lead'
+        ? ui.banner('线索导入的归属列必须满足<b>二选一</b>：要么给出唯一的当前负责人，要么给出唯一的线索池；<b>两者同时填写或同时为空的行都不会写入</b>。' +
+          '技术幂等键（来源系统＋外部记录 ID）命中的行<b>硬阻断、永不重复创建</b>；线索与既有线索相似属于业务查重，只提示、需人工判断。', 'warn')
+        : '') +
+      '<div class="ry-actions-row">' +
+        '<button class="ry-btn ry-btn--primary" id="dl-tpl">下载固定模板（CSV）</button>' +
+        '<button class="ry-btn" id="dl-sample">下载示例数据</button>' +
+        '<button class="ry-btn" id="to-upload">已有文件，直接上传 →</button>' +
+      '</div>', kind === 'lead' ? '' : '<button type="button" data-pcn-rule="importTemplate">◆ 固定模板</button>') ;
+  }
+
+  /* ------------------------------------------------------------ 步骤 2：上传 */
+
+  function panelUpload() {
+    return ui.section('第 2 步：上传并逐行预检',
+      '<div class="imp-drop">' +
+        '<div class="imp-drop__t">把 ' + ui.esc(T.title) + ' 拖到这里，或选择文件</div>' +
+        '<div class="imp-drop__s">原型环境不真正读取本地文件内容；点击下方按钮使用内置示例数据模拟同一份文件的逐行预检结果。</div>' +
+        '<div class="ry-actions-row" style="justify-content:center;margin-top:12px">' +
+          '<button class="ry-btn ry-btn--primary" id="pick">选择文件</button>' +
+          '<button class="ry-btn" id="use-sample">使用示例文件</button>' +
+        '</div>' +
+      '</div>' +
+      ui.banner('上传后系统会先做<b>逐行预检</b>并列出问题行，不会直接写入。预检通过的行需要你<b>人工确认后</b>才进入异步执行。', 'info'),
+      '<span class="ry-hint">单次上限 100 行</span>' + (kind === 'lead' ? '' : '<button type="button" data-pcn-rule="importCheck">◆ 逐行预检</button>'));
+  }
+
+  /* ------------------------------------------------------ 步骤 3：逐行预检 */
+
+  function precheck() {
+    var out = [];
+    T.sample.forEach(function (x) {
+      var problems = [];
+      if (kind === 'customer') {
+        if (!x.name) problems.push({ level: 'bad', text: '客户名称为空，模板必填项未通过' });
+        if (!S.all('regions').some(function (r) { return r.code === x.region; })) problems.push({ level: 'bad', text: '经营区域为空或无效，整行不写入' });
+        if (!S.all('businessLines').some(function (b) { return b.code === x.line && b.status === '启用'; })) problems.push({ level: 'bad', text: '业务线为空、无效或已停用，整行不写入' });
+        if (!S.all('users').some(function (u) { return u.name === x.owner; })) problems.push({ level: 'bad', text: '负责人为空或不是有效用户，整行不写入' });
+        var dup = S.all('customers').filter(function (c) { return c.name === x.name; })[0];
+        if (dup && dup.status === '正常') {
+          problems.push({ level: 'warn', text: '命中已有客户「' + dup.name + '」（' + dup.id + '）：疑似客户重复，需人工判断是否继续建档' });
+        }
+      } else if (kind === 'contact') {
+        if (!x.name) problems.push({ level: 'bad', text: '联系人姓名为空，模板必填项未通过' });
+        var c = S.all('customers').filter(function (y) { return y.name === x.customer && y.status === '正常'; })[0];
+        if (!c) problems.push({ level: 'bad', text: '所属客户「' + x.customer + '」在系统中不存在，需先建档或改用客户编号' });
+        var inputPhones = [x.phone].concat((x.otherPhones || '').split('、')).filter(Boolean);
+        var same = S.all('contacts').filter(function (y) { return y.name === x.name && inputPhones.some(function (p) { return (y.phones || (y.phonePlain ? [y.phonePlain] : [])).indexOf(p) >= 0; }); })[0];
+        if (same) problems.push({ level: 'warn', text: '命中已有联系人「' + same.name + '」（' + same.id + '）：联系人重复，将复用已有记录并只建立客户关系' });
+        if (!x.roles) problems.push({ level: 'bad', text: '客户角色为空，模板必填项未通过' });
+      } else {
+        if (!x.raw) problems.push({ level: 'bad', text: '原始内容为空，模板必填项未通过' });
+        if (!x.source || !S.all('dicts').leadSource.some(function (s) { return s === x.source; })) {
+          problems.push({ level: 'bad', text: '来源「' + (x.source || '空') + '」不在线索来源目录内' });
+        }
+        var lines = (x.lines || '').split(',').filter(Boolean);
+        if (!lines.length) problems.push({ level: 'bad', text: '候选业务线为空，模板必填项未通过' });
+        lines.forEach(function (ln) {
+          if (!S.all('businessLines').some(function (b) { return b.code === ln && b.status === '启用'; })) {
+            problems.push({ level: 'bad', text: '候选业务线「' + ln + '」不在启用业务线目录内' });
+          }
+        });
+        // 归属必须二选一：有且只有一位当前负责人，或有且只有一个所属池
+        var both = x.own === '负责人＋线索池';
+        var toOwner = x.own === '负责人' ? x.ownTo : '';
+        var toPool = x.own === '线索池' ? x.ownTo : '';
+        if (both) {
+          problems.push({ level: 'bad', text: '同时填写了负责人与线索池，违反「负责人与所属池二选一」规则，该行不写入' });
+        } else if (toOwner) {
+          if (!S.all('users').some(function (us) { return us.name === toOwner; })) {
+            problems.push({ level: 'bad', text: '负责人「' + toOwner + '」不是系统内有效用户' });
+          }
+          if (lines.length > 1) {
+            problems.push({ level: 'warn', text: '该行标注了多条候选业务线，负责人收到的线索需在跟进时确认归属业务线' });
+          }
+        } else if (toPool) {
+          var pool = S.poolOf(toPool);
+          if (!pool) problems.push({ level: 'bad', text: '线索池「' + toPool + '」不存在' });
+          else if (pool.status !== '启用') problems.push({ level: 'bad', text: '线索池「' + pool.name + '」当前为「' + pool.status + '」，不接收新线索' });
+        } else {
+          problems.push({ level: 'bad', text: '未指定负责人或线索池，不满足「二选一」归属规则' });
+        }
+        // 技术幂等：来源系统＋外部记录 ID 命中 → 硬阻断，绝不重复创建
+        if (x.ext && S.all('leads').some(function (y) { return y.idempotencyKey === x.ext; })) {
+          problems.push({ level: 'bad', text: '技术幂等键「' + x.ext + '」已存在（来源系统＋外部记录 ID 重复），该行硬阻断，不重复创建' });
+        }
+        // 业务相似：仅提示，不阻断
+        if (x.raw && S.all('leads').some(function (y) { return y.raw && y.raw.slice(0, 12) === x.raw.slice(0, 12); })) {
+          problems.push({ level: 'warn', text: '与既有线索的原始内容高度相似：疑似线索重复，请人工判断是否继续导入' });
+        }
+      }
+      out.push({ row: x, problems: problems, verdict: problems.some(function (p) { return p.level === 'bad'; }) ? '失败' : problems.length ? '待确认' : '成功' });
+    });
+    return out;
+  }
+
+  function panelResult() {
+    var nOk = rows.filter(function (r) { return r.verdict === '成功'; }).length;
+    var nWarn = rows.filter(function (r) { return r.verdict === '待确认'; }).length;
+    var nBad = rows.filter(function (r) { return r.verdict === '失败'; }).length;
+    return ui.section('第 3 步：人工确认',
+      ui.banner('文件名：<code>' + ui.esc(fileName) + '</code>　共 ' + rows.length + ' 行。' +
+        '成功 <b>' + nOk + '</b>　待确认 <b>' + nWarn + '</b>　失败 <b>' + nBad + '</b>。' +
+        '<b>失败行不会写入</b>，也不会阻止其他行成功（部分成功）；待确认行需你逐项决定是否继续。', nBad ? 'warn' : 'info') +
+      '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr><th style="width:70px">行号</th><th>对象</th><th style="width:90px">预检结果</th><th>说明与处理建议</th><th style="width:150px">人工决定</th></tr></thead><tbody>' +
+      rows.map(function (r, i) {
+        var cls = r.verdict === '失败' ? 'r-bad' : r.verdict === '待确认' ? 'r-warn' : '';
+        return '<tr class="' + cls + '"><td class="ry-mono">第 ' + r.row.r + ' 行</td>' +
+          '<td>' + ui.esc(T.label(r.row)) + '<div class="imp-cols">' + ui.esc(T.key(r.row)) + '</div></td>' +
+          '<td>' + ui.tag(r.verdict, r.verdict === '成功' ? 'ok' : r.verdict === '失败' ? 'bad' : 'warn') + '</td>' +
+          '<td>' + (r.problems.length ? r.problems.map(function (p) { return (p.level === 'bad' ? '<span class="ry-bad-text">' : '') + ui.esc(p.text) + (p.level === 'bad' ? '</span>' : ''); }).join('<br>') : '<span class="ry-hint">无问题，可直接导入</span>') + '</td>' +
+          '<td>' + (r.verdict === '失败' ? '<span class="ry-hint">不写入</span>' :
+            (r.verdict === '待确认'
+              ? '<label class="ry-check"><input type="checkbox" data-keep="' + i + '"' + (r.keep ? ' checked' : '') + '> 仍然导入</label>'
+              : '<span class="ry-hint">默认导入</span>')) + '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<div class="ry-actions-row">' +
+        '<button class="ry-btn" id="back-upload">重新上传</button>' +
+        '<button class="ry-btn ry-btn--primary" id="do-import">确认导入（成功 ' + nOk + ' + 已勾选待确认项）</button>' +
+      '</div>' +
+      ui.banner('导入按「成功 + 你明确勾选的待确认项」执行。技术幂等键（来源系统＋外部记录 ID）命中的行<b>永不重复创建</b>，只做跳过并回写原因。', 'info'),
+      '<span class="ry-hint">第 3 步不可跳过</span>' + (kind === 'lead' ? '' : '<button type="button" data-pcn-rule="importConfirm">◆ 人工确认</button>'));
+  }
+
+  /* ------------------------------------------------------ 步骤 4：结果 */
+
+  function panelDone(job) {
+    return ui.section('第 4 步：异步执行与结果',
+      ui.banner('导入已提交为异步任务。本页只展示结果摘要；完整逐行明细、失败原因与重试入口在处理记录中查看。', job.status === '部分成功' ? 'warn' : 'info') +
+      ui.kv([
+        ['处理编号', '<code>' + ui.esc(job.processId) + '</code>'],
+        ['任务状态', ui.statusTag(job.status)],
+        ['总数／成功／失败', job.total + ' / ' + job.success + ' / ' + job.failed],
+        ['提交时间', ui.esc(job.submittedAt)],
+        ['记录保留', '处理记录只保留 7 天，且只有本人可见；不是正式审计的替代']
+      ]) + ui.jobResult(job) +
+      '<div class="ry-actions-row">' +
+        '<a class="ry-btn ry-btn--primary" href="../processing/detail.html?id=' + job.id + '&from=import">查看处理记录</a>' +
+        '<a class="ry-btn" href="' + BACK[kind] + '">返回列表</a>' +
+      '</div>', kind === 'lead' ? '' : '<button type="button" data-pcn-rule="importResult">◆ 导入结果</button>');
+  }
+
+  /* ---------------------------------------------------------------- 渲染 */
+
+  var currentJob = null;
+
+  function render() {
+    renderSteps();
+    var host = ui.qs('#imp-panel');
+    if (step === 1) host.innerHTML = panelTemplate();
+    if (step === 2) host.innerHTML = panelUpload();
+    if (step === 3) host.innerHTML = panelResult();
+    if (step === 4) host.innerHTML = panelDone(currentJob);
+    bind();
+  }
+
+  function bind() {
+    var dl = ui.qs('#dl-tpl'); if (dl) dl.addEventListener('click', function () {
+      ui.toast('原型环境不产生真实文件下载；固定模板字段见上方清单。', 'info');
+    });
+    var ds = ui.qs('#dl-sample'); if (ds) ds.addEventListener('click', function () {
+      ui.toast('原型环境不产生真实文件下载；点击「已有文件，直接上传」可用内置示例数据模拟。', 'info');
+    });
+    var tu = ui.qs('#to-upload'); if (tu) tu.addEventListener('click', function () { step = 2; render(); });
+    var pk = ui.qs('#pick'); if (pk) pk.addEventListener('click', function () {
+      fileName = T.title + '_' + KIND_LABEL[kind] + '导入_20260921.csv';
+      ui.toast('已选择文件：' + fileName + '（原型模拟）', 'info');
+      step = 3; rows = precheck(); render();
+    });
+    var us = ui.qs('#use-sample'); if (us) us.addEventListener('click', function () {
+      fileName = T.title + '_' + KIND_LABEL[kind] + '导入_20260921.csv';
+      step = 3; rows = precheck(); render();
+    });
+    var bu = ui.qs('#back-upload'); if (bu) bu.addEventListener('click', function () { step = 2; rows = []; render(); });
+    ui.qsa('[data-keep]').forEach(function (x) {
+      x.addEventListener('change', function () { rows[parseInt(x.getAttribute('data-keep'), 10)].keep = x.checked; });
+    });
+    var di = ui.qs('#do-import'); if (di) di.addEventListener('click', doImport);
+  }
+
+  function doImport() {
+    var willDo = rows.filter(function (r) { return r.verdict === '成功' || (r.verdict === '待确认' && r.keep); });
+    var skipped = rows.length - willDo.length;
+    if (!willDo.length) { ui.toast('没有可导入的行。请修正文件后重新上传。', 'warn'); return; }
+    ui.modal({
+      title: '确认提交导入', size: 'sm',
+      body: '<p>将写入 <b>' + willDo.length + '</b> 行；预检失败或未勾选的行 <b>' + skipped + '</b> 行不会写入。</p>' +
+        ui.banner('执行是异步的。已成功行不会重复执行；失败行可在处理记录中只重试失败项。', 'info'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="di-ok">确认导入</button>',
+      onOpen: function (el) {
+        ui.qs('#di-ok', el).addEventListener('click', function () {
+          ui.close();
+          var job = S.addJob({
+            type: '导入', action: T.title + '导入', object: KIND_LABEL[kind],
+            status: '处理中', total: willDo.length, sourceFile: fileName
+          });
+          S.updateJob(job.id, {
+            items: rows.map(function (r) {
+              var ok = r.verdict === '成功' || (r.verdict === '待确认' && r.keep);
+              return {
+                key: '第 ' + r.row.r + ' 行', name: T.label(r.row),
+                result: ok ? '成功' : '失败',
+                reason: ok ? '' : (r.problems.filter(function (p) { return p.level === 'bad'; })[0] || r.problems[0] || { text: '未勾选继续导入' }).text
+              };
+            })
+          });
+          ui.asyncRun({
+            title: '正在导入并逐行写回', total: willDo.length, processId: job.processId,
+            onDone: function () {
+              var succ = job.items.filter(function (x) { return x.result === '成功'; }).length;
+              var bad = job.items.length - succ;
+              S.updateJob(job.id, { status: bad === 0 ? '已完成' : (succ === 0 ? '失败' : '部分成功'), success: succ, failed: bad });
+              if (kind === 'customer') {
+                willDo.forEach(function (r) {
+                  if (S.all('customers').some(function (c) { return c.name === r.row.name; })) return;
+                  var owner = S.all('users').filter(function (u) { return u.name === r.row.owner; })[0];
+                  S.createCustomerWithInitialRelation({
+                    name: r.row.name, type: r.row.type, creditCode: r.row.credit,
+                    source: r.row.source, alias: '', remark: r.row.note
+                  }, { region: r.row.region, businessLine: r.row.line, owner: owner && owner.id }, 'customer-import:' + r.row.r + ':' + (r.row.credit || r.row.name));
+                });
+              } else if (kind === 'lead') {
+                willDo.forEach(function (r) {
+                  var row = r.row;
+                  if (row.ext && S.all('leads').some(function (y) { return y.idempotencyKey === row.ext; })) return;
+                  var ownerName = row.own === '负责人' ? row.ownTo : '';
+                  var ownerUser = S.all('users').filter(function (us) { return us.name === ownerName; })[0];
+                  S.createLead({
+                    raw: row.raw, source: row.source, sourceRecord: row.sourceRecord || '批量导入',
+                    phone: row.phone || '',
+                    candidateLines: (row.lines || '').split(',').filter(Boolean),
+                    owner: ownerUser ? ownerUser.id : '',
+                    currentPool: row.own === '线索池' ? row.ownTo : '',
+                    sourcePool: row.own === '线索池' ? row.ownTo : '',
+                    idempotencyKey: row.ext || ''
+                  });
+                });
+              } else {
+                willDo.forEach(function (r) {
+                  var c = S.all('customers').filter(function (y) { return y.name === r.row.customer && y.status === '正常'; })[0];
+                  if (!c) return;
+                  var inputPhones = [r.row.phone].concat((r.row.otherPhones || '').split('、')).filter(Boolean);
+                  var inputWechats = [r.row.wechat].concat((r.row.otherWechats || '').split('、')).filter(Boolean);
+                  var ex = S.all('contacts').filter(function (y) { return y.name === r.row.name && inputPhones.some(function (p) { return (y.phones || (y.phonePlain ? [y.phonePlain] : [])).indexOf(p) >= 0; }); })[0];
+                  var ct = ex || S.createContact({ name: r.row.name, phones: inputPhones, wechats: inputWechats, title: r.row.title, org: c.name });
+                  S.addContactRelation(ct.id, c.id, r.row.roles.split('、').filter(Boolean), r.row.dept, r.row.title, r.row.primary === '是');
+                });
+              }
+              ui.closeAll();
+              currentJob = S.job(job.id);
+              step = 4;
+              render();
+            }
+          });
+        });
+      }
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

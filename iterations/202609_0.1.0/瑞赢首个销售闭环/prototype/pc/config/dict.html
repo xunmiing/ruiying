@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>字典管理 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：A 类字典管理（左键右值） */
+  .dc-wrap { display: grid; grid-template-columns: 268px minmax(0, 1fr); gap: 14px; align-items: start; }
+  .dc-keys { max-height: 620px; overflow: auto; }
+  .dc-key { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+    text-align: left; padding: 8px 11px; border: 1px solid transparent; border-radius: var(--r-btn);
+    background: none; font: inherit; font-size: 12.5px; color: var(--text); cursor: pointer; }
+  .dc-key:hover { background: var(--surface-2); }
+  .dc-key.is-on { background: var(--brand-soft); border-color: var(--brand-line); font-weight: 600; }
+  .dc-key__c { font-size: 11.5px; color: var(--muted); font-weight: 400; }
+  .dc-vals { display: flex; flex-direction: column; gap: 7px; }
+  .dc-val { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border: 1px solid var(--line);
+    border-radius: var(--r-btn); background: var(--surface); }
+  .dc-val__i { width: 26px; font-size: 11.5px; color: var(--muted); }
+  .dc-val__n { flex: 1; font-size: 12.5px; }
+  .dc-val__n input { width: 100%; }
+  .dc-add { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .dc-add input { flex: 1; }
+  .dc-hist { font-size: 12px; color: var(--muted); line-height: 1.85; }
+  .dc-hist li { margin-bottom: 3px; }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="dc-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store;
+
+  RY.nav.shell({
+    nav: 'cfg.dict',
+    title: '字典管理',
+    subtitle: '<b>A 类配置</b>：保存即生效并留历史，<b>不建设配置审批与未来定时生效</b>。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '配置中心' }, { label: '字典管理' }]
+  });
+
+  var curKey = '';
+  var draftList = null;   /* 正在编辑的条目数组；只有「保存生效」才会写回 store */
+  var dirty = false;
+
+  function keys() { return Object.keys(S.configA('dict') || {}).filter(function (k) { return k !== 'history' && k !== 'customerIdentity' && k !== 'valueReview'; }); }
+  function values(k) { return (S.configA('dict') || {})[k] || []; }
+
+  function render() {
+    var ks = keys();
+    if (!ks.length) { ui.qs('#dc-host').innerHTML = ui.stateCard('empty', { title: '没有可用字典' }); return; }
+    if (ks.indexOf(curKey) < 0) curKey = ks[0];
+    if (!draftList) draftList = values(curKey).slice();
+    var d = S.configA('dict') || {};
+    var hist = (d.history || []).slice(-8).reverse();
+
+    var core = S.isCoreDict(curKey);
+    var canEditGroup = !core;
+    ui.qs('#dc-host').innerHTML =
+      '<div class="ry-hint">字典分组与条目维护 <button type="button" data-pcn-rule="cfgDictScope"></button></div>' +
+      '<div class="dc-wrap" style="margin-top:12px">' +
+        '<div class="ry-card"><header class="ry-card__head"><h3>字典分组</h3>' +
+          '<div class="ry-card__extra"><span class="ry-hint">' + ks.length + ' 组（' + S.CORE_DICT_GROUPS.length + ' 组核心只读）</span></div></header>' +
+        '<div class="ry-card__body ry-card__body--flush dc-keys" id="dc-keys">' +
+          ks.map(function (k) {
+            return '<button class="dc-key' + (k === curKey ? ' is-on' : '') + '" data-k="' + ui.esc(k) + '">' +
+              '<span>' + ui.esc(k) + (S.isCoreDict(k) ? ' 🔒' : '') + '</span><span class="dc-key__c">' + values(k).length + ' 项</span></button>';
+          }).join('') +
+        '</div></div>' +
+
+        '<div class="ry-card"><header class="ry-card__head"><h3>' + ui.esc(curKey) + (core ? '（核心枚举·只读）' : '') + '</h3>' +
+          (core ? '<button type="button" data-pcn-rule="cfgDictCore"></button>' : '') +
+          '<div class="ry-card__extra"><span class="ry-hint">共 ' + draftList.length + ' 项' +
+            (dirty ? '　<b style="color:var(--warn)">有未保存修改</b>' : '') + '</span></div></header>' +
+        '<div class="ry-card__body">' +
+          '<div class="dc-vals" id="dc-vals">' +
+            (draftList.length ? draftList.map(function (v, i) {
+              return '<div class="dc-val" data-i="' + i + '"><span class="dc-val__i">' + (i + 1) + '</span>' +
+                (core
+                  ? '<span class="dc-val__n">' + ui.esc(v) + '</span>'
+                  : '<span class="dc-val__n"><input type="text" value="' + ui.esc(v) + '" data-v="' + i + '"></span>') +
+                (canEditGroup ? '<button class="ry-btn ry-btn--sm" data-up="' + i + '" title="上移">↑</button>' +
+                  '<button class="ry-btn ry-btn--sm" data-down="' + i + '" title="下移">↓</button>' +
+                  '<button class="ry-btn ry-btn--sm" data-del="' + i + '">删除</button>' : '') +
+              '</div>';
+            }).join('') : '<p class="ry-hint">该字典暂无条目。</p>') +
+          '</div>' +
+          (canEditGroup ? '<div class="dc-add"><input type="text" id="dc-new" placeholder="新增条目名称">' +
+            '<button class="ry-btn" id="dc-add">添加条目</button></div>' : '') +
+          '<div class="ry-divider"></div>' +
+          '<div class="ry-acts-row">' +
+            (core ? '' : '<button class="ry-btn ry-btn--primary" id="dc-save">保存生效</button>' +
+              '<button class="ry-btn" id="dc-revert">放弃修改</button>' +
+              '<button type="button" data-pcn-rule="cfgDictSave"></button>' +
+              '<button type="button" data-pcn-rule="cfgDictDelete"></button>') +
+          '</div>' +
+
+          '<div class="ry-divider"></div>' +
+          '<h4 style="margin:0 0 6px;font-size:13px">日志记录</h4>' +
+          '<ul class="dc-hist">' + (hist.length ? hist.map(function (h) {
+            return '<li>' + ui.esc(h.at) + '　' + ui.esc(S.userName(h.by) || h.by) + '　' + ui.esc(h.action) +
+              (h.reason ? '　原因：' + ui.esc(h.reason) : '') + '</li>';
+          }).join('') : '<li>暂无变更记录。</li>') + '</ul>' +
+        '</div></div>' +
+      '</div>';
+
+    bind();
+  }
+
+  function bind() {
+    ui.qsa('#dc-keys .dc-key').forEach(function (b) {
+      b.addEventListener('click', function () {
+        if (dirty && !window.confirm('当前字典有未保存修改，切换分组会放弃这些修改。继续？')) return;
+        curKey = b.getAttribute('data-k'); draftList = values(curKey).slice(); dirty = false; render();
+      });
+    });
+    ui.qsa('[data-v]').forEach(function (inp) {
+      inp.addEventListener('input', function () { draftList[+inp.getAttribute('data-v')] = inp.value; dirty = true; });
+    });
+    ui.qsa('[data-del]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var i = +b.getAttribute('data-del');
+        var v = draftList[i];
+        /* 引用校验：已引用的条目不做物理删除，历史解释必须保留（不用「只提示」代替校验）。 */
+        var hits = S.dictUsage(curKey, v);
+        if (hits.length) {
+          var sample = hits.slice(0, 3).map(function (h) { return (h.id || h.coll); }).join('、');
+          ui.modal({
+            title: '该条目已被引用，不能删除', size: 'sm',
+            body: '<p>「' + ui.esc(v) + '」当前被 <b>' + hits.length + '</b> 处业务对象引用（如 ' + ui.esc(sample) + '）。</p>' +
+              '<p class="ry-hint">已引用条目保留历史解释、不做物理删除；如需停止新的选择，走条目停用。' +
+              '条目编码、适用范围、版本与停用能力待 06 §9 详细规格补齐后实现。</p>',
+            footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>'
+          });
+          return;
+        }
+        if (!S.dictUsageKnown(curKey) && !window.confirm('「' + v + '」所在分组的引用关系尚未登记，无法确认是否被引用。仍要删除吗？')) return;
+        draftList.splice(i, 1); dirty = true; render();
+      });
+    });
+    ui.qsa('[data-up]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var i = +b.getAttribute('data-up'); if (i <= 0) return;
+        var t = draftList[i - 1]; draftList[i - 1] = draftList[i]; draftList[i] = t; dirty = true; render();
+      });
+    });
+    ui.qsa('[data-down]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var i = +b.getAttribute('data-down'); if (i >= draftList.length - 1) return;
+        var t = draftList[i + 1]; draftList[i + 1] = draftList[i]; draftList[i] = t; dirty = true; render();
+      });
+    });
+    var add = ui.qs('#dc-add');
+    if (add) add.addEventListener('click', function () {
+      var el = ui.qs('#dc-new'), v = (el.value || '').trim();
+      if (!v) { ui.toast('请填写条目名称。', 'warn'); return; }
+      if (draftList.indexOf(v) >= 0) { ui.toast('该条目已存在。', 'warn'); return; }
+      draftList.push(v); dirty = true; render();
+      ui.qs('#dc-new').value = '';
+    });
+    var save = ui.qs('#dc-save');
+    if (save) save.addEventListener('click', function (e) {
+      askReason(function (reason) {
+        var patch = {};
+        patch[curKey] = draftList.slice();
+        var r = S.configASave('dict', patch, reason);
+        if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+        dirty = false;
+        ui.toast('「' + curKey + '」已保存生效。', 'success');
+        render();
+      });
+    });
+    var rv = ui.qs('#dc-revert');
+    if (rv) rv.addEventListener('click', function () {
+      draftList = values(curKey).slice(); dirty = false; render();
+    });
+  }
+
+  /* 引用检查已改由共享层 S.dictUsage(分组, 条目) 承担，并升级为删除阻断；
+     原 inUseHint 只查少量字段且「只提示不阻断」，已移除。 */
+
+  function askReason(done) {
+    ui.modal({
+      title: '保存生效（A 类）', size: 'sm',
+      body: ui.field('变更原因', ui.textarea('reason', '', '请说明本次字典调整原因（写入历史）', 3), '', true) +
+        ui.banner('保存后<b>立即生效并写入历史</b>，不进入审批、不预约未来生效时点。历史业务对象已记录的取值不会被改写。', 'warn'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="dc-ok">确认保存</button>',
+      onOpen: function (el) {
+        ui.qs('#dc-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          var reason = (v.reason || '').trim();
+          if (!reason) { ui.toast('变更原因必填。', 'warn'); return; }
+          ui.close(); done(reason);
+        });
+      }
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

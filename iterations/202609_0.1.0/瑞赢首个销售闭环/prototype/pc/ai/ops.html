@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>AI 运行记录与失败治理 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：AI 运行记录与失败治理 */
+  .ao-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+  .ao-svc { font-family: var(--mono); font-size: 11.5px; }
+  .ao-trace { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 6px; font-size: 12.5px; line-height: 1.85; }
+  .ao-trace > span { color: var(--muted); }
+  .ao-ref { display: flex; flex-wrap: wrap; gap: 5px; }
+  .ao-r { font-family: var(--mono); font-size: 11.5px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: #FBFCFC; }
+  @media (max-width: 1180px) { .ao-cols { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="ao-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'ai.ops';
+  var ABILITY = ['沟通整理', '日报底稿', '对象 AI 摘要'];
+  var STATUS = ['成功', '失败', '处理中'];
+  var canRetry = P.can('ai.ops.retry');
+  var abF = '', stF = '';
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: 'AI 运行记录与失败治理',
+    subtitle: 'Run ID、能力类型、状态、来源版本、耗时、错误码、重试次数与写入结果。<b>运行治理不能扩大 AI 来源全文权限</b>。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: 'AI 运行记录与失败治理' }],
+    actions: '<a class="ry-btn" href="../agent/config.html">Agent 配置</a>'
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#ao-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入 AI 运行记录',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示运行记录、来源版本、错误码与候选写入结果。</p>'
+    });
+    return;
+  }
+
+  function all() { return S.agentRunList('all'); }
+  function candsOf(runId) {
+    return S.all('agentCandidates').filter(function (c) { return c.runId === runId; });
+  }
+  function filtered() {
+    return all().filter(function (r) {
+      if (abF && r.ability !== abF) return false;
+      if (stF && r.status !== stF) return false;
+      return true;
+    });
+  }
+  function secs(ms) { return ms ? (ms / 1000).toFixed(1) + ' 秒' : '—'; }
+
+  function render() {
+    var list = all(), rows = filtered();
+    var bad = list.filter(function (r) { return r.status === '失败'; });
+    var writeFail = S.all('agentCandidates').filter(function (c) { return c.writeStatus === '写入失败'; });
+
+    ui.qs('#ao-host').innerHTML =
+      ui.banner('运行记录回答四个问题：<b>这次 AI 做了什么</b>（能力类型）、' +
+        '<b>依据的是什么</b>（来源与来源版本）、<b>结果如何</b>（状态／耗时／错误码／重试次数）、' +
+        '<b>写进去了没有</b>（关联候选的写入状态）。' +
+        '这里记录的是<b>运行元数据，不是内容全文</b>：' +
+        '治理界面能看到「这次运行引用了哪一版知识、哪一版原始输入」，' +
+        '但<b>看不到来源全文</b>——否则「查看运行记录」就会变成一条绕过业务权限读取原始材料的通道。' +
+        '同样的道理，本页<b>不能扩大任何人的可见范围</b>：' +
+        '看得到运行记录，不等于看得到该次运行所基于的客户、线索或文档。' +
+        'AI <b>不直接生成正式业务对象</b>：运行成功后产出的是<b>候选</b>，' +
+        '必须由人确认才写入，写入结果单独跟踪。' +
+        '失败时按能力降级：沟通整理失败可改用手工录入，日报底稿失败可手写日报，' +
+        '对象摘要失败则明确说明「本次未生成」——都不阻断销售正常作业。', 'info') +
+
+      '<div class="ry-card" style="margin:12px 0"><div class="ry-card__body">' +
+        '<div class="ry-filter__row">' +
+          ui.field('能力类型', ui.select('ao-ab', [{ value: '', label: '全部能力' }].concat(ABILITY.map(function (a) {
+            return { value: a, label: a };
+          })), abF), '', false) +
+          ui.field('运行状态', ui.select('ao-st', [{ value: '', label: '全部状态' }].concat(STATUS.map(function (s) {
+            return { value: s, label: s };
+          })), stF), '', false) +
+        '</div>' +
+        '<div class="ry-filter__act"><button class="ry-btn" id="ao-reset">重置</button>' +
+          '<button class="ry-btn ry-btn--primary" id="ao-apply">查询</button></div>' +
+      '</div></div>' +
+
+      '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px">' +
+        [
+          ['运行总数', list.length, ''],
+          ['成功', list.filter(function (r) { return r.status === '成功'; }).length, 'color:var(--ok)'],
+          ['失败', bad.length, bad.length ? 'color:var(--danger)' : ''],
+          ['候选写入失败', writeFail.length, writeFail.length ? 'color:var(--danger)' : '']
+        ].map(function (k) {
+          return '<div class="ry-card ry-card--flat"><div class="ry-card__body"><div class="ry-hint">' + k[0] + '</div>' +
+            '<div style="font-size:22px;font-weight:600;' + k[2] + '">' + k[1] + '</div></div></div>';
+        }).join('') + '</div>' +
+
+      '<div class="ao-cols">' +
+        '<div>' +
+          ui.section('运行记录（' + rows.length + ' 条）',
+            rows.length
+              ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+                '<th style="width:140px">Run ID</th><th style="width:110px">能力类型</th><th>来源与版本</th>' +
+                '<th style="width:100px">发起人</th><th style="width:130px">状态／耗时</th>' +
+                '<th style="width:110px">错误码</th><th style="width:80px">重试</th>' +
+                '<th style="width:110px">操作</th>' +
+                '</tr></thead><tbody>' + rows.map(function (r) {
+                  var cs = candsOf(r.id);
+                  return '<tr>' +
+                    '<td><span class="ry-code">' + ui.esc(r.id) + '</span>' +
+                      '<div class="ry-hint">' + ui.esc(r.startedAt) + '</div></td>' +
+                    '<td><span class="ry-cellname">' + ui.esc(r.ability) + '</span>' +
+                      '<div class="ry-hint ao-svc">' + ui.esc(r.serviceIdentity) + '</div></td>' +
+                    '<td>' + ui.esc(r.origin) +
+                      (r.knowledgeRefs && r.knowledgeRefs.length
+                        ? '<div class="ry-hint">引用知识 ' + r.knowledgeRefs.map(function (k) {
+                            return '<span class="ry-code">' + ui.esc(k.id) + ' ' + ui.esc(k.version) + '</span>';
+                          }).join('、') + '</div>'
+                        : '<div class="ry-hint">未引用知识版本</div>') +
+                      '<div class="ry-hint">来源全文不在本页展示</div></td>' +
+                    '<td>' + ui.esc(S.userName(r.userId) || r.userId) + '</td>' +
+                    '<td>' + ui.statusTag(r.status) +
+                      '<div class="ry-hint">耗时 ' + secs(r.durationMs) + '</div></td>' +
+                    '<td>' + (r.errorCode ? '<span class="ry-code">' + ui.esc(r.errorCode) + '</span>' : '<span class="ry-faint">—</span>') +
+                      (r.errorMessage ? '<div class="ry-hint" style="color:var(--danger)">' + ui.esc(r.errorMessage) + '</div>' : '') + '</td>' +
+                    '<td>' + (r.retryCount || 0) + '</td>' +
+                    '<td class="ry-tbl-act">' +
+                      '<button class="ry-btn ry-btn--sm" data-ao-view="' + ui.esc(r.id) + '">详情</button>' +
+                      (r.status === '失败' && canRetry
+                        ? '<button class="ry-btn ry-btn--sm ry-btn--primary" data-ao-retry="' + ui.esc(r.id) + '">重新触发</button>'
+                        : '') +
+                    '</td></tr>';
+                }).join('') + '</tbody></table></div>' +
+              '<p class="ry-hint" style="margin-top:8px">失败按<b>能力</b>分别降级，不存在「AI 挂了就停工」：' +
+                '销售始终可以手工完成同一件事。' +
+                '重新触发<b>不会修改原运行记录</b>，而是产生一条新的运行——' +
+                '原记录保留失败事实与错误码，便于观察同一问题的复现次数。</p>'
+              : ui.stateCard('empty', { title: '当前没有匹配的 AI 运行记录' })) +
+
+          ui.section('候选与写入结果（' + S.all('agentCandidates').length + ' 条候选）',
+            '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+              '<th style="width:150px">候选编号</th><th style="width:120px">类型</th><th>所属运行</th>' +
+              '<th style="width:100px">主状态</th><th style="width:110px">写入状态</th>' +
+              '<th style="width:150px">失败原因</th>' +
+              '</tr></thead><tbody>' + S.all('agentCandidates').map(function (c) {
+                return '<tr>' +
+                  '<td><span class="ry-code">' + ui.esc(c.id) + '</span>' +
+                    '<div class="ry-hint">' + ui.esc(c.createdAt) + '</div></td>' +
+                  '<td>' + ui.esc(c.kind) + '</td>' +
+                  '<td><span class="ry-code">' + ui.esc(c.runId) + '</span>' +
+                    '<div class="ry-hint">' + ui.esc(c.origin) + '</div></td>' +
+                  '<td>' + ui.statusTag(c.status) + '</td>' +
+                  '<td>' + ui.statusTag(c.writeStatus) +
+                    (c.writtenObjectId ? '<div class="ry-hint ry-code">' + ui.esc(c.writtenObjectId) + '</div>' : '') + '</td>' +
+                  '<td class="ry-hint" style="color:var(--danger)">' + ui.esc(c.failReason || '—') +
+                    (c.failKind ? '<div>失败类型：' + ui.esc(c.failKind) + '</div>' : '') + '</td>' +
+                '</tr>';
+              }).join('') + '</tbody></table></div>' +
+            '<p class="ry-hint" style="margin-top:8px">候选主状态（待确认／已确认／已忽略／已失效）与写入状态' +
+              '（未写入／写入中／写入成功／写入失败）是<b>两条独立的轴</b>：' +
+              '「已确认但写入失败」是真实存在的状态，此时<b>最终值与幂等键都已保留</b>，可在候选页重试写入。</p>') +
+        '</div>' +
+
+        '<div>' +
+          ui.section('治理边界',
+            '<div class="ao-trace">' +
+              '<span>可查看</span><b>运行元数据与候选状态</b>' +
+              '<span>不可查看</span><b>AI 来源全文（受来源系统权限约束）</b>' +
+              '<span>可见范围</span><b>本页不能扩大任何人的可见范围</b>' +
+              '<span>修改候选</span><b>本页不提供</b>' +
+              '<span>直接写 CRM</span><b>不提供：写入口在候选确认</b>' +
+              '<span>脱敏</span><b>必要脱敏信息，不展示原始凭据与原文</b>' +
+            '</div>' +
+            ui.banner('「查看运行记录」与「查看来源内容」必须分开。' +
+              '如果治理页可以直接展开来源全文，那么一个只有治理权限、没有客户权限的人，' +
+              '就能借由读运行记录读到客户材料——<b>治理动作本身成了越权读取通道</b>。' +
+              '所以本页只回答「引用了哪一版」，不回答「那一版写了什么」。', 'warn')) +
+
+          ui.section('失败降级',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>沟通整理失败</span><b>改用手工录入销售活动</b></li>' +
+              '<li><span>日报底稿失败</span><b>手写日报，不阻断提交</b></li>' +
+              '<li><span>对象摘要失败</span><b>明确说明本次未生成</b></li>' +
+              '<li><span>知识不可用</span><b>降级为不含知识的回答并说明</b></li>' +
+              '<li><span>写入失败</span><b>保留最终值与幂等键，可按原参数重试</b></li>' +
+              '<li><span>重复写入</span><b>幂等键防重复，不产生两条对象</b></li>' +
+            '</ul>') +
+
+          ui.section('相关页面',
+            ui.kv([
+              ['Agent 配置', '<a href="../agent/config.html">能力、来源、试点范围与预生成</a>'],
+              ['候选处理（H5）', '<a href="../../h5/agent/pending.html">人工确认与写入</a>'],
+              ['知识管理', '<a href="../knowledge/list.html">被引用的知识版本</a>'],
+              ['异常事项', '<a href="../exception/list.html">写入失败派生的事项</a>']
+            ])) +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-AI-OPS</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-AI-OPS · PC · AI 运行记录与失败治理</b></li>' +
+        '<li><span>依据</span><b>prd/05 §12；prd/05 §13；prd/08 §2</b></li>' +
+        '<li><span>可进入角色</span><b>管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-77</b></li>' +
+        '<li><span>必须展示</span><b>Run ID｜能力类型｜状态｜来源版本｜耗时｜错误码｜重试次数｜写入接口结果｜必要脱敏信息</b></li>' +
+        '<li><span>权限边界</span><b>运行治理不能扩大 AI 来源全文权限</b></li>' +
+        '<li><span>明确不做</span><b>不在治理页展示来源全文、不修改候选、不直接写入正式对象、不展示原始凭据</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function pick(id) {
+    var r = all().filter(function (x) { return x.id === id; });
+    return r[0] || null;
+  }
+
+  function detail(r) {
+    var cs = candsOf(r.id);
+    ui.drawer({
+      title: '运行详情　' + r.id,
+      subtitle: r.ability + '　' + r.startedAt,
+      size: 'lg',
+      body:
+        ui.kv([
+          ['Run ID', r.id],
+          ['能力类型', r.ability],
+          ['发起人', S.userName(r.userId) || r.userId],
+          ['服务身份', r.serviceIdentity],
+          ['状态', r.status],
+          ['开始时间', r.startedAt],
+          ['结束时间', r.finishedAt || '—'],
+          ['耗时', secs(r.durationMs)],
+          ['来源', r.origin],
+          ['来源版本引用', r.knowledgeRefs && r.knowledgeRefs.length
+            ? r.knowledgeRefs.map(function (k) { return k.type + ' ' + k.id + ' ' + k.version; }).join('；') : '无'],
+          ['错误码', r.errorCode || '—'],
+          ['错误说明', r.errorMessage || '—'],
+          ['重试次数', r.retryCount || 0],
+          ['产出候选数', r.candidateCount || 0]
+        ]) +
+        '<div class="ry-divider"></div>' +
+        '<div class="ry-hint">关联候选与写入结果</div>' +
+        (cs.length
+          ? '<ul class="ry-kv ry-kv--tight" style="margin-top:6px">' + cs.map(function (c) {
+              return '<li><span>' + ui.esc(c.id) + '</span><b>' + ui.esc(c.kind) + '　主状态 ' + ui.esc(c.status) +
+                '　写入 ' + ui.esc(c.writeStatus) +
+                (c.writtenObjectId ? '（' + ui.esc(c.writtenObjectId) + '）' : '') + '</b></li>';
+            }).join('') + '</ul>'
+          : '<p class="ry-hint" style="margin-top:6px">本次运行未产出候选（如日报底稿、对象摘要类运行）。</p>') +
+        ui.banner('来源版本只标注<b>「用的是哪一版」</b>，不展开内容。' +
+          '如需查看来源材料，必须回到来源对象本身的页面，按那里的页面权限与数据范围判断——' +
+          '本页不提供任何绕过路径。', 'warn'),
+      footer: (r.status === '失败' && canRetry
+        ? '<button class="ry-btn" data-close>关闭</button><button class="ry-btn ry-btn--primary" id="ao-go">重新触发</button>'
+        : '<button class="ry-btn" data-close>关闭</button>'),
+      onOpen: function (el) {
+        var b = ui.qs('#ao-go', el);
+        if (b) b.addEventListener('click', function () { ui.close(); retry(r); });
+      }
+    });
+  }
+
+  function retry(r) {
+    ui.confirm({
+      title: '重新触发　' + r.ability,
+      message: '<p>将以<b>同样的来源与来源版本</b>重新触发一次 ' + ui.esc(r.ability) + '。</p>' +
+        '<p class="ry-hint">原运行记录保留，不修改其失败事实与错误码；' +
+        '新运行会作为一条独立记录出现。' +
+        '<b>本次原型不产生真实模型输出</b>，新运行停留在进行中状态，实际结果以候选页为准。</p>',
+      confirmText: '确认重新触发',
+      onConfirm: function () {
+        var nid = S.nextId('RUN', 4);
+        S.all('agentRuns').unshift({
+          id: nid, ability: r.ability, origin: r.origin, userId: r.userId,
+          serviceIdentity: r.serviceIdentity, status: '处理中',
+          startedAt: S.now(), finishedAt: '', durationMs: 0,
+          errorCode: '', errorMessage: '', retryCount: 0, candidateCount: 0,
+          knowledgeRefs: (r.knowledgeRefs || []).slice()
+        });
+        S.audit('AI 运行', r.id, '重新触发能力', r.status, '已创建 ' + nid);
+        S.save();
+        ui.toast('已重新触发，新运行 ' + nid + ' 已创建（原型演示：不产生真实模型输出）。', 'success');
+        render();
+      }
+    });
+  }
+
+  function bind() {
+    ui.qs('#ao-apply').addEventListener('click', function () {
+      var v = ui.formValues(ui.qs('#ao-host')); abF = v['ao-ab'] || ''; stF = v['ao-st'] || ''; render();
+    });
+    ui.qs('#ao-reset').addEventListener('click', function () { abF = ''; stF = ''; render(); });
+    ui.qsa('[data-ao-view]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var r = pick(b.getAttribute('data-ao-view')); if (r) detail(r);
+      });
+    });
+    ui.qsa('[data-ao-retry]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]')) return;
+        var r = pick(b.getAttribute('data-ao-retry')); if (r) retry(r);
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

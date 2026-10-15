@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>流程模板 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：B 类流程模板（草稿 → 校验 → 立即原子发布） */
+  .tp-wrap { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 14px; align-items: start; }
+  .tp-list { max-height: 560px; overflow: auto; }
+  .tp-it { display: block; width: 100%; text-align: left; padding: 9px 11px; border: 1px solid transparent;
+    border-radius: var(--r-btn); background: none; font: inherit; cursor: pointer; }
+  .tp-it:hover { background: var(--surface-2); }
+  .tp-it.is-on { background: var(--brand-soft); border-color: var(--brand-line); }
+  .tp-list__filters { display:grid; gap:7px; padding:10px 11px; border-bottom:1px solid var(--line-soft); }
+  .tp-list__filters input,.tp-list__filters select { width:100%; }
+  .tp-list__empty { padding:18px 12px; color:var(--muted); font-size:12px; }
+  .tp-list__group { padding:9px 11px 3px; color:var(--muted); font-size:11px; font-weight:700; border-top:1px solid var(--line-soft); }
+  .tp-it__n { font-size: 12.5px; font-weight: 600; color: var(--text); }
+  .tp-it__m { font-size: 11.5px; color: var(--muted); line-height: 1.7; }
+  .tp-stages { display: flex; flex-direction: column; gap: 7px; }
+  .tp-st { display: flex; flex-direction: column; gap: 10px; padding: 11px 12px; border: 1px solid var(--line); border-radius: var(--r-btn); background: var(--surface); font-size: 12.5px; }
+  .tp-st__i { color: var(--muted); font-size: 11.5px; }
+  .tp-st__n { font-weight: 600; }
+  .tp-st input, .tp-st select { width: 100%; }
+  .tp-edit-grid,.tp-task-edit { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .tp-edit-grid label,.tp-task-edit label { display:flex; flex-direction:column; gap:4px; color:var(--muted); }
+  .tp-edit-sub { padding-top:8px; border-top:1px solid var(--line-soft); }
+  .tp-workbar { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:10px 14px; margin-top:12px; border:1px solid var(--brand-line); border-left:4px solid var(--brand); border-radius:var(--r-card); background:var(--surface); }
+  .tp-workbar__copy { min-width:160px; }
+  .tp-workbar__title { display:flex; align-items:center; gap:8px; font-size:14px; font-weight:700; }
+  .tp-workbar__hint { margin-top:3px; color:var(--muted); font-size:12px; line-height:1.5; }
+  .tp-workbar__actions { display:flex; align-items:center; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
+  .tp-workbar__dirty { color:#8A5A12; font-size:12px; font-weight:600; }
+  .tp-validation { margin:0 0 12px; }
+  .tp-error-list { margin:7px 0 0; padding-left:19px; }
+  .tp-error-list li { margin:4px 0; }
+  @media(max-width:850px) { .tp-workbar { align-items:flex-start; flex-direction:column; } .tp-workbar__actions { justify-content:flex-start; } }
+  .tp-checks { display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:6px; }
+  .tp-checks label { white-space:nowrap; }
+  .tp-checks input,.tp-task-edit input[type=checkbox] { width:auto; }
+  .tp-task-edit { grid-template-columns:1.1fr 1.3fr .8fr .8fr .9fr auto; align-items:center; margin:7px 0; }
+  @media(max-width:1200px) { .tp-wrap { grid-template-columns:230px minmax(0,1fr); } .tp-task-edit { grid-template-columns:1fr 1fr; } }
+  .tp-diff { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 18px; font-size:12.5px; }
+  .tp-diff__item { min-width:0; display:flex; flex-direction:column; gap:3px; padding-bottom:8px; border-bottom:1px solid var(--line-soft); }
+  .tp-diff__item span { color:var(--muted); font-size:11.5px; }
+  .tp-diff__item b { overflow-wrap:anywhere; line-height:1.5; }
+  .tp-diff__item--wide { grid-column:1/-1; }
+  @media(max-width:950px) { .tp-diff { grid-template-columns:1fr; } .tp-diff__item--wide { grid-column:auto; } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="tp-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<!-- 原型说明层：把「业务规则 / 注解 / 待修 / 不做」就地标注在页面上；不含业务逻辑，可整行摘除 -->
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var PAGE = 'cfg.template';
+  var canEdit = RY.perm.can('config.editB');
+  var canValidate = RY.perm.can('config.validate');
+  var canPublish = RY.perm.can('config.publish');
+  function rule(key) { return '<button type="button" data-pcn-rule="' + key + '"></button>'; }
+  /* 五个统一阶段是跨业务线可比的基准，配置页只允许在这五个值里选，不能自造统一阶段。 */
+  var UNIFIED = ['机会确认', '需求确认', '方案验证', '报价与审批', '商务与合同'];
+
+  RY.nav.shell({
+    nav: 'cfg.template',
+    title: '流程模板',
+    subtitle: '<b>B 类配置</b>：草稿 → 校验 → 立即原子发布新版本。发布失败<b>不能部分生效</b>，历史对象继续按原版本解释。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '配置中心' }, { label: '流程模板' }],
+    actions: ui.actionBtn('config.editB', '新建模板', ' id="tp-new"', 'ry-btn--primary')
+  });
+
+  var g = RY.perm.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#tp-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入流程模板',
+      body: '<p>' + ui.esc(g.reason) + '</p>' +
+        '<p class="ry-hint">无权时不展示模板名称、业务线、场景与阶段结构。</p>'
+    });
+    return;
+  }
+
+  var curCode = ui.q('code');
+  var curVersion = ui.q('v');
+  var draftStages = null;   /* 本地编辑副本，只有「保存草稿」才写回 */
+  var draftMeta = null, dirty = false, stageSeq = 0;
+  var listFilter = { line: '', scene: '', query: '' };
+
+  function list() { return S.flowTemplates(); }
+  function pick(code) { return list().filter(function (t) { return t.code === code; }); }
+  function current() { return S.template(curCode, curVersion) || pick(curCode)[0]; }
+  function activeOf(code) { return pick(code).filter(function (t) { return t.status === '生效'; })[0]; }
+  function draftOf(code) { return pick(code).filter(function (t) { return t.status === '草稿'; })[0]; }
+  function lineName(c) { return S.businessLineName(c) || c; }
+  function sceneName(line, scene) {
+    /* 模板的 scene 存的是场景编码：先取该业务线下的场景列表再按编码查找；
+       共享层另有 S.sceneName(line, scene) 可直接用，这里保留显式处理不存在的情况。 */
+    var s = S.scenarioOptions(line).filter(function (x) { return x.code === scene; })[0];
+    return s ? s.name : (scene || '—');
+  }
+  function oppCount(code, version) {
+    return S.arr('opportunities').filter(function (o) { return o.templateCode === code && o.templateVersion === version && !o.closeResult && o.processStatus !== '已关闭'; }).length;
+  }
+  function markDirty() {
+    dirty = true;
+    var flag = ui.qs('#tp-dirty'); if (flag) flag.textContent = '有未保存修改';
+    var val = ui.qs('#tp-valout'); if (val) val.innerHTML = '';
+  }
+  function versionItem(label, value, wide) {
+    return '<div class="tp-diff__item' + (wide ? ' tp-diff__item--wide' : '') + '"><span>' + label + '</span><b>' + value + '</b></div>';
+  }
+
+  function render() {
+    var ls = list();
+    if (!ls.length) { ui.qs('#tp-host').innerHTML = ui.stateCard('empty', { title: '尚无流程模板', body: '可为已启用业务线与销售场景新建首个草稿。' }); return; }
+    if (!curCode) curCode = (activeOf(ls[0].code) || ls[0]).code;
+    var t = current();
+    if (!t) { ui.qs('#tp-host').innerHTML = ui.stateCard('unavailable', { title: '模板版本不存在' }); return; }
+    if (!draftStages) {
+      draftStages = JSON.parse(JSON.stringify(t.stages || []));
+      stageSeq = Math.max(0, draftStages.reduce(function (max, s) {
+        var match = String(s.code || '').match(/-S(\d+)$/);
+        return Math.max(max, match ? Number(match[1]) : 0);
+      }, 0));
+    }
+    if (!draftMeta) draftMeta = { name: t.name || '', stagnantDays: t.stagnantDays || '', note: t.note || '', businessLine: t.businessLine, scene: t.scene };
+    var act = activeOf(curCode), dr = draftOf(curCode);
+    var enabledLines = S.all('businessLines').filter(function (x) { return x.status === '启用'; });
+    var filterLines = S.all('businessLines');
+    var lineOptions = enabledLines.map(function (x) { return { value: x.code, label: x.name }; });
+    var sceneOptions = S.enabledScenarioOptions(draftMeta.businessLine).map(function (x) { return { value: x.code, label: x.name }; });
+    var statusName = { 草稿: '待发布草稿', 生效: '当前生效', 历史: '历史版本', 停用: '已停用' }[t.status] || t.status;
+    var workHint = t.status === '草稿' ? '保存草稿后校验，再发布。'
+      : t.status === '历史' ? '历史版本只读，可复制为新草稿。'
+      : t.status === '停用' ? '已停用，新商机不再匹配。'
+      : '生效版本只读，调整请创建新版本。';
+    var actionButtons = t.status === '草稿'
+      ? (canEdit ? '<a class="ry-btn" href="#tp-stages">编辑配置</a>' : '') +
+        (canEdit ? '<button class="ry-btn" id="tp-save">保存草稿</button>' : '') +
+        (canValidate ? '<button class="ry-btn" id="tp-val">校验</button>' : '') +
+        (canPublish ? '<button class="ry-btn ry-btn--primary" id="tp-pub">立即发布</button>' : '')
+      : t.status === '历史'
+        ? (canEdit ? '<button class="ry-btn ry-btn--primary" id="tp-restore">复制为新草稿</button>' : '')
+        : (canEdit ? '<button class="ry-btn ry-btn--primary" id="tp-copy">创建新版本</button>' : '') +
+          (t.status === '生效' && canEdit ? '<button class="ry-btn" id="tp-disable">停用模板</button>' : '');
+
+    ui.qs('#tp-host').innerHTML =
+      '<div class="ry-acts-row">' + rule('cfgTemplateMatch') + rule('cfgTemplatePublish') + '</div>' +
+      '<div class="tp-workbar"><div class="tp-workbar__copy"><div class="tp-workbar__title">' + ui.esc(statusName) + ' ' + ui.statusTag(t.status) + '</div>' +
+        '<div class="tp-workbar__hint">' + rule('cfgTemplateVersion') + ' <span class="tp-workbar__dirty" id="tp-dirty">' + (dirty ? '有未保存修改' : '') + '</span></div></div><div class="tp-workbar__actions">' + actionButtons + '</div></div>' +
+      '<div class="tp-validation" id="tp-valout"></div>' +
+      '<div class="tp-wrap" style="margin-top:12px">' +
+        '<div class="ry-card"><header class="ry-card__head"><h3>模板与版本</h3>' +
+          '<div class="ry-card__extra"><span class="ry-hint">' + new Set(ls.map(function (x) { return x.code; })).size + ' 个模板 · ' + ls.length + ' 个版本</span></div></header>' +
+        '<div class="tp-list__filters"><select id="tp-filter-line" aria-label="筛选业务线"><option value="">全部业务线</option>' + filterLines.map(function (x) { return '<option value="' + ui.esc(x.code) + '"' + (listFilter.line === x.code ? ' selected' : '') + '>' + ui.esc(x.name) + '</option>'; }).join('') + '</select>' +
+          '<select id="tp-filter-scene" aria-label="筛选销售场景"><option value="">全部场景</option>' + S.all('scenarios').filter(function (x) { return !listFilter.line || x.businessLine === listFilter.line; }).map(function (x) { var key = x.businessLine + '|' + x.code; return '<option value="' + ui.esc(key) + '"' + (listFilter.scene === key ? ' selected' : '') + '>' + (listFilter.line ? '' : ui.esc(lineName(x.businessLine)) + ' · ') + ui.esc(x.name) + '</option>'; }).join('') + '</select>' +
+          '<input id="tp-filter-query" aria-label="搜索模板名称或编码" placeholder="搜索模板名称或编码" value="' + ui.esc(listFilter.query) + '"></div>' +
+        '<div class="ry-card__body ry-card__body--flush tp-list"><div id="tp-list-items"></div></div></div>' +
+
+        '<div>' +
+          ui.section('当前查看版本',
+            '<div class="tp-diff">' +
+              versionItem('模板名称', ui.esc(t.name)) +
+              versionItem('模板编码／版本', ui.esc(t.code) + '　' + ui.esc(t.version) + '　' + ui.statusTag(t.status)) +
+              versionItem('业务线／场景', ui.esc(lineName(t.businessLine)) + '　' + ui.esc(sceneName(t.businessLine, t.scene))) +
+              versionItem('停滞阈值', (t.stagnantDays || '—') + ' 天') +
+              versionItem('生效版本', act ? ui.esc(act.version) + '（' + ui.esc(act.publishedAt) + '）' : '无生效版本') +
+              versionItem('待发布草稿', dr ? ui.esc(dr.version) + '（' + ui.esc((dr.note || '无说明')) + '）' : '无') +
+              versionItem('本版本在途商机', oppCount(curCode, t.version) + ' 个　<span class="ry-hint">按绑定版本继续推进</span>', true) +
+            '</div>' + (t.status === '草稿' && canEdit ? '<div class="tp-edit-grid" style="margin-top:10px">' +
+              '<label>模板名称<input name="tp-name" value="' + ui.esc(draftMeta.name) + '"></label>' +
+              '<label>停滞阈值（自然日）<input name="tp-stagnant" type="number" min="1" step="1" value="' + ui.esc(draftMeta.stagnantDays) + '"></label>' +
+              (t.isNewSeries ? '<label>业务线' + ui.select('tp-line', lineOptions, draftMeta.businessLine) + '</label><label>销售场景' + ui.select('tp-scene', sceneOptions, draftMeta.scene) + '</label>' : '') +
+              '<label style="grid-column:1/-1">草稿说明<input name="tp-note" value="' + ui.esc(draftMeta.note) + '"></label></div>' : ''),
+            t.status === '草稿' ? ui.tag('草稿版本', 'warn') : ui.tag('已发布版本', 'ok')) +
+
+          ui.section('阶段结构（详细阶段 → 统一阶段）',
+          '<div class="tp-stages" id="tp-stages">' + draftStages.map(function (s, i) {
+              var unified = s.unified || s.unifiedStage || '';
+              var editable = t.status === '草稿' && canEdit;
+              return '<div class="tp-st" id="tp-stage-' + i + '" data-i="' + i + '">' +
+                '<div><b>阶段 ' + (i + 1) + '</b>　<code>' + ui.esc(s.code || '待生成编码') + '</code>' + (editable ? ' <button class="ry-btn ry-btn--sm" data-sup="' + i + '">上移</button> <button class="ry-btn ry-btn--sm" data-sdown="' + i + '">下移</button> <button class="ry-btn ry-btn--sm" data-sremove="' + i + '">移除</button>' : '') + '</div>' +
+                '<div class="tp-edit-grid"><label>阶段名称' + (editable ? '<input type="text" value="' + ui.esc(s.name || '') + '" data-sn="' + i + '">' : '<b>' + ui.esc(s.name || '') + '</b>') + '</label>' +
+                  '<label>统一阶段' + (editable ? ui.select('unified' + i, UNIFIED, unified) : '<b>' + ui.esc(unified || '未映射') + '</b>') + '</label></div>' +
+                '<div class="tp-edit-sub"><b>阶段任务</b>' + (s.tasks || []).map(function (tk, ti) {
+                  return '<div class="tp-task-edit"><input placeholder="任务名称" value="' + ui.esc(tk.title || '') + '" data-task="' + i + ':' + ti + ':title"' + (editable ? '' : ' disabled') + '>' +
+                    '<input placeholder="任务说明" value="' + ui.esc(tk.desc || '') + '" data-task="' + i + ':' + ti + ':desc"' + (editable ? '' : ' disabled') + '>' +
+                    '<label><input type="checkbox" data-task="' + i + ':' + ti + ':must"' + (tk.must ? ' checked' : '') + (editable ? '' : ' disabled') + '> 必须完成</label>' +
+                    '<input type="number" min="1" step="1" placeholder="截止天数（可空）" value="' + ui.esc(tk.dueDays == null ? '' : tk.dueDays) + '" data-task="' + i + ':' + ti + ':dueDays"' + (editable ? '' : ' disabled') + '>' +
+                    (editable ? '<button class="ry-btn ry-btn--sm" data-task-remove="' + i + ':' + ti + '">移除任务</button>' : '') + '</div>';
+                }).join('') + (editable ? '<button class="ry-btn ry-btn--sm" data-task-add="' + i + '">新增阶段任务</button>' : '') + '</div></div>';
+            }).join('') + '</div>' +
+            (t.status === '草稿' && canEdit ? '<button class="ry-btn" id="tp-stage-add">新增阶段</button>' : '') +
+            rule('cfgTemplateStages'),
+            (t.stages || []).length + ' 个详细阶段') +
+
+          ui.section('版本历史',
+            '<div class="ry-divider"></div>' +
+            '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+              '<th>版本</th><th>状态</th><th>发布／记录时间</th><th>操作</th><th>说明</th></tr></thead><tbody>' +
+              pick(curCode).slice().sort(function (a, b) { return String(b.version).localeCompare(String(a.version)); }).map(function (x) {
+                return '<tr><td><span class="ry-code">' + ui.esc(x.version) + '</span></td>' +
+                  '<td>' + ui.statusTag(x.status) + '</td>' +
+                  '<td>' + ui.esc(x.publishedAt || (x.history && x.history.length ? x.history[x.history.length - 1].at : '—')) + '</td>' +
+                  '<td>' + ui.esc((x.history && x.history.length ? x.history[x.history.length - 1].action : '—')) + '</td>' +
+                  '<td class="ry-hint">' + ui.esc(x.note || '') + '</td></tr>';
+              }).join('') +
+            '</tbody></table></div>') +
+        '</div>' +
+      '</div>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function renderList() {
+    var host = ui.qs('#tp-list-items'); if (!host) return;
+    var q = listFilter.query.trim().toLowerCase();
+    var rows = list().filter(function (x) {
+      return (!listFilter.line || x.businessLine === listFilter.line) &&
+        (!listFilter.scene || x.businessLine + '|' + x.scene === listFilter.scene) &&
+        (!q || (x.name + ' ' + x.code).toLowerCase().indexOf(q) >= 0);
+    });
+    var codes = [];
+    rows.forEach(function (x) { if (codes.indexOf(x.code) < 0) codes.push(x.code); });
+    host.innerHTML = codes.length ? codes.map(function (code) {
+      var versions = rows.filter(function (x) { return x.code === code; }).sort(function (a, b) { return Number(String(b.version).replace(/\D/g, '')) - Number(String(a.version).replace(/\D/g, '')); });
+      return '<div class="tp-list__group">' + ui.esc(lineName(versions[0].businessLine)) + ' · ' + ui.esc(sceneName(versions[0].businessLine, versions[0].scene)) + '</div>' + versions.map(function (x) {
+        return '<button class="tp-it' + (x.code === curCode && x.version === current().version ? ' is-on' : '') + '" data-c="' + ui.esc(x.code) + '" data-v="' + ui.esc(x.version) + '">' +
+          '<div class="tp-it__n">' + ui.esc(x.name) + '</div>' +
+          '<div class="tp-it__m">' + ui.esc(x.version) + '　' + ui.statusTag(x.status) + '　阶段 ' + (x.stages || []).length + ' 个</div></button>';
+      }).join('');
+    }).join('') : '<div class="tp-list__empty">没有符合条件的模板版本，请调整筛选。</div>';
+    ui.qsa('.tp-it').forEach(function (b) {
+      b.addEventListener('click', function () {
+        function selectVersion() {
+          curCode = b.getAttribute('data-c'); curVersion = b.getAttribute('data-v');
+          draftStages = null; draftMeta = null; dirty = false; window.location.hash = ''; render();
+        }
+        if (dirty) ui.confirm({ title: '切换模板版本', message: '当前修改尚未保存，切换后将丢失。', confirmText: '放弃修改并切换', onConfirm: selectVersion });
+        else selectVersion();
+      });
+    });
+  }
+
+  function bind() {
+    renderList();
+    var lineFilter = ui.qs('#tp-filter-line'), sceneFilter = ui.qs('#tp-filter-scene'), queryFilter = ui.qs('#tp-filter-query');
+    lineFilter.addEventListener('change', function () { listFilter.line = this.value; listFilter.scene = ''; render(); });
+    sceneFilter.addEventListener('change', function () { listFilter.scene = this.value; renderList(); });
+    queryFilter.addEventListener('input', function () { listFilter.query = this.value; renderList(); });
+    [['tp-name', 'name'], ['tp-stagnant', 'stagnantDays'], ['tp-note', 'note'], ['tp-line', 'businessLine'], ['tp-scene', 'scene']].forEach(function (pair) {
+      var el = ui.qs('[name=' + pair[0] + ']');
+      if (el) el.addEventListener('input', function () { draftMeta[pair[1]] = el.value; markDirty(); });
+    });
+    var keyLine = ui.qs('[name=tp-line]'), keyScene = ui.qs('[name=tp-scene]');
+    if (keyLine && keyScene) {
+      keyLine.addEventListener('change', function () {
+        var opts = S.enabledScenarioOptions(keyLine.value);
+        keyScene.innerHTML = opts.map(function (x) { return '<option value="' + ui.esc(x.code) + '">' + ui.esc(x.name) + '</option>'; }).join('');
+        draftMeta.businessLine = keyLine.value; draftMeta.scene = keyScene.value; markDirty();
+      });
+    }
+    ui.qsa('[data-sn]').forEach(function (inp) {
+      inp.addEventListener('input', function () { draftStages[+inp.getAttribute('data-sn')].name = inp.value; markDirty(); });
+    });
+    ui.qsa('[data-i] select').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        var i = +sel.closest('[data-i]').getAttribute('data-i');
+        draftStages[i].unified = sel.value; markDirty();
+      });
+    });
+    ui.qsa('[data-sup]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var i = +b.getAttribute('data-sup'); if (i <= 0) return;
+        var t2 = draftStages[i - 1]; draftStages[i - 1] = draftStages[i]; draftStages[i] = t2; markDirty(); render();
+      });
+    });
+    ui.qsa('[data-sdown]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var i = +b.getAttribute('data-sdown'); if (i >= draftStages.length - 1) return;
+        var t2 = draftStages[i + 1]; draftStages[i + 1] = draftStages[i]; draftStages[i] = t2; markDirty(); render();
+      });
+    });
+    ui.qsa('[data-required]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var i = +cb.getAttribute('data-required'), code = cb.getAttribute('data-field');
+        var fields = draftStages[i].requiredFields || (draftStages[i].requiredFields = []);
+        if (cb.checked && fields.indexOf(code) < 0) fields.push(code);
+        if (!cb.checked) draftStages[i].requiredFields = fields.filter(function (x) { return x !== code; });
+        markDirty();
+      });
+    });
+    ui.qsa('[data-task]').forEach(function (el) {
+      var p = el.getAttribute('data-task').split(':'), task = draftStages[+p[0]].tasks[+p[1]], key = p[2];
+      el.addEventListener('input', function () { task[key] = key === 'must' ? el.checked : el.value; markDirty(); });
+    });
+    ui.qsa('[data-task-add]').forEach(function (b) {
+      b.addEventListener('click', function () { draftStages[+b.getAttribute('data-task-add')].tasks.push({ title: '', desc: '', must: false, dueDays: '' }); markDirty(); render(); });
+    });
+    ui.qsa('[data-task-remove]').forEach(function (b) {
+      b.addEventListener('click', function () { var p = b.getAttribute('data-task-remove').split(':'); draftStages[+p[0]].tasks.splice(+p[1], 1); markDirty(); render(); });
+    });
+    var addStage = ui.qs('#tp-stage-add');
+    if (addStage) addStage.addEventListener('click', function () {
+      var n = ++stageSeq;
+      var prevStage = draftStages[draftStages.length - 1];
+      var prevUnified = prevStage && (prevStage.unified || prevStage.unifiedStage);
+      var prevIndex = UNIFIED.indexOf(prevUnified || UNIFIED[0]);
+      draftStages.push({ code: curCode + '-S' + n, name: '', unified: UNIFIED[Math.max(0, Math.min(UNIFIED.length - 1, prevIndex))], requiredFields: [], tasks: [] });
+      markDirty(); render();
+    });
+    ui.qsa('[data-sremove]').forEach(function (b) {
+      b.addEventListener('click', function () { draftStages.splice(+b.getAttribute('data-sremove'), 1); markDirty(); render(); });
+    });
+
+    var cp = ui.qs('#tp-copy');
+    if (cp) cp.addEventListener('click', function () {
+      var t = current();
+      ui.confirm({
+        title: '基于 ' + t.version + ' 创建新草稿',
+        message: '<p>将以「' + ui.esc(t.name) + ' ' + ui.esc(t.version) + '」为基线复制出一个新草稿版本。</p>' +
+          '<p class="ry-hint">草稿不影响在途商机；只有校验通过并立即发布后，新商机才会取用新版本。</p>',
+        confirmText: '创建草稿',
+        onConfirm: function () {
+          var r = S.templateDraftSave(curCode, { note: '基于 ' + t.version + ' 复制的新草稿' });
+          if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+          curVersion = r.draft.version;
+          draftStages = JSON.parse(JSON.stringify((r.draft || {}).stages || []));
+          draftMeta = null; dirty = false;
+          ui.toast('已创建草稿 ' + r.draft.version + '。', 'success'); render();
+        }
+      });
+    });
+
+    var sv = ui.qs('#tp-save');
+    if (sv) sv.addEventListener('click', function () {
+      var t = current();
+      var name = draftMeta.name;
+      var rawThreshold = draftMeta.stagnantDays;
+      var threshold = rawThreshold === '' || rawThreshold == null ? t.stagnantDays : Number(rawThreshold);
+      var note = draftMeta.note || '编辑流程模板草稿';
+      var patch = { name: name, stagnantDays: threshold, note: note, stages: draftStages };
+      if (t.isNewSeries) { patch.businessLine = draftMeta.businessLine; patch.scene = draftMeta.scene; }
+      var r = S.templateDraftSave(curCode, patch);
+      if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+      var dr = draftOf(curCode);
+      curVersion = dr.version;
+      dirty = false; draftMeta = null;
+      ui.toast('草稿已保存（' + dr.version + '）。', 'success'); render();
+    });
+
+    var vl = ui.qs('#tp-val');
+    if (vl) vl.addEventListener('click', function () {
+      if (dirty) { ui.toast('请先保存草稿，再校验当前版本。', 'warn'); return; }
+      out(S.templateValidate(curCode));
+    });
+
+    var pb = ui.qs('#tp-pub');
+    if (pb) pb.addEventListener('click', function (e) {
+      if (e.target.closest('[data-denied]')) return;
+      if (!canPublish) { ui.toast('当前身份没有配置发布能力项。', 'warn'); return; }
+      if (dirty) { ui.toast('请先保存草稿，再发布当前版本。', 'warn'); return; }
+      var dr = draftOf(curCode);
+      if (!dr) { ui.toast('没有待发布的草稿版本。', 'warn'); return; }
+      ui.confirm({
+        title: '立即发布 ' + dr.version,
+        message: '<p>将把「' + ui.esc(dr.name) + ' ' + ui.esc(dr.version) + '」<b>立即原子发布</b>，原生效版本转为历史。</p>' +
+          '<p class="ry-hint">发布是整版生效或整版不生效：中途失败会回滚，旧版本继续生效，不会出现半新半旧。' +
+          '已存在商机继续按原版本解释，不自动重算阶段。</p>',
+        confirmText: '立即发布', requireReason: true, reasonLabel: '发布原因',
+        onConfirm: function (reason) {
+          var r = S.templatePublish(curCode, reason);
+          if (!r.ok) {
+            out({ ok: false, errors: r.errors || [], msg: r.msg });
+            ui.toast('发布失败：' + r.msg, 'danger'); return;
+          }
+          draftStages = null; draftMeta = null; dirty = false;
+          ui.toast(r.msg, 'success'); render();
+        }
+      });
+    });
+
+    var rs = ui.qs('#tp-restore');
+    if (rs) rs.addEventListener('click', function () {
+      var t = current();
+      ui.confirm({
+        title: '恢复 ' + t.version,
+        message: '<p>恢复旧版本的方式是<b>复制为新草稿</b>，再走正常的校验与发布流程。</p>' +
+          '<p class="ry-hint">不做版本指针回拨：直接让旧版本重新生效会让「当时按 v2 走完的商机」与「现在又回到 v2」的语义混淆。</p>',
+        confirmText: '复制为新草稿', requireReason: true, reasonLabel: '恢复原因',
+        onConfirm: function (reason) {
+          var r = S.templateRestore(curCode, t.version, reason);
+          if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+          curVersion = r.draft.version; draftStages = null; draftMeta = null; dirty = false;
+          ui.toast(r.msg, 'success'); render();
+        }
+      });
+    });
+    var disable = ui.qs('#tp-disable');
+    if (disable) disable.addEventListener('click', function () {
+      ui.confirm({ title: '停用流程模板', message: '<p>停用后该“业务线＋销售场景”组合不再匹配新商机。</p><p class="ry-hint">已有商机仍引用原模板版本并可继续查看历史。</p>', requireReason: true, reasonLabel: '停用原因', confirmText: '确认停用', onConfirm: function (reason) {
+        var r = S.templateDeactivate(curCode, reason); if (!r.ok) { ui.toast(r.msg, 'warn'); return; } render();
+      } });
+    });
+  }
+
+  function newTemplateEditor() {
+    if (!canEdit) return;
+    var lines = S.all('businessLines').filter(function (x) { return x.status === '启用'; });
+    var lineOpts = [{ value: '', label: '请选择业务线' }].concat(lines.map(function (x) { return { value: x.code, label: x.name }; }));
+    var scenes = S.all('scenarios').filter(function (x) { return x.status !== '停用' && lines.some(function (l) { return l.code === x.businessLine; }); });
+    var id = ui.drawer({ title: '新建流程模板', subtitle: '为尚无模板的业务线与销售场景创建首个草稿。', size: 'md',
+      body: ui.field('模板编码', ui.input('code', '', 'TPL-XXXX'), '', true) +
+        ui.field('模板名称', ui.input('name', '', '如：标准销售流程'), '', true) +
+        ui.field('业务线', ui.select('businessLine', lineOpts, ''), '', true) +
+        ui.field('销售场景', ui.select('scene', [{ value: '', label: '请先选择业务线' }], ''), '', true) +
+        ui.field('停滞阈值（自然日）', ui.input('stagnantDays', '14', '正整数', 'number'), '', true) +
+        ui.field('草稿说明', ui.input('note', '', '本次新建说明')),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="tp-create">创建草稿</button>',
+      onOpen: function (el) {
+        ui.qs('[name=businessLine]', el).addEventListener('change', function () {
+          var opts = [{ value: '', label: '请选择销售场景' }].concat(scenes.filter(function (s) { return s.businessLine === ui.qs('[name=businessLine]', el).value; }).map(function (s) { return { value: s.code, label: s.name }; }));
+          ui.qs('[name=scene]', el).innerHTML = opts.map(function (x) { return '<option value="' + ui.esc(x.value) + '">' + ui.esc(x.label) + '</option>'; }).join('');
+        });
+        ui.qs('#tp-create', el).addEventListener('click', function () {
+          var v = ui.formValues(el), code = String(v.code || '').trim().toUpperCase();
+          if (!code || !v.name || !v.businessLine || !v.scene) { ui.toast('请填写模板编码、名称、业务线和场景。', 'warn'); return; }
+          var r = S.templateCreateDraft({ code: code, name: v.name, businessLine: v.businessLine, scene: v.scene, stagnantDays: v.stagnantDays, note: v.note });
+          if (!r.ok) { ui.toast(r.msg, 'warn'); return; }
+          ui.close(); curCode = code; curVersion = r.draft.version; draftStages = []; draftMeta = null; dirty = false; render();
+        });
+      }
+    });
+  }
+
+  function out(v) {
+    var el = ui.qs('#tp-valout');
+    if (!el) return;
+    if (v.ok) { el.innerHTML = ui.banner('已保存草稿校验通过，可以立即发布。', 'brand'); return; }
+    var errors = v.errors || [v.msg || '请检查草稿配置'];
+    var items = errors.map(function (msg) {
+      var match = String(msg).match(/第\s*(\d+)\s*个阶段/) || String(msg).match(/阶段「([^」]+)」/);
+      var index = -1;
+      if (match) index = /^\d+$/.test(match[1]) ? Number(match[1]) - 1 : draftStages.findIndex(function (s) { return s.name === match[1] || s.code === match[1]; });
+      var label = ui.esc(msg);
+      return '<li>' + (index >= 0 ? '<a href="#tp-stage-' + index + '">' + label + '</a>' : label) + '</li>';
+    }).join('');
+    el.innerHTML = ui.banner('<b>校验未通过，共 ' + errors.length + ' 项</b>。草稿已保留，请修正后重新校验。<ol class="tp-error-list">' + items + '</ol>', 'danger');
+  }
+
+  var newBtn = ui.qs('#tp-new');
+  if (newBtn) newBtn.addEventListener('click', function (e) {
+    if (e.target.closest('[data-denied]')) return;
+    if (dirty) ui.confirm({ title: '新建模板', message: '当前修改尚未保存，继续后将丢失。', confirmText: '放弃修改并新建', onConfirm: newTemplateEditor });
+    else newTemplateEditor();
+  });
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>同步异常 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：同步异常（可关联统一异常事项；处理仍在源对象与同步任务） */
+  .se-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+  .se-flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+  .se-flow__s { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); padding: 10px 12px; }
+  .se-flow__n { font-size: 12.5px; font-weight: 600; }
+  .se-flow__d { font-size: 11.5px; color: var(--muted); line-height: 1.65; margin-top: 3px; }
+  @media (max-width: 1180px) { .se-cols { grid-template-columns: minmax(0, 1fr); } .se-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="se-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'integration.exception';
+  var canRetry = P.can('integration.retry');
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '同步异常',
+    subtitle: '同步失败超过重试上限即成为同步异常，<b>可关联统一异常事项</b>。' +
+      '异常处理<b>不绕过源业务权限</b>。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '集成与同步' }, { label: '同步异常' }],
+    actions: '<a class="ry-btn" href="job.html">同步任务</a><a class="ry-btn" href="system.html">外部系统</a>'
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#se-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入同步异常',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示对象编号、失败原因与外部标识。</p>'
+    });
+    return;
+  }
+
+  function badJobs() {
+    return S.syncList().filter(function (s) { return s.status === '失败' || s.status === '待处理'; });
+  }
+  function syncExceptions() {
+    return S.exceptionList().filter(function (e) {
+      return e.type.indexOf('同步') >= 0 || e.type.indexOf('映射') >= 0 || e.type.indexOf('投递') >= 0;
+    });
+  }
+  function mapIssues() {
+    return S.qualityIssueList().filter(function (q) {
+      return (q.type === '关键映射缺失' || q.type === '同步异常') ;
+    });
+  }
+
+  function render() {
+    var jobs = badJobs(), excs = syncExceptions(), maps = mapIssues();
+    ui.qs('#se-host').innerHTML =
+      ui.banner('同步异常是<b>同步任务失败超过重试上限</b>之后的形态。' +
+        '它有三种可关联的记录，分别回答不同问题：' +
+        '<b>同步任务</b>回答「哪一次动作失败了、失败原因是什么」；' +
+        '<b>关键映射缺失</b>回答「是不是因为没建立外部稳定标识才失败」；' +
+        '<b>统一异常事项</b>回答「这件事有没有人在跟、跟到哪一步了」。' +
+        '本页把它们放在一起看，但<b>处理动作仍然分散在各自的正式入口</b>：' +
+        '重试在同步任务，治理在源对象，异常事项按异常事项的流程推进——' +
+        '<b>本页不提供「一键修复」</b>，也不绕过源业务对象的页面权限与数据范围。', 'info') +
+
+      '<div class="se-flow" style="margin-top:12px">' +
+        '<div class="se-flow__s"><div class="se-flow__n">1 同步失败</div>' +
+          '<div class="se-flow__d">记失败原因，进入自动重试</div></div>' +
+        '<div class="se-flow__s"><div class="se-flow__n">2 超过上限</div>' +
+          '<div class="se-flow__d">停止自动重试，成为同步异常</div></div>' +
+        '<div class="se-flow__s"><div class="se-flow__n">3 派生异常事项</div>' +
+          '<div class="se-flow__d">在统一异常事项中由人工领取处理</div></div>' +
+        '<div class="se-flow__s"><div class="se-flow__n">4 重试或修正</div>' +
+          '<div class="se-flow__d">在同步任务重试；映射缺失则在源系统补齐</div></div>' +
+      '</div>' +
+
+      '<div class="se-cols">' +
+        '<div>' +
+          ui.section('失败的同步任务（' + jobs.length + ' 条）',
+            jobs.length
+              ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+                '<th style="width:150px">任务编号</th><th style="width:130px">外部系统</th><th>对象</th>' +
+                '<th>失败原因</th><th style="width:110px">重试</th><th style="width:150px">关联异常</th><th style="width:110px">操作</th>' +
+                '</tr></thead><tbody>' + jobs.map(function (s) {
+                  return '<tr>' +
+                    '<td><span class="ry-code">' + ui.esc(s.id) + '</span>' +
+                      '<div class="ry-hint">' + ui.esc(s.executedAt || '未执行') + '</div></td>' +
+                    '<td>' + ui.esc(s.system) + '<div class="ry-hint">' + ui.esc(s.direction) + '</div></td>' +
+                    '<td><span class="ry-cellname">' + ui.esc(s.object) + '</span>' +
+                      '<div class="ry-hint"><span class="ry-code">' + ui.esc(s.objectId) + '</span></div></td>' +
+                    '<td class="ry-hint" style="color:var(--danger)">' + ui.esc(s.failReason || '未执行') + '</td>' +
+                    '<td>' + s.retryCount + ' / ' + s.maxRetry +
+                      (s.retryCount >= s.maxRetry ? '<div class="ry-hint" style="color:var(--warn)">已达上限</div>' : '') + '</td>' +
+                    '<td>' + (s.exceptionId
+                      ? '<a class="ry-code" href="../exception/detail.html?id=' + encodeURIComponent(s.exceptionId) + '">' + ui.esc(s.exceptionId) + '</a>'
+                      : '<span class="ry-faint">未派生</span>') + '</td>' +
+                    '<td class="ry-tbl-act">' +
+                      (canRetry ? '<button class="ry-btn ry-btn--sm ry-btn--primary" data-se-retry="' + s.id + '">重试</button>' : '') +
+                      '<a class="ry-btn ry-btn--sm" href="job.html">任务列表</a>' +
+                    '</td></tr>';
+                }).join('') + '</tbody></table></div>'
+              : ui.stateCard('empty', { title: '当前没有失败的同步任务', body: '<p>外部同步全部正常。</p>' })) +
+
+          ui.section('关键映射缺失与同步异常问题（' + maps.length + ' 条）',
+            maps.length
+              ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+                '<th style="width:150px">规则</th><th style="width:120px">类型</th><th>对象</th>' +
+                '<th style="width:150px">问题项</th><th style="width:110px">状态</th><th style="width:120px">操作</th>' +
+                '</tr></thead><tbody>' + maps.map(function (q) {
+                  return '<tr>' +
+                    '<td><span class="ry-code">' + ui.esc(q.ruleCode) + '</span> <span class="ry-code">' + ui.esc(q.ruleVersion) + '</span></td>' +
+                    '<td>' + ui.tag(q.type, 'warn') + '</td>' +
+                    '<td>' + ui.esc(q.objectName) + '<div class="ry-hint ry-code">' + ui.esc(q.objectId) + '</div></td>' +
+                    '<td class="ry-hint">' + ui.esc((q.missingFields || []).join('、') || '—') + '</td>' +
+                    '<td>' + ui.tag(q.resultStatus, q.resultStatus === '当前存在' ? 'warn' : 'muted') + '</td>' +
+                    '<td class="ry-tbl-act"><a class="ry-btn ry-btn--sm" href="../quality/issue.html?type=' + encodeURIComponent(q.type) + '">去质量页</a></td>' +
+                  '</tr>';
+                }).join('') + '</tbody></table></div>'
+              : '<p class="ry-hint">没有与同步相关的质量问题。</p>') +
+        '</div>' +
+
+        '<div>' +
+          ui.section('关联的统一异常事项（' + excs.length + ' 条）',
+            excs.length
+              ? '<ul class="ry-kv ry-kv--tight">' + excs.map(function (e) {
+                  return '<li><span>' + ui.esc(e.type) + '</span><b>' +
+                    '<a href="../exception/detail.html?id=' + encodeURIComponent(e.id) + '">' + ui.esc(e.id) + '</a>' +
+                    '　' + ui.esc(e.objectType) + ' ' + ui.esc(e.objectId) + '　' + ui.esc(e.status) + '</b></li>';
+                }).join('') + '</ul>'
+              : '<p class="ry-hint">当前没有关联的异常事项。</p>') +
+
+          ui.section('处理边界',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>一键修复</span><b>不提供</b></li>' +
+              '<li><span>重试入口</span><b>同步任务列表／本页重试按钮</b></li>' +
+              '<li><span>映射补齐</span><b>在外部系统侧补齐后重新同步</b></li>' +
+              '<li><span>异常事项</span><b>按统一异常事项流程领取与关闭</b></li>' +
+              '<li><span>权限</span><b>不绕过源业务对象的页面权限与数据范围</b></li>' +
+              '<li><span>回滚业务</span><b>不回滚来源业务对象</b></li>' +
+            '</ul>' +
+            ui.banner('同步异常最常见的原因是<b>外部标识没建起来</b>（如首次同步就失败）。' +
+              '这种情况重试通常无效，需要先在外部系统侧确认对象状态与权限，' +
+              '再回到同步任务重试。本页把这条线索显式列出来，避免反复无效重试。', 'warn')) +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-SYNCEXC</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-SYNCEXC · PC · 集成与同步</b></li>' +
+        '<li><span>依据</span><b>prd/08 §14</b></li>' +
+        '<li><span>可进入角色</span><b>管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-75 AC-71</b></li>' +
+        '<li><span>关联关系</span><b>同步任务｜关键映射缺失｜统一异常事项</b></li>' +
+        '<li><span>明确不做</span><b>不做一键修复、不回滚来源业务、不绕过源业务权限、不建设通用对账</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    ui.qsa('[data-se-retry]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (e.target.closest('[data-denied]')) return;
+        var r = S.retrySync(b.getAttribute('data-se-retry'));
+        ui.toast(r.msg, r.ok ? 'success' : 'warn');
+        render();
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

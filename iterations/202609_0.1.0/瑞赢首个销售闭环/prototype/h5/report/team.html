@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>团队日报 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：团队日报概览（只读概览 + 本人阅读状态 + 追加建议）。 */
+  .rt-scope { position: sticky; top: 0; z-index: 6; background: var(--bg); padding: 8px 0 6px; }
+  .rt-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .rt-hint { font-size: 11px; color: var(--faint); margin: 6px 2px 0; line-height: 1.6; }
+  .rt-row__body { font-size: 12.5px; color: var(--muted); line-height: 1.8; margin: 6px 0 0; }
+  .rt-more { text-align: center; padding: 14px 0 4px; }
+  .rt-more.is-hidden { display: none; }
+  .rt-frz { border: 1px solid var(--info-line); background: var(--info-soft); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+  .rt-frz p { margin: 0; font-size: 12.5px; line-height: 1.8; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+
+  <div class="rt-scope">
+    <p class="rt-hint" id="rt-hint">—</p>
+    <div class="rt-chips">
+      <button class="ry-chip" id="rt-filter">日期与阅读状态</button>
+      <button class="ry-chip" id="rt-member">团队成员</button>
+      <span class="ry-btn is-off" data-denied="1" title="不做批量已读／未读：阅读状态只支持单条手动切换">批量已读<i class="ry-btn__lock">不做批量</i></span>
+    </div>
+  </div>
+
+  <div id="rt-host"></div>
+
+  <div class="rt-more is-hidden" id="rt-more">
+    <button class="ry-btn" id="rt-more-btn">加载更多</button>
+  </div>
+
+  <!-- 本页契约：评审对照用，列出页面约定与边界，不承载业务事实 -->
+  <div class="ry-hcard ry-hcard--flat" style="margin-top:14px">
+    <div class="ry-hcard__head"><h3>本页契约</h3><div class="ry-hcard__extra"><span class="h5-sec-note">PG-RPT-TEAM</span></div></div>
+    <div class="ry-hcard__body">
+      <ul class="ry-kv ry-kv--tight">
+        <li><span>页面契约</span><b>PG-RPT-TEAM · 日报和主管业务处理 · H5</b></li>
+        <li><span>可进入角色</span><b>R2 销售主管｜R5 系统管理员（仅授权主管）</b></li>
+        <li><span>依据</span><b>prd/04 §6</b></li>
+        <li><span>覆盖验收</span><b>AC-37 AC-38 AC-29</b></li>
+        <li><span>本页视图</span><b>团队日报、本人阅读状态、追加建议、不做批量已读未读</b></li>
+        <li><span>范围边界</span><b>只覆盖授权管理组织节点（含下级组织）；未授权团队不返回数量与摘要</b></li>
+        <li><span>阅读边界</span><b>只有打开日报正文详情才自动置为已读；允许单条手动改为已读／未读，不提供批量</b></li>
+        <li><span>建议边界</span><b>建议只能追加、不能覆盖或删除；追加建议不重置他人阅读状态，也不改变已提交正文</b></li>
+        <li><span>能力边界</span><b>H5 只做日报阅读、阅读状态与建议；不做指标趋势、下钻与看板，导出属 PC 能力</b></li>
+      </ul>
+      <p class="ry-hint" id="rt-scope-note">—</p>
+    </div>
+  </div>
+
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.report.team';
+  var SIZE = 20;
+  var READ = ['', '未读', '已读'];
+  var state = { date: '', member: '', read: '', page: 1 };
+  var me = S.currentUser();
+
+  RY.nav.h5shell({
+    title: '团队日报',
+    sub: '只读概览 · 阅读状态 · 追加建议',
+    back: false,
+    nav: 'home',
+    tabbar: true
+  });
+
+  /* ---------------------------------------------------------- 鉴权 */
+  /* 团队日报仅对授权主管开放；未授权身份既不进入页面，也不返回任何数量与摘要。 */
+  if (!P.page(PAGE)) {
+    ui.qs('#rt-host').innerHTML = ui.stateCard('no-permission', {
+      title: '团队日报仅对授权主管开放',
+      body: '<p>' + ui.esc(P.whyNot('report.read') || '当前身份没有「团队日报」页面权限。') + '</p>' +
+        '<p class="ry-hint">团队日报的范围是授权管理组织节点并包含下级组织；未授权团队不返回数量、条数与摘要，' +
+        '本页不会用空列表冒充「该团队没有日报」。</p>' +
+        '<p class="ry-hint">主管阅读团队日报时，只按授权范围读取已提交版本；阅读状态只对本人记录，' +
+        '不因追加建议或他人阅读而变化。</p>' +
+        '<p class="ry-hint">H5 只做日报阅读、阅读状态与建议；不做指标趋势、下钻与看板，也不做批量已读／未读。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/activity/list.html?tab=report') + '">我的日报</a>' +
+               '<a class="ry-btn" href="' + RY.nav.href('index.html') + '">返回工作台</a>'
+    });
+    ui.qs('.rt-scope').style.display = 'none';
+    ui.qs('#rt-more').classList.add('is-hidden');
+    ui.qs('#rt-scope-note').textContent = '当前身份不是授权主管，因此不展示任何团队日报数量与摘要。';
+    return;
+  }
+
+  /* ---------------------------------------------------------- 数据 */
+
+  /* 先按数据范围过滤，再渲染：只展示授权范围内（含下级组织）的已提交日报。 */
+  function scoped() {
+    return S.reportList('team').filter(function (r) { return P.inScope('report', r); });
+  }
+  /* 阅读状态是「当前主管本人」的阅读记录，不是全公司阅读统计。 */
+  function myRead(r) {
+    var x = (r.readBy || {})[me.id];
+    return x && x.read ? '已读' : '未读';
+  }
+  function readAt(r) { var x = (r.readBy || {})[me.id]; return x && x.read ? (x.at || '') : ''; }
+
+  function filtered() {
+    return scoped().filter(function (r) {
+      if (state.date && r.date !== state.date) return false;
+      if (state.member && r.userId !== state.member) return false;
+      if (state.read && myRead(r) !== state.read) return false;
+      return true;
+    }).sort(function (a, b) {
+      return (b.date + (b.submittedAt || '')).localeCompare(a.date + (a.submittedAt || ''));
+    });
+  }
+  function members() {
+    var ids = [];
+    scoped().forEach(function (r) { if (ids.indexOf(r.userId) < 0) ids.push(r.userId); });
+    return ids;
+  }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function row(r) {
+    var read = myRead(r);
+    var adv = r.advices || [];
+    var body = r.submittedBody || '';
+    var tags = ui.statusTag(r.status) + ' ' + ui.tag('本人' + read, read === '已读' ? 'ok' : 'warn');
+    if (adv.length) tags += ' ' + ui.tag('建议 ' + adv.length + ' 条', 'info');
+
+    return '<li><div class="ry-hrow">' +
+      '<div class="ry-hrow__top">' +
+        '<span class="ry-hrow__t">' + ui.esc(S.userName(r.userId)) + ' · ' + ui.esc(r.date) + '</span>' +
+        '<span class="ry-hrow__tags">' + tags + '</span>' +
+      '</div>' +
+      '<div class="ry-hrow__meta">' +
+        '<span>提交 <b>' + ui.esc(r.submittedAt || '—') + '</b></span>' +
+        '<span>阅读时间 <b>' + ui.esc(readAt(r) || '—') + '</b></span>' +
+      '</div>' +
+      '<p class="rt-row__body">' + ui.esc(body.slice(0, 90)) + (body.length > 90 ? '…' : '') + '</p>' +
+      '<div class="ry-hrow__foot">' +
+        '<a class="ry-btn" href="' + RY.nav.href('h5/report/detail.html?id=' + encodeURIComponent(r.id)) + '">查看详情</a>' +
+        '<span style="display:flex;gap:6px">' +
+          ui.actionBtn('report.read', read === '已读' ? '标记未读' : '标记已读', ' data-read="' + ui.esc(r.id) + '" data-to="' + (read === '已读' ? '未读' : '已读') + '"') +
+          ui.actionBtn('report.advice', '追加建议', ' data-adv="' + ui.esc(r.id) + '"', 'ry-btn--primary') +
+        '</span>' +
+      '</div>' +
+    '</div></li>';
+  }
+
+  function render() {
+    var list = filtered();
+    var shown = list.slice(0, state.page * SIZE);
+    var all = scoped();
+
+    if (!all.length) {
+      ui.qs('#rt-host').innerHTML = ui.stateCard('empty', {
+        title: '当前授权范围内没有可读日报',
+        body: '<p>团队日报只覆盖授权管理组织节点（含下级组织）并已提交的日报；范围之外的对象不返回，也不展示数量与摘要。</p>' +
+          '<p class="ry-hint">未授权团队不返回任何计数；「没有结果」不等于该团队没有提交日报。</p>',
+        actions: '<a class="ry-btn" href="' + RY.nav.href('index.html') + '">返回工作台</a>'
+      });
+      ui.qs('#rt-more').classList.add('is-hidden');
+      ui.qs('#rt-hint').textContent = '当前授权范围内可见 0 条日报。';
+      return;
+    }
+
+    ui.qs('#rt-host').innerHTML =
+      '<div class="rt-frz"><p><b>只读概览。</b>主管可查看范围内团队成员的已提交日报、追加建议并维护本人阅读状态；' +
+      '已提交日报正文与事实快照冻结，主管不代销售改写，也不退回重提。</p></div>' +
+      (list.length
+        ? '<div class="ry-hlist"><ul>' + shown.map(row).join('') + '</ul></div>' +
+          '<p class="rt-hint">阅读状态只记录本人；只有打开日报正文详情才自动置为已读，允许单条手动切换，不做批量已读／未读。</p>'
+        : ui.stateCard('empty', {
+            title: '当前筛选条件下没有日报',
+            body: '<p>筛选条件可能排除了范围内已提交的日报；清空筛选可查看全部授权范围内的团队日报。</p>',
+            actions: '<button class="ry-btn" id="rt-clear">清空筛选</button>'
+          }));
+
+    var more = shown.length < list.length;
+    ui.qs('#rt-more').classList.toggle('is-hidden', !more);
+    ui.qs('#rt-more-btn').textContent = '加载更多（已显示 ' + shown.length + ' / ' + list.length + '）';
+    ui.qs('#rt-hint').textContent = '授权范围内 ' + all.length + ' 条日报，当前筛选 ' + list.length + ' 条；' +
+      (state.read ? '阅读状态筛选：本人' + state.read + '。' : '阅读状态：本人已读／未读。');
+
+    ui.qsa('#rt-host [data-read]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var r = S.report(b.getAttribute('data-read'));
+        if (!r) { ui.toast('日报不存在或已不可见', 'warn'); return; }
+        var to = b.getAttribute('data-to');
+        var res = S.markReportRead(r.id, to === '已读');
+        if (!res.ok) { ui.toast(res.msg, 'warn'); return; }
+        ui.toast('已按单条手动标记为' + to + '（不做批量）', 'ok');
+        render();
+      });
+    });
+    ui.qsa('#rt-host [data-adv]').forEach(function (b) {
+      if (b.hasAttribute('data-denied')) return;
+      b.addEventListener('click', function () { adviceSheet(b.getAttribute('data-adv')); });
+    });
+    var clear = ui.qs('#rt-clear');
+    if (clear) clear.addEventListener('click', function () {
+      state.date = ''; state.member = ''; state.read = ''; state.page = 1; render();
+    });
+    ui.bindDenied(document.body);
+  }
+
+  /* 追加建议：只能追加，不能覆盖或删除；不改变已提交正文与事实快照。 */
+  function adviceSheet(id) {
+    var r = S.report(id);
+    if (!r) { ui.toast('日报不存在或已不可见', 'warn'); return; }
+    RY.nav.sheet({
+      title: '追加主管建议', sub: S.userName(r.userId) + ' · ' + r.date,
+      body: '<div class="ry-hform">' +
+        ui.field('建议内容', ui.textarea('text', '', '针对该日报的过程与结论给出建议，追加后不可覆盖或删除', 4), '', true) +
+        '</div>' +
+        '<p class="ry-hint">建议是追加式记录：不覆盖原建议、不修改已提交正文与事实快照，也不重置其他主管的阅读状态。</p>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="rt-adv-ok">提交建议</button>',
+      onOpen: function (host, close) {
+        host.addEventListener('click', function (e) {
+          if (!e.target.closest('#rt-adv-ok')) return;
+          var v = ui.formValues(host);
+          var text = (v.text || '').trim();
+          if (!text) { ui.toast('建议内容不能为空', 'warn'); return; }
+          var res = S.addReportAdvice(id, text);
+          if (!res.ok) { ui.toast(res.msg, 'warn'); return; }
+          close();
+          ui.toast('已追加建议（追加式，不覆盖）', 'ok');
+          render();
+        });
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------- 交互 */
+
+  ui.qs('#rt-more-btn').addEventListener('click', function () { state.page++; render(); });
+
+  ui.qs('#rt-filter').addEventListener('click', function () {
+    var dates = [];
+    scoped().forEach(function (r) { if (dates.indexOf(r.date) < 0) dates.push(r.date); });
+    dates.sort().reverse();
+    function seg(name, opts, cur) {
+      return '<div class="ry-fbar__seg" style="margin:8px 0 14px;flex-wrap:wrap">' + opts.map(function (o) {
+        return '<button type="button" data-k="' + name + '" data-v="' + ui.esc(o.v) + '"' + (cur === o.v ? ' class="is-on"' : '') + '>' +
+          ui.esc(o.n) + '</button>';
+      }).join('') + '</div>';
+    }
+    RY.nav.sheet({
+      title: '筛选团队日报', sub: '筛选为临时条件，不保存视图',
+      body: '<div class="ry-field__label">日报日期</div>' +
+        seg('date', [{ v: '', n: '全部' }].concat(dates.map(function (d) { return { v: d, n: d }; })), state.date) +
+        '<div class="ry-field__label">本人阅读状态</div>' +
+        seg('read', READ.map(function (x) { return { v: x, n: x || '全部' }; }), state.read) +
+        '<p class="ry-hint">阅读状态是本人记录；不提供批量已读／未读，也不展示他人的阅读明细。</p>',
+      footer: '<button class="ry-btn" data-reset>重置</button><button class="ry-btn ry-btn--primary" data-close>查看结果</button>',
+      onOpen: function (host, close) {
+        host.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-k]');
+          if (b) {
+            state[b.getAttribute('data-k')] = b.getAttribute('data-v');
+            state.page = 1;
+            b.parentNode.querySelectorAll('button').forEach(function (x) { x.classList.remove('is-on'); });
+            b.classList.add('is-on');
+            render();
+            return;
+          }
+          if (e.target.closest('[data-reset]')) {
+            state.date = ''; state.read = ''; state.page = 1;
+            close(); render();
+          }
+        });
+      }
+    });
+  });
+
+  ui.qs('#rt-member').addEventListener('click', function () {
+    var ids = members();
+    if (!ids.length) { ui.toast('当前授权范围内没有团队成员日报', 'warn'); return; }
+    RY.nav.sheet({
+      title: '团队成员', sub: '仅授权范围内的成员',
+      body: '<ul class="ry-kv ry-kv--tight">' +
+        '<li><span>全部成员</span><b><button class="ry-inline-btn" data-m="">查看全部</button></b></li>' +
+        ids.map(function (id) {
+          var n = scoped().filter(function (r) { return r.userId === id; }).length;
+          return '<li><span>' + ui.esc(S.userName(id)) + '</span><b><button class="ry-inline-btn" data-m="' + ui.esc(id) + '">' + n + ' 条</button></b></li>';
+        }).join('') + '</ul>' +
+        '<p class="ry-hint">成员列表只包含授权范围内有日报的用户；未授权对象的姓名、数量与摘要都不返回。</p>',
+      onOpen: function (host, close) {
+        host.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-m]');
+          if (!b) return;
+          state.member = b.getAttribute('data-m');
+          state.page = 1;
+          close(); render();
+        });
+      }
+    });
+  });
+
+  ui.qs('#rt-scope-note').textContent =
+    '当前数据范围：' + P.dataScope(me).label +
+    '　团队日报只覆盖授权管理组织节点（含下级组织）；未授权团队不返回数量与摘要。';
+
+  render();
+})();
+</script>
+</body>
+</html>

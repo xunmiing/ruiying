@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>审计详情 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：审计详情（关键前后值受明文字段权限约束；不提供导出） */
+  .ad-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+  .ad-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .ad-h__t { font-size: 15px; font-weight: 600; }
+  .ad-diff { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 6px; font-size: 12.5px; line-height: 1.85; }
+  .ad-diff > span { color: var(--muted); }
+  .ad-from { color: var(--muted); }
+  .ad-to { color: var(--ink); font-weight: 600; }
+  .ad-mask { font-family: var(--mono); letter-spacing: 1px; color: var(--faint); }
+  .ad-tl { border-left: 2px solid var(--line); margin-left: 6px; padding-left: 14px; }
+  .ad-tl__i { position: relative; padding-bottom: 10px; }
+  .ad-tl__i:last-child { padding-bottom: 0; }
+  .ad-tl__i::before { content: ''; position: absolute; left: -21px; top: 4px; width: 9px; height: 9px; border-radius: 50%; background: var(--brand); }
+  .ad-tl__h { font-size: 12.5px; font-weight: 600; }
+  .ad-tl__m { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+  @media (max-width: 1180px) { .ad-cols { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="ad-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'audit.detail';
+  var id = ui.q('id') || '';
+
+  /* 审计对象 → 源业务对象集合与页面：用于「关联记录」与「进入源对象」 */
+  var OBJ = {
+    '客户': { kind: 'customers', href: '../customer/detail.html?id=' },
+    '联系人': { kind: 'contacts', href: '../contact/detail.html?id=' },
+    '线索': { kind: 'leads', href: '../lead/detail.html?id=' },
+    '商机': { kind: 'opportunities', href: '../opportunity/detail.html?id=' },
+    '客户经营关系': { kind: 'businessRelations', href: '../customer/detail.html?id=' },
+    '正式拜访': { kind: 'visits', href: '../visit/detail.html?id=' },
+    '独立日程': { kind: 'schedules', href: '../schedule/detail.html?id=' },
+    '任务': { kind: 'tasks', href: '../task/detail.html?id=' }
+  };
+  var SRC_GROUP = ['PC', 'H5', 'R6（Agent 服务身份）', '系统任务'];
+  function srcGroup(s) {
+    s = String(s || '');
+    if (s.indexOf('H5') >= 0) return 'H5';
+    if (s.indexOf('R6') >= 0 || s.indexOf('Agent') >= 0) return 'R6（Agent 服务身份）';
+    if (s.indexOf('系统') >= 0 || s.indexOf('任务') >= 0) return '系统任务';
+    return 'PC';
+  }
+  function srcTone(g) { return g === 'H5' ? 'info' : g === 'R6（Agent 服务身份）' ? 'brand' : g === '系统任务' ? 'muted' : ''; }
+
+  var a = id ? S.find('audits', id) : null;
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '审计详情',
+    subtitle: '记录：<span class="ry-code">' + ui.esc(id || '未指定') + '</span>　<b>append-only</b>，不可修改、不可删除、不提供导出。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '审计', href: 'pc/audit/list.html' }, { label: a ? a.id : '详情' }],
+    actions: '<a class="ry-btn" href="list.html">返回审计列表</a>'
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!a) g = { ok: false, kind: 'unavailable', reason: '审计记录不存在。审计为 append-only，不会因查看而变更。' };
+
+  /* 源对象可见性：审计可见 ≠ 源对象可见。源对象不在数据范围内时不展示关键前后值。 */
+  var objVisible = true, objReason = '';
+  var src = null, objMeta = OBJ[a ? a.objectType : ''] || null;
+  if (a && objMeta) {
+    src = S.find(objMeta.kind, a.objectId);
+    if (!src) { objVisible = false; objReason = '源对象已不存在或已失效。'; }
+    else if (!P.inScope(objMeta.kind, src)) { objVisible = false; objReason = '源对象不在当前账号的数据范围内。'; }
+  }
+
+  function sensitive(v) {
+    /* 手机号、证件号等按明文字段权限呈现；无权时掩码 */
+    if (P.canViewPlainPhone()) return ui.esc(v);
+    return ui.esc(String(v).replace(/\d{11}/g, function (m) { return m.slice(0, 3) + '••••' + m.slice(-2); })
+      .replace(/\d{15,18}[\dXx]/g, function (m) { return m.slice(0, 4) + '••••••••' + m.slice(-2); }));
+  }
+  function diffRow(v) {
+    if (!objVisible) return '<span class="ad-mask">••••••（源对象不在数据范围内）</span>';
+    return sensitive(v);
+  }
+
+  function relOf() {
+    var out = [];
+    if (!a) return out;
+    var ex = S.exceptionList().filter(function (e) { return e.objectId === a.objectId; });
+    ex.forEach(function (e) { out.push({ t: '异常事项', id: e.id, href: '../exception/detail.html?id=' + encodeURIComponent(e.id), note: e.type + '　' + e.status }); });
+    var sj = S.syncList().filter(function (s) { return s.objectId === a.objectId; });
+    sj.forEach(function (s) { out.push({ t: '同步任务', id: s.id, href: '../integration/job.html?system=' + encodeURIComponent(s.system), note: s.system + '　' + s.status }); });
+    var md = S.deliveryList().filter(function (m) { return (m.target && m.target.id === a.objectId) || m.msgId === a.objectId; });
+    md.forEach(function (m) { out.push({ t: '消息投递', id: m.msgId, href: '../message/delivery.html', note: m.event + '　投递' + m.deliveryStatus }); });
+    var qi = S.qualityIssueList().filter(function (q) { return q.objectId === a.objectId; });
+    qi.forEach(function (q) { out.push({ t: '质量问题', id: q.id, href: '../quality/issue.html?type=' + encodeURIComponent(q.type), note: q.ruleCode + '　' + q.resultStatus }); });
+    return out;
+  }
+  function historyOf() {
+    if (!a) return [];
+    return S.auditList({ objectType: a.objectType }).filter(function (x) { return x.objectId === a.objectId && x.id !== a.id; })
+      .slice().sort(function (x, y) { return x.at < y.at ? 1 : -1; });
+  }
+
+  function render() {
+    if (!g.ok) {
+      ui.qs('#ad-host').innerHTML = ui.stateCard(g.kind, {
+        title: '审计记录不可用',
+        body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示操作人、对象标识与关键前后值。</p>',
+        extra: '<a class="ry-btn" href="list.html">返回审计列表</a>'
+      });
+      return;
+    }
+
+    var rels = relOf(), hist = historyOf();
+    var grp = srcGroup(a.source);
+
+    ui.qs('#ad-host').innerHTML =
+      ui.banner('一条审计记录回答五件事：<b>谁</b>（操作人）、<b>从哪来</b>（PC／H5／R6／系统任务）、' +
+        '<b>对什么</b>（对象类型与标识）、<b>做了什么</b>（动作与结果）、<b>改变了什么</b>（关键前后值）。' +
+        '「关键前后值」只记录<b>与治理判断相关</b>的字段，不是全字段快照：' +
+        '它的目的是事后能判断「这次改动是否越过了规则」，' +
+        '而不是保存一份历史数据副本——后者会把审计变成第二个数据库，也会把越权读取的风险带进来。' +
+        '因此当<b>源对象不在当前账号的数据范围内</b>时，本页只呈现审计元数据，' +
+        '<b>前后值以掩码呈现</b>：审计可见不等于源对象可见。' +
+        '本页<b>不提供导出</b>，也不提供任何修改与删除入口。', 'info') +
+
+      '<div class="ad-cols" style="margin-top:12px">' +
+        '<div>' +
+          '<div class="ry-card" style="margin-bottom:12px"><div class="ry-card__body">' +
+            '<div class="ad-h"><div><div class="ad-h__t">' + ui.esc(a.action) + '</div>' +
+              '<div class="ry-hint"><span class="ry-code">' + ui.esc(a.id) + '</span>　' + ui.esc(a.at) + '</div></div>' +
+              '<div>' + ui.statusTag(a.result) + ' ' + ui.tag(grp, srcTone(grp)) + '</div></div>' +
+            '<div class="ry-divider"></div>' +
+            ui.kv([
+              ['操作时间', a.at],
+              ['操作人', a.actor || '系统'],
+              ['来源', grp + '（' + a.source + '）'],
+              ['对象类型', a.objectType],
+              ['对象标识', '<span class="ry-code">' + ui.esc(a.objectId) + '</span>'],
+              ['动作', a.action],
+              ['结果', a.result],
+              ['失败原因', a.failReason || (a.result === '成功' ? '—' : '记录结果非成功，详见结果说明')]
+            ]) +
+          '</div></div>' +
+
+          ui.section('关键前后值',
+            '<div class="ad-diff">' +
+              '<span>变更前</span><b class="ad-from">' + diffRow(a.from || '—') + '</b>' +
+              '<span>变更后</span><b class="ad-to">' + diffRow(a.to || '—') + '</b>' +
+              '<span>快照范围</span><b>仅与治理判断相关的字段</b>' +
+              '<span>敏感字段</span><b>' + (P.canViewPlainPhone() ? '当前身份具备明文字段权限，按明文呈现' : '当前身份无明文字段权限，按掩码呈现') + '</b>' +
+            '</div>' +
+            (!objVisible
+              ? ui.banner(ui.esc(objReason) + '因此本页<b>不展示前后值内容</b>，也不提供跳转源对象的入口。' +
+                  '这保证了「查审计」不会成为一条读取范围外数据的通道。', 'warn')
+              : '') +
+            '<div class="ry-acts-row" style="margin-top:10px">' +
+              (objVisible && objMeta
+                ? '<a class="ry-btn" href="' + objMeta.href + encodeURIComponent(a.objectId) + '">进入源对象</a>'
+                : '<span class="ry-hint">源对象不在数据范围内，不提供跳转入口</span>') +
+            '</div>') +
+
+          ui.section('关联记录（' + rels.length + ' 条）',
+            rels.length
+              ? '<div class="ry-table__wrap"><table class="ry-table ry-table--tight"><thead><tr>' +
+                '<th style="width:110px">类型</th><th style="width:190px">编号</th><th>说明</th><th style="width:90px">操作</th>' +
+                '</tr></thead><tbody>' + rels.map(function (r) {
+                  return '<tr><td>' + ui.tag(r.t, r.t === '异常事项' ? 'warn' : 'info') + '</td>' +
+                    '<td><span class="ry-code">' + ui.esc(r.id) + '</span></td>' +
+                    '<td class="ry-hint">' + ui.esc(r.note) + '</td>' +
+                    '<td class="ry-tbl-act"><a class="ry-btn ry-btn--sm" href="' + r.href + '">打开</a></td></tr>';
+                }).join('') + '</tbody></table></div>'
+              : '<p class="ry-hint">该对象没有关联的异常事项、同步任务、消息投递或质量问题。</p>') +
+
+          ui.section('同一对象的其他审计记录（' + hist.length + ' 条）',
+            hist.length
+              ? '<div class="ad-tl">' + hist.map(function (x) {
+                  return '<div class="ad-tl__i"><div class="ad-tl__h">' + ui.esc(x.action) + '　' +
+                    '<a class="ry-code" href="detail.html?id=' + encodeURIComponent(x.id) + '">' + ui.esc(x.id) + '</a></div>' +
+                    '<div class="ad-tl__m">' + ui.esc(x.at) + '　' + ui.esc(x.actor || '系统') + '　' + ui.esc(srcGroup(x.source)) + '　' + ui.esc(x.result) + '</div></div>';
+                }).join('') + '</div>'
+              : '<p class="ry-hint">该对象暂无其他审计记录。</p>' +
+                '<p class="ry-hint" style="margin-top:6px">审计按<b>追加</b>写入：同一次业务动作可能产生一条记录，' +
+                '也可能因为同时触发了治理动作而多于一条。记录条数不等于动作次数——' +
+                '判断时看「动作」与「关键前后值」，不要靠数条数。</p>') +
+        '</div>' +
+
+        '<div>' +
+          ui.section('本记录的字段',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>操作时间</span><b>' + ui.esc(a.at) + '</b></li>' +
+              '<li><span>操作人</span><b>' + ui.esc(a.actor || '系统') + '</b></li>' +
+              '<li><span>来源</span><b>' + ui.esc(grp) + '</b></li>' +
+              '<li><span>对象类型与标识</span><b>' + ui.esc(a.objectType) + ' ' + ui.esc(a.objectId) + '</b></li>' +
+              '<li><span>动作</span><b>' + ui.esc(a.action) + '</b></li>' +
+              '<li><span>结果</span><b>' + ui.esc(a.result) + '</b></li>' +
+              '<li><span>关键前后值</span><b>' + (objVisible ? '按字段权限呈现' : '掩码') + '</b></li>' +
+              '<li><span>失败原因</span><b>' + ui.esc(a.failReason || '—') + '</b></li>' +
+              '<li><span>关联记录</span><b>' + rels.length + ' 条</b></li>' +
+            '</ul>') +
+
+          ui.section('来源口径',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>PC</span><b>统一 PC 应用内的操作</b></li>' +
+              '<li><span>H5</span><b>企业微信 H5 内的操作</b></li>' +
+              '<li><span>R6</span><b>Agent 服务身份写入（仍以人工确认为前提）</b></li>' +
+              '<li><span>系统任务</span><b>系统按规则自动执行的动作</b></li>' +
+            '</ul>' +
+            ui.banner('来源必须能区分「人做的」与「系统做的」、以及「在哪个端做的」。' +
+              '否则一旦出现争议，无法判断是销售在手机上误操作，还是系统任务按规则批量执行——' +
+              '这两者的处置方式完全不同。', 'warn')) +
+
+          ui.section('不可变更',
+            '<ul class="ry-kv ry-kv--tight">' +
+              '<li><span>修改记录</span><b>不提供</b></li>' +
+              '<li><span>删除记录</span><b>不提供</b></li>' +
+              '<li><span>导出记录</span><b>不提供</b></li>' +
+              '<li><span>批量选择</span><b>不提供（避免误操作与隐性导出）</b></li>' +
+              '<li><span>保留期</span><b>长期保留，不受 7 天清理影响</b></li>' +
+            '</ul>') +
+        '</div>' +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-AUDIT-DETAIL</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-AUDIT-DETAIL · PC · 审计</b></li>' +
+        '<li><span>依据</span><b>prd/08 §17</b></li>' +
+        '<li><span>可进入角色</span><b>销售主管/经理｜管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-78</b></li>' +
+        '<li><span>必须展示</span><b>操作时间｜操作人｜来源｜对象类型与标识｜动作｜结果｜关键前后值｜失败原因｜关联记录</b></li>' +
+        '<li><span>权限口径</span><b>审计可见不等于源对象可见；源对象不在数据范围内时前后值掩码</b></li>' +
+        '<li><span>明确不做</span><b>不可修改、不可删除、不提供导出与批量选择、不做全字段快照</b></li>' +
+      '</ul></div></section>';
+
+    ui.bindMasked('#ry-page');
+    ui.bindDenied('#ry-page');
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

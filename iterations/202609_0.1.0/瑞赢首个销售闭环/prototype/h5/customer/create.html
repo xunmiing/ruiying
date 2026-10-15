@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>新建客户 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：新建客户（极低门槛创建 / 分层查重 / 强提示说明后可继续）。 */
+  .cc-type { display: flex; gap: 6px; flex-wrap: wrap; }
+  .cc-dup { border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px; background: var(--surface); }
+  .cc-dup:last-child { margin-bottom: 0; }
+  .cc-dup--warn { border-color: var(--warn-line); background: var(--warn-soft); }
+  .cc-dup--bad { border-color: var(--danger-line); background: var(--danger-soft); }
+  .cc-dup--ok { border-color: var(--ok-line); background: var(--ok-soft); }
+  .cc-dup__t { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; }
+  .cc-dup__b { font-size: 12px; color: var(--muted); line-height: 1.75; margin-top: 5px; }
+  .cc-dup__b a { color: var(--brand-ink); }
+  .cc-submit { position: sticky; top: 68px; z-index: 55; display: flex; gap: 8px; margin: 0 -12px 12px; padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .cc-submit .ry-btn { flex: 1; justify-content: center; min-height: 42px; font-size: 14px; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<!-- H5 外壳：顶部条与底部五入口由 navigation.js 渲染，本页不重复实现 -->
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+
+  <!-- 无权限／不可用状态宿主：进入即重新鉴权，无权限时不展示任何客户字段、数量与摘要 -->
+  <div id="cc-host"></div>
+
+  <div id="cc-form">
+    <div class="cc-submit"><a class="ry-btn" href="#" id="cc-cancel">取消</a><button class="ry-btn ry-btn--primary" id="cc-save">创建客户</button></div>
+
+    <!-- 极低门槛创建：客户类型 + 客户名称即可建档，其余字段全部选填 -->
+    <div class="ry-hcard">
+      <div class="ry-hcard__head">
+        <h3>客户主体</h3>
+        <div class="ry-hcard__extra"><span class="h5-sec-note" data-note-title="客户类型">选择客户类型后直接显示适用字段。自然人不采集工商登记信息和首位联系人；集团客户提交候选，管理员确认后创建正式主档。</span></div>
+      </div>
+      <div class="ry-hcard__body ry-hform">
+        <label class="ry-field"><span class="ry-field__label">客户类型<i class="ry-req">必填</i></span>
+          <div class="cc-type" id="cc-type"></div>
+
+        </label>
+        <label class="ry-field"><span class="ry-field__label">客户名称<i class="ry-req">必填</i></span>
+          <input class="ry-input" id="cc-name" placeholder="请输入工商登记全称或客户全称" autocomplete="off">
+
+        </label>
+        <label class="ry-field"><span class="ry-field__label">其他名称（简称／品牌名／曾用名）</span>
+          <input class="ry-input" id="cc-alias" placeholder="如：远驰科技" autocomplete="off">
+
+        </label>
+        <label class="ry-field"><span class="ry-field__label">客户来源</span>
+          <select class="ry-input" id="cc-source"></select>
+        </label>
+      </div>
+    </div>
+
+    <div class="ry-hcard">
+      <div class="ry-hcard__head"><h3>初始经营关系</h3><div class="ry-hcard__extra"><span class="h5-sec-note" data-note-title="初始关系">负责人默认创建人，可调整；区域和业务线必填。保存时客户主档与一条初始经营关系一并成立或一并失败。</span></div></div>
+      <div class="ry-hcard__body ry-hform">
+        <label class="ry-field"><span class="ry-field__label">负责人<i class="ry-req">必填</i></span><select class="ry-input" id="cc-owner"></select></label>
+        <label class="ry-field"><span class="ry-field__label">经营区域<i class="ry-req">必填</i></span><select class="ry-input" id="cc-region"></select><span class="ry-field__hint" id="cc-region-hint">—</span></label>
+        <label class="ry-field"><span class="ry-field__label">业务线<i class="ry-req">必填</i></span><select class="ry-input" id="cc-line"></select></label>
+      </div>
+    </div>
+
+    <!-- 分层查重：输入名称后自动刷新；只有信用代码精确重复硬阻断，名称相同／相似强提示后可继续 -->
+    <div class="ry-hcard">
+      <div class="ry-hcard__head">
+        <h3>分层查重</h3>
+        <div class="ry-hcard__extra"><span class="h5-sec-note" data-note-title="分层查重">名称输入后自动检查重复和相似客户；信用代码规范化后全库精确相同阻断，同名或相似须说明原因后继续。查重结果仅为原型走查。</span></div>
+      </div>
+      <div class="ry-hcard__body" id="cc-dup"></div>
+    </div>
+
+    <!-- 工商登记信息：外部查询服务，失败或未找到均不阻断手工建档 -->
+    <div class="ry-hcard" id="cc-registry-card">
+      <div class="ry-hcard__head">
+        <h3>工商登记信息</h3>
+        <div class="ry-hcard__extra"><span class="h5-sec-note" data-note-title="工商查询">按名称查询外部工商信息；查询成功后带入可修改，未找到或服务失败仍可手工建档。查询结果不等于身份核验。</span></div>
+      </div>
+      <div class="ry-hcard__body ry-hform">
+        <div id="cc-query-state"></div>
+        <div class="ry-acts-row" style="margin-bottom:12px">
+          <button class="ry-btn" id="cc-query">按名称查询工商登记</button>
+        </div>
+        <label class="ry-field"><span class="ry-field__label">统一社会信用代码</span>
+          <input class="ry-input" id="cc-credit" placeholder="18 位代码；缺失不阻断建档" autocomplete="off">
+
+        </label>
+        <div class="ry-grid2">
+          <label class="ry-field"><span class="ry-field__label">法定代表人</span><input class="ry-input" id="cc-legal"></label>
+          <label class="ry-field"><span class="ry-field__label">注册资本</span><input class="ry-input" id="cc-capital"></label>
+          <label class="ry-field"><span class="ry-field__label">成立日期</span><input class="ry-input" type="date" id="cc-found"></label>
+          <label class="ry-field"><span class="ry-field__label">所属行业</span><input class="ry-input" id="cc-industry"></label>
+        </div>
+        <label class="ry-field"><span class="ry-field__label">工商登记地址</span>
+          <input class="ry-input" id="cc-regaddr" placeholder="查询成功后回填，可人工修订">
+
+        </label>
+      </div>
+    </div>
+
+    <!-- 首位联系人：与人一并查重；联系人独立存在，必须同时关联至少一个真实客户 -->
+    <div class="ry-hcard" id="cc-contact-card">
+      <div class="ry-hcard__head">
+        <h3>首位联系人（可选）</h3>
+        <div class="ry-hcard__extra"><span class="h5-sec-note" data-note-title="首位联系人">填写姓名后随客户同步创建联系人及客户关系；自然人客户不显示此组。姓名和手机号用于疑似重复提示。</span></div>
+      </div>
+      <div class="ry-hcard__body ry-hform">
+        <label class="ry-field"><span class="ry-field__label">姓名</span>
+          <input class="ry-input" id="cc-cname" autocomplete="off">
+        </label>
+        <label class="ry-field"><span class="ry-field__label">手机号</span>
+          <input class="ry-input" id="cc-cphone" placeholder="参与联系人查重；保存后默认脱敏" autocomplete="off">
+        </label>
+        <label class="ry-field"><span class="ry-field__label">职务</span>
+          <input class="ry-input" id="cc-ctitle" autocomplete="off">
+        </label>
+
+      </div>
+    </div>
+
+    <div class="ry-hcard">
+      <div class="ry-hcard__head"><h3>备注</h3></div>
+      <div class="ry-hcard__body">
+        <textarea class="ry-input" id="cc-remark" rows="3" placeholder="可填写建档背景、合作线索来源等"></textarea>
+      </div>
+    </div>
+
+
+  </div>
+
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.customer.create';
+  var PATH = 'h5/customer/create.html';
+
+  RY.nav.h5shell({
+    title: '新建客户',
+    sub: '',
+    back: 'h5/customer/list.html',
+    nav: 'customer',
+    tabbar: true
+  });
+
+  /* 进入页面即重新鉴权：无权限时不展示任何客户表单、数量与摘要。 */
+  if (!P.page(PAGE)) {
+    ui.qs('#cc-form').style.display = 'none';
+    ui.qs('#cc-host').innerHTML = ui.stateCard('no-permission', {
+      title: '没有新建客户的页面权限',
+      body: '<p>' + ui.esc(P.whyNot('customer.create') || '当前身份没有「新建客户」页面权限。') + '</p>' +
+            '<p class="ry-hint">页面权限、动作权限、数据范围与字段规则相互独立；获得其中一个不等于获得其余。新建客户只对 R1 销售与 R2 销售主管开放。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/customer/list.html') + '">返回客户列表</a>'
+    });
+    return;
+  }
+
+  var canCreate = P.can('customer.create');
+
+  /* ---------------------------------------------------------------- 表单 */
+
+  var TYPES = [
+    { v: '集团客户', d: '集团／控股主体：销售提交集团候选，由客户数据管理查重确认后创建；成员主体单独建档、价值单独评定。' },
+    { v: '组织客户', d: '企业、事业单位、社会团体等组织主体：名称优先使用当前正式完整名称。' },
+    { v: '个体工商户', d: '个体工商户：填写登记名称，不以经营者姓名替代。' },
+    { v: '自然人客户', d: '仅个人身份交易或经营时创建；0.1 不采集完整身份证号，也不采集工商登记信息。' }
+  ];
+  var type = '';
+
+  ui.qs('#cc-type').innerHTML = TYPES.map(function (t) {
+    return '<button type="button" class="ry-chip" data-type="' + ui.esc(t.v) + '">' + ui.esc(t.v) + '</button>';
+  }).join('');
+  ui.qs('#cc-source').innerHTML = S.all('dicts').leadSource.map(function (s) {
+    return '<option value="' + ui.esc(s) + '">' + ui.esc(s) + '</option>';
+  }).join('');
+  ui.qs('#cc-owner').innerHTML = S.all('users').filter(function (u) { return u.role === 'R1' || u.role === 'R2'; }).map(function (u) { return '<option value="' + u.id + '"' + (u.id === S.currentUser().id ? ' selected' : '') + '>' + ui.esc(u.name) + '</option>'; }).join('');
+  ui.qs('#cc-line').innerHTML = S.all('businessLines').filter(function (x) { return x.status === '启用'; }).map(function (x) { return '<option value="' + x.code + '">' + ui.esc(x.name) + '</option>'; }).join('');
+  function refreshRegions() {
+    var own = S.ownerRegionOptions(ui.qs('#cc-owner').value);
+    ui.qs('#cc-region').innerHTML = S.activeRegions().map(function (x) { return '<option value="' + x.code + '">' + ui.esc(x.name) + (own.indexOf(x.code) >= 0 ? '' : '（非关联区域）') + '</option>'; }).join('');
+    if (own.length === 1) ui.qs('#cc-region').value = own[0];
+    ui.qs('#cc-region-hint').textContent = own.length === 1 ? '已带出唯一关联区域' : '请选择经营区域';
+  }
+  ui.qs('#cc-owner').addEventListener('change', refreshRegions); refreshRegions();
+
+  function pickType(v) {
+    type = v;
+    ui.qsa('#cc-type [data-type]').forEach(function (b) {
+      b.classList.toggle('is-on', b.getAttribute('data-type') === v);
+    });
+    var t = TYPES.filter(function (x) { return x.v === v; })[0];
+
+    var natural = v === '自然人客户';
+    ui.qs('#cc-contact-card').style.display = natural ? 'none' : '';
+    ui.qs('#cc-registry-card').style.display = natural ? 'none' : '';
+    runDup();
+  }
+
+  ui.qs('#cc-type').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-type]');
+    if (b) pickType(b.getAttribute('data-type'));
+  });
+
+  function vals() {
+    return {
+      name: ui.qs('#cc-name').value.trim(),
+      alias: ui.qs('#cc-alias').value.trim(),
+      creditCode: type === '自然人客户' ? '' : ui.qs('#cc-credit').value.trim(),
+      legalPerson: type === '自然人客户' ? '' : ui.qs('#cc-legal').value.trim(),
+      regCapital: type === '自然人客户' ? '' : ui.qs('#cc-capital').value.trim(),
+      foundDate: type === '自然人客户' ? '' : ui.qs('#cc-found').value,
+      industry: type === '自然人客户' ? '' : ui.qs('#cc-industry').value.trim(),
+      regAddr: type === '自然人客户' ? '' : ui.qs('#cc-regaddr').value.trim(),
+      source: ui.qs('#cc-source').value,
+      remark: ui.qs('#cc-remark').value.trim(),
+      cname: type === '自然人客户' ? '' : ui.qs('#cc-cname').value.trim(),
+      cphone: type === '自然人客户' ? '' : ui.qs('#cc-cphone').value.trim(),
+      ctitle: type === '自然人客户' ? '' : ui.qs('#cc-ctitle').value.trim()
+      ,owner: ui.qs('#cc-owner').value, region: ui.qs('#cc-region').value, businessLine: ui.qs('#cc-line').value
+    };
+  }
+
+  /* ------------------------------------------------------ 工商查询与降级 */
+
+  /* 工商是外部查询服务，不是主数据同步：失败、未找到、超时都不阻断手工建档，
+     也不清空最后一次成功快照。 */
+  ui.qs('#cc-query').addEventListener('click', function () {
+    var v = vals();
+    if (!v.name) { ui.toast('请先填写客户名称。', 'warn'); return; }
+    var host = ui.qs('#cc-query-state');
+    host.innerHTML = ui.banner('正在向工商查询服务发起查询…', 'info');
+    setTimeout(function () {
+      if (P.flag('serviceError')) {
+        host.innerHTML = ui.banner(
+          '<b>工商查询服务暂时不可用（降级）。</b>本次未获取到工商登记信息。' +
+          '<b>建档不受影响</b>：可手工填写登记信息后继续创建，工商结果不代表客户身份已核验。',
+          'danger');
+        runDup();
+        return;
+      }
+      var known = S.all('customers').filter(function (c) { return c.name.indexOf(v.name) >= 0 && c.creditCode; });
+      if (known.length) {
+        var k = known[0];
+        ui.qs('#cc-credit').value = k.creditCode;
+        ui.qs('#cc-legal').value = k.legalPerson;
+        ui.qs('#cc-capital').value = k.regCapital;
+        ui.qs('#cc-found').value = k.foundDate;
+        ui.qs('#cc-industry').value = k.industry;
+        host.innerHTML = ui.banner('查询成功，已回填工商登记信息。回填值可人工修订并记入审计；查询结果只作为建档参考，不代表主数据已核验，也不静默覆盖主档。', 'brand');
+      } else {
+        host.innerHTML = ui.banner('查询完成：<b>未找到匹配的工商登记主体</b>。可手工填写后继续建档，工商结果不代表客户身份已核验。', 'warn');
+      }
+      runDup();
+    }, P.flag('serviceError') ? 400 : 700);
+  });
+
+  /* ------------------------------------------------------------ 分层查重 */
+
+  /* 输入全称触发：给出「重复 / 相似 / 不存在」三类结果。
+     只有信用代码规范化后全库精确相同属于硬阻断；名称相同或高度相似只做强提示，
+     用户说明原因后可以继续创建。 */
+  function dedup() {
+    var v = vals();
+    var name = v.name;
+    var same = [], like = [], tech = [];
+    if (name.length >= 2) {
+      same = S.all('customers').filter(function (c) { return c.name === name; });
+      like = S.all('customers').filter(function (c) {
+        if (c.name === name) return false;
+        if (name.length >= 3 && c.name.indexOf(name.slice(0, 3)) >= 0) return true;
+        if (c.alias && (c.alias === name || name.indexOf(c.alias) >= 0 || c.alias.indexOf(name.slice(0, 2)) >= 0)) return true;
+        return false;
+      });
+    }
+    if (v.creditCode && type !== '自然人客户') {
+      tech = S.all('customers').filter(function (c) { return c.creditCode === v.creditCode; });
+    }
+    return { same: same, like: like, tech: tech };
+  }
+
+  function runDup() {
+    var v = vals();
+    var d = dedup();
+    var host = ui.qs('#cc-dup');
+    var items = [];
+
+    if (d.tech.length) {
+      items.push({
+        tone: 'bad', tag: ['技术重复（硬阻断）', 'bad'],
+        body: '统一社会信用代码「' + ui.esc(v.creditCode) + '」与既有客户完全一致：' +
+          d.tech.map(function (c) { return ui.esc(c.name + '（' + c.id + '，' + c.status + '）'); }).join('；') +
+          '。信用代码规范化后全库精确相同必须阻断，系统拒绝重复创建，请改用已有客户记录。'
+      });
+    }
+    if (d.same.length) {
+      items.push({
+        tone: 'warn', tag: ['客户重复（强提示，可说明后继续）', 'warn'],
+        body: '已存在同名客户：' +
+          d.same.map(function (c) { return '<a href="' + RY.nav.href('h5/customer/detail.html?id=' + encodeURIComponent(c.id)) + '">' + ui.esc(c.name + '（' + c.id + '）') + '</a>'; }).join('；') +
+          '。建议直接使用已有客户，避免主数据分裂；如果确认属于不同主体，填写说明后仍可继续创建。'
+      });
+    }
+    if (d.like.length) {
+      items.push({
+        tone: 'warn', tag: ['客户相似（强提示，可说明后继续）', 'warn'],
+        body: '以下客户名称与本次填写相近：' +
+          d.like.slice(0, 3).map(function (c) { return ui.esc(c.name + '（' + c.id + '）'); }).join('；') +
+          '。相似判断只作为经营参考，不阻断建档；系统不自动合并。'
+      });
+    }
+    if (name2(v) && !d.tech.length && !d.same.length && !d.like.length) {
+      items.push({
+        tone: 'ok', tag: ['未发现重复', 'ok'],
+        body: '在当前账号有权数据范围内未查询到同名、相似或信用代码相同的客户。查重只在有权数据范围内执行；无权候选只提示冲突，不泄露详情。'
+      });
+    }
+
+    host.innerHTML = items.length ? items.map(function (i) {
+      return '<div class="cc-dup cc-dup--' + i.tone + '"><div class="cc-dup__t"><span>' + ui.esc(i.tag[0]) + '</span>' + ui.tag(i.tag[1] === 'bad' ? '阻断' : i.tag[1] === 'warn' ? '仅提示' : '通过', i.tag[1]) + '</div>' +
+        '<div class="cc-dup__b">' + i.body + '</div></div>';
+    }).join('') : '<p class="ry-hint">输入客户全称（至少 2 个字）后自动触发查重。查重分三层：信用代码精确重复、客户名称重复、客户名称相似。</p>';
+
+    return items;
+  }
+
+  function name2(v) { return v.name.length >= 2; }
+
+  function blockedReason() {
+    var v = vals();
+    var d = dedup();
+    if (d.tech.length) return '统一社会信用代码与既有客户完全一致，属于技术重复。系统拒绝重复创建该主体。';
+    return '';
+  }
+
+  var dupTimer = null;
+  ['#cc-name', '#cc-credit', '#cc-cname', '#cc-cphone'].forEach(function (sel) {
+    ui.qs(sel).addEventListener('input', function () {
+      clearTimeout(dupTimer);
+      dupTimer = setTimeout(runDup, 180);
+    });
+    ui.qs(sel).addEventListener('blur', runDup);
+  });
+
+  /* ------------------------------------------------------------ 提交创建 */
+
+  /* 强提示说明后可继续：要求填写说明（必填），说明写入审计，不阻断创建。 */
+  function strongPromptThenSave(hits) {
+    RY.nav.sheet({
+      title: '发现重复或相似客户',
+      sub: '强提示，不硬阻断',
+      body: '<p class="ry-hint">分层查重发现以下记录。如果确认是同一主体，建议改用已有客户；' +
+            '如果确认属于不同主体，请说明原因后继续创建，说明会写入审计。</p>' +
+        '<ul class="ry-kv ry-kv--tight">' + hits.map(function (c) {
+          return '<li><span>' + ui.esc(c.status) + '</span><b>' + ui.esc(c.name + '（' + c.id + '）') + '</b></li>';
+        }).join('') + '</ul>' +
+        '<label class="ry-field" style="margin-top:12px"><span class="ry-field__label">继续创建的原因<i class="ry-req">必填</i></span>' +
+        '<textarea class="ry-input" id="cc-dup-note" rows="3" placeholder="例如：已与客户确认属于不同法人主体／与既有客户为母子公司分别建档"></textarea></label>',
+      footer: '<button class="ry-btn" data-close>返回修改</button><button class="ry-btn ry-btn--primary" id="cc-dup-go">确认不是同一主体，继续创建</button>',
+      onOpen: function (host, close) {
+        host.addEventListener('click', function (e) {
+          if (!e.target.closest('#cc-dup-go')) return;
+          var note = ui.qs('#cc-dup-note').value.trim();
+          if (!note) { ui.toast('请填写继续创建的原因。', 'warn'); return; }
+          close();
+          doSave(note);
+        });
+      }
+    });
+  }
+
+  function doSave(dupNote) {
+    var v = vals();
+    if (type === '集团客户') {
+      var gc = S.submitGroupCandidate({ name: v.name, alias: v.alias, creditCode: v.creditCode, source: v.source, note: dupNote || v.remark, initialRelation: { owner: v.owner, region: v.region, businessLine: v.businessLine } });
+      ui.qs('#cc-host').innerHTML = ui.stateCard('success', {
+        title: '集团客户候选已提交',
+        body: '<p>候选事项 <code>' + gc.id + '</code> 已进入客户数据管理（R4）查重确认。正式确认前不会生成集团客户主档。</p>',
+        actions: '<a class="ry-btn ry-btn--primary" href="' + RY.nav.href('h5/customer/list.html') + '">返回客户列表</a>'
+      });
+      return;
+    }
+    if (v.regAddr && type !== '自然人客户') {
+      var rr = S.all('addresses').filter(function (x) { return x.ownerType === '客户' && x.detail === v.regAddr; });
+      if (rr.length) ui.toast('提示：该注册地址文本已存在于其他客户，注册地址仍按新记录登记。', 'warn');
+    }
+    ui.submitWithRecovery({
+      onSubmit: function () {
+        var created = S.createCustomerWithInitialRelation({
+          name: v.name, alias: v.alias, type: type, creditCode: type === '自然人客户' ? '' : v.creditCode,
+          legalPerson: type === '自然人客户' ? '' : v.legalPerson,
+          regCapital: type === '自然人客户' ? '' : v.regCapital,
+          foundDate: type === '自然人客户' ? '' : v.foundDate,
+          industry: type === '自然人客户' ? '' : v.industry,
+          source: v.source, remark: (dupNote ? '【查重说明】' + dupNote + '　' : '') + v.remark,
+          industryState: v.creditCode ? '正常成功' : '未找到'
+        }, { owner: v.owner, region: v.region, businessLine: v.businessLine }, 'h5-manual:' + v.name + ':' + v.creditCode);
+        if (!created.ok) { ui.toast(created.reason, 'warn'); return; }
+        var c = created.customer;
+        var contactId = '';
+        if (v.cname && type !== '自然人客户') {
+          var ct = S.createContact({ name: v.cname, phonePlain: v.cphone, title: v.ctitle, org: v.name });
+          S.addContactRelation(ct.id, c.id, ['其他'], '', v.ctitle, true);
+          contactId = ct.id;
+        }
+        if (v.regAddr && type !== '自然人客户') {
+          S.createAddress({ ownerType: '客户', ownerId: c.id, type: '注册地址', region: '待补充', detail: v.regAddr, source: '工商查询服务' });
+        }
+        ui.toast('客户已创建：' + c.id, 'success');
+        renderCreated(c, contactId, dupNote);
+      }
+    });
+  }
+
+  /* 建档成功后同时已生成一条初始经营关系。 */
+  function renderCreated(c, contactId, dupNote) {
+    ui.qs('#cc-form').style.display = 'none';
+    ui.qs('#cc-host').innerHTML =
+      ui.banner('<b>客户与初始经营关系已创建：' + ui.esc(c.id) + '</b>（' + ui.esc(c.name) + '）。', 'brand') +
+      '<div class="ry-hcard"><div class="ry-hcard__body">' +
+        '<ul class="ry-kv ry-kv--tight">' +
+          '<li><span>客户主体</span><b>' + ui.esc(c.name) + '（' + ui.esc(c.type) + '）</b></li>' +
+          '<li><span>经营关系</span><b>' + ui.esc(S.regionName(ui.qs('#cc-region').value) + '｜' + S.businessLineName(ui.qs('#cc-line').value) + '｜' + S.userName(ui.qs('#cc-owner').value)) + '</b></li>' +
+          (contactId ? '<li><span>首位联系人</span><b>' + ui.esc(contactId) + '（号码默认脱敏）</b></li>' : '') +
+          (dupNote ? '<li><span>查重说明</span><b>' + ui.esc(dupNote) + '（已写入审计）</b></li>' : '') +
+          '<li><span>你的数据范围</span><b>' + ui.esc(P.dataScope(S.currentUser()).label) + '</b></li>' +
+        '</ul>' +
+        '<div class="ry-acts-row" style="margin-top:10px">' +
+          '<a class="ry-btn ry-btn--primary" href="' + RY.nav.href('h5/customer/detail.html?id=' + encodeURIComponent(c.id) + '&from=create') + '">进入客户详情（会重新鉴权）</a>' +
+          '<a class="ry-btn" href="' + RY.nav.href('h5/customer/list.html') + '">返回客户列表</a>' +
+          '<a class="ry-btn" href="' + RY.nav.href('h5/customer/create.html') + '">再建一个客户</a>' +
+        '</div>' +
+      '</div></div>';
+    window.scrollTo(0, 0);
+  }
+
+  ui.qs('#cc-cancel').addEventListener('click', function (e) {
+    e.preventDefault();
+    window.location.href = RY.nav.href('h5/customer/list.html');
+  });
+
+  ui.qs('#cc-save').addEventListener('click', function (e) {
+    if (e.target.closest('[data-denied]')) return;
+    var v = vals();
+    if (!type) { ui.toast('请选择客户类型。', 'warn'); return; }
+    if (!v.name) { ui.toast('客户名称必填。', 'warn'); return; }
+
+    var b = blockedReason();
+    if (b) {
+      ui.modal({
+        title: '技术重复，无法创建', size: 'sm',
+        body: '<p>' + ui.esc(b) + '</p>' +
+          '<p class="ry-hint">技术重复是分层查重中唯一硬阻断的情形，用于防止同一主体被重复建档；名称相同或相似只做强提示。</p>',
+        footer: '<button class="ry-btn ry-btn--primary" data-close>返回修改</button>'
+      });
+      return;
+    }
+
+    var d = dedup();
+    var hits = d.same.concat(d.like).filter(function (c, i, a) {
+      return a.indexOf(c) === i;
+    });
+    if (hits.length) { strongPromptThenSave(hits); return; }
+    doSave('');
+  });
+
+  if (!canCreate) {
+    var sb = ui.qs('#cc-save');
+    sb.setAttribute('data-denied', '1');
+    sb.setAttribute('data-action', 'customer.create');
+    sb.setAttribute('title', P.whyNot('customer.create'));
+    sb.insertAdjacentHTML('beforeend', '<i class="ry-btn__lock">无权限</i>');
+  }
+
+  /* ---------------------------------------------------------- 初始化 */
+
+  pickType('');
+  runDup();
+  ui.bindDenied(document.body);
+})();
+</script>
+</body>
+</html>

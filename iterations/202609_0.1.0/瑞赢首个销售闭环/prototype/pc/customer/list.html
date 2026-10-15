@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>客户列表 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：客户列表 */
+  .cust-name { display: flex; flex-direction: column; gap: 2px; }
+  .cust-name b { font-weight: 600; }
+  .cust-rel { display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; color: var(--muted); }
+  .cust-rel span { white-space: nowrap; }
+  .cust-flags { display: flex; gap: 4px; flex-wrap: wrap; max-width: 220px; }
+  .dupbar { margin-bottom: 10px; }
+  .colset { display: grid; grid-template-columns: 1fr; gap: 4px; max-height: 55vh; overflow-y: auto; }
+  .colset label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 4px 0; }
+  .customer-list-wrap { overflow-x:auto; max-width:100%; }
+  .customer-list-wrap .ry-table { width:max-content; min-width:100%; }
+  .customer-list-wrap th,.customer-list-wrap td { white-space:nowrap; min-width:108px; }
+  .customer-list-wrap th:first-child,.customer-list-wrap td:first-child { min-width:42px; width:42px; position:sticky; left:0; z-index:1; background:var(--surface); }
+  .customer-list-wrap thead th:first-child { z-index:3; background:#FBFCFC; }
+  .customer-list-wrap tbody tr:hover td:first-child { background:#FAFBFB; }
+  .customer-list-wrap tbody tr.is-sel td:first-child { background:var(--brand-soft); }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+
+      <div id="list-banner"></div>
+
+      <div class="ry-actions-row" style="gap:8px;margin-bottom:12px"><div class="ry-tabs" id="scope-tabs"></div></div>
+
+      <section class="ry-filter" id="filter">
+        <div class="ry-filter__row">
+          <label class="ry-filter__item ry-filter__item--wide"><span>关键词</span>
+            <input class="ry-input" id="f-kw" placeholder="客户名称 / 其他名称 / 编号 / 统一社会信用代码"></label>
+          <label class="ry-filter__item"><span>客户类型</span><select class="ry-input" id="f-type"></select></label>
+          <label class="ry-filter__item"><span>记录状态</span><select class="ry-input" id="f-status"></select></label>
+          <label class="ry-filter__item"><span>价值分级</span><select class="ry-input" id="f-value"></select></label>
+          <label class="ry-filter__item"><span>排序</span><select class="ry-input" id="f-sort">
+            <option value="updated-desc">最近更新优先</option>
+            <option value="created-desc">创建时间优先</option>
+            <option value="name-asc">客户名称 A→Z</option>
+            <option value="value-desc">价值分级高→低</option>
+          </select></label>
+        </div>
+        <div class="ry-filter__more" id="more">
+          <div class="ry-filter__row">
+            <label class="ry-filter__item"><span>经营区域</span><select class="ry-input" id="f-region"></select></label>
+            <label class="ry-filter__item"><span>经营业务线</span><select class="ry-input" id="f-line"></select></label>
+            <label class="ry-filter__item"><span>主负责人</span><select class="ry-input" id="f-owner"></select></label>
+            <label class="ry-filter__item"><span>创建时间（起）</span><input class="ry-input" type="date" id="f-from"></label>
+            <label class="ry-filter__item"><span>创建时间（止）</span><input class="ry-input" type="date" id="f-to"></label>
+            <label class="ry-filter__item"><span>数据质量</span><select class="ry-input" id="f-quality">
+              <option value="">不限</option><option value="pending">仅看待治理</option><option value="missing-credit">仅看缺统一社会信用代码</option>
+            </select></label>
+          </div>
+        </div>
+        <div class="ry-filter__foot">
+          <div class="ry-resultbar__tools">
+            <button class="ry-btn" id="toggle-more">更多筛选</button>
+            <button class="ry-btn ry-btn--primary" id="do-filter">查询</button>
+            <button class="ry-btn" id="reset-filter">重置条件</button>
+          </div>
+          <div class="ry-resultbar__tools">
+            <button class="ry-btn" id="colset-btn">列显示设置</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="ry-resultbar">
+        <div class="ry-resultbar__sum"><span id="result-sum"></span><button type="button" data-pcn-rule="results">◆ 结果口径</button></div>
+        <div class="ry-resultbar__tools">
+          <a class="ry-btn" href="import.html">导入客户</a>
+          <span id="btn-export"></span>
+          <span id="btn-new"></span>
+        </div>
+      </div>
+
+      <div id="selbar"></div>
+
+      <div class="ry-actions-row" style="justify-content:flex-end;margin:8px 0"><button type="button" data-pcn-rule="columns">◆ 横向浏览</button><button class="ry-btn ry-btn--sm" id="cols-left" type="button" aria-label="向左查看列">←</button><button class="ry-btn ry-btn--sm" id="cols-right" type="button" aria-label="向右查看列">→</button></div>
+      <div class="ry-table__wrap customer-list-wrap" id="customer-list-wrap" role="region" aria-label="客户列表，可左右滚动" tabindex="0">
+        <table class="ry-table ry-table--cols">
+          <thead><tr id="thead"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div id="pager"></div>
+
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/customer-review-mode.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, D = RY.seed.dicts, u = S.currentUser();
+  var LS = 'customer.list';
+  ['left', 'right'].forEach(function (direction) { ui.qs('#cols-' + direction).addEventListener('click', function () { ui.qs('#customer-list-wrap').scrollBy({ left: direction === 'left' ? -520 : 520, behavior: 'smooth' }); }); });
+
+  RY.nav.shell({
+    nav: 'customer.list',
+    title: '客户列表',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '客户管理' }, { label: '客户列表' }],
+    actions: '<a class="ry-btn" href="../contact/list.html">联系人列表</a>' +
+             '<a class="ry-btn" href="public-pool.html">全国公海</a>'
+  });
+
+  /* ------------------------------------------------------------ 列定义 */
+
+  var COLS = [
+    { k: 'id', n: '客户编号', on: true, mono: true },
+    { k: 'name', n: '客户名称', on: true },
+    { k: 'alias', n: '其他名称', on: true },
+    { k: 'type', n: '客户类型', on: true },
+    { k: 'status', n: '记录状态', on: true },
+    { k: 'value', n: '价值分级', on: true },
+    { k: 'valueAdjustedAt', n: '价值调整时间', on: false },
+    { k: 'region', n: '经营区域', on: true },
+    { k: 'businessLine', n: '经营业务线', on: true },
+    { k: 'owner', n: '经营主负责人', on: true },
+    { k: 'contactsCount', n: '联系人', on: true },
+    { k: 'oppsCount', n: '商机', on: false },
+    { k: 'quality', n: '数据质量', on: true },
+    { k: 'updatedAt', n: '最近更新', on: true }
+  ];
+  var st = S.listState(LS);
+  if (ui.q('menu') === '1') { S.listState(LS, { scopeMode:'all', filters:{}, page:1 }); st = S.listState(LS); }
+  if (ui.q('menu') === '1') { var menuUrl = new URL(location.href); menuUrl.searchParams.delete('menu'); history.replaceState(null, '', menuUrl.href); }
+  if (st.columns && !st.customerColumnsV2) {
+    var old = st.columns;
+    st.columns = old.filter(function (k) { return k !== 'relation'; });
+    if (old.indexOf('name') >= 0) st.columns.push('alias');
+    if (old.indexOf('relation') >= 0) st.columns.push('region', 'businessLine', 'owner');
+    st.customerColumnsV2 = 1;
+    S.listState(LS, { columns: st.columns, customerColumnsV2: 1 });
+  }
+  if (st.columns) COLS.forEach(function (c) { c.on = st.columns.indexOf(c.k) >= 0; });
+
+  var F = Object.assign({
+    kw: '', type: '', status: '', value: '', sort: 'updated-desc',
+    region: '', line: '', owner: '', from: '', to: '', quality: ''
+  }, st.filters || {});
+  delete F.operate; // 仅有效经营关系进入列表，历史筛选值不再生效。
+  /* 本页固定展示四个范围样例，供评审逐项走查。 */
+  var scopeKeys = ['all', 'team', 'mine', 'collab'];
+  var scopeMode = scopeKeys.indexOf(st.scopeMode) >= 0 ? st.scopeMode : 'all';
+  var scopeDescriptions = {
+    mine: '本人主负责的经营客户',
+    collab: '本人协作且未主负责的经营客户',
+    team: '本人及本团队负责或协作的经营客户',
+    all: '当前有权查看的经营客户（不含全国公海）'
+  };
+  function renderScopeTabs() {
+    var labels = { all: '全部', team: '团队', mine: '我负责的', collab: '我协作的' };
+    var items = scopeKeys.map(function (key) { return { k: key, n: labels[key] }; });
+    ui.qs('#scope-tabs').innerHTML = items.map(function (x) { return '<button class="ry-tab' + (scopeMode === x.k ? ' is-on' : '') + '" data-scope="' + x.k + '">' + x.n + '</button>'; }).join('');
+  }
+  renderScopeTabs();
+  ui.qs('#scope-tabs').addEventListener('click', function (e) { var b = e.target.closest('[data-scope]'); if (!b) return; scopeMode = b.getAttribute('data-scope'); ui.syncSel(LS, []); S.listState(LS, { scopeMode: scopeMode, page: 1 }); window.location.reload(); });
+
+  function opts(list, cur, all) {
+    return '<option value="">' + (all || '全部') + '</option>' + list.map(function (v) {
+      return '<option value="' + ui.esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + ui.esc(v) + '</option>';
+    }).join('');
+  }
+
+  ui.qs('#f-type').innerHTML = opts(D.customerType, F.type);
+  ui.qs('#f-status').innerHTML = opts(D.customerStatus, F.status);
+  ui.qs('#f-value').innerHTML = '<option value="">全部</option><option value="__none"' + (F.value === '__none' ? ' selected' : '') + '>未分级</option>' + D.customerValue.map(function (v) { return '<option value="' + v + '"' + (v === F.value ? ' selected' : '') + '>' + v + '</option>'; }).join('');
+  ui.qs('#f-region').innerHTML = opts(S.all('regions').map(function (r) { return r.code; }), F.region).replace(/>RG-EAST</, '>' + S.regionName('RG-EAST') + '<').replace(/>RG-SOUTH</, '>' + S.regionName('RG-SOUTH') + '<').replace(/>RG-NORTH</, '>' + S.regionName('RG-NORTH') + '<');
+  ui.qs('#f-line').innerHTML = opts(S.all('businessLines').map(function (r) { return r.name; }), F.line);
+  ui.qs('#f-owner').innerHTML = '<option value="">全部</option>' +
+    S.all('users').filter(function (u) { return u.role === 'R1' || u.role === 'R2'; }).map(function (u) { return '<option value="' + u.id + '"' + (u.id === F.owner ? ' selected' : '') + '>' + u.name + '（' + RY.perm.ROLES[u.role].name + '）</option>'; }).join('');
+  ui.qs('#f-kw').value = F.kw; ui.qs('#f-sort').value = F.sort; ui.qs('#f-from').value = F.from; ui.qs('#f-to').value = F.to; ui.qs('#f-quality').value = F.quality;
+
+  /* -------------------------------------------------------------- 数据 */
+
+  function rows() {
+    var list = S.all('customers').filter(function (c) {
+      var relations = S.activeRelationsOf(c.id);
+      if (!relations.length || !RY.perm.inScope('customer', c)) return false;
+      if (scopeMode === 'all') return true;
+      if (scopeMode === 'team') return relations.some(function (r) {
+        return r.owner === u.id || S.inTeamOf(r.owner, u.id) ||
+          (r.collaborators || []).some(function (id) { return id === u.id || S.inTeamOf(id, u.id); });
+      });
+      if (scopeMode === 'mine') return relations.some(function (r) { return r.owner === u.id; });
+      return !relations.some(function (r) { return r.owner === u.id; }) && relations.some(function (r) { return (r.collaborators || []).indexOf(u.id) >= 0; });
+    });
+    var kw = F.kw.trim().toLowerCase();
+    if (kw) {
+      list = list.filter(function (c) {
+        return (c.name + ' ' + (c.alias || '') + ' ' + c.id + ' ' + (c.creditCode || '')).toLowerCase().indexOf(kw) >= 0;
+      });
+    }
+    if (F.type) list = list.filter(function (c) { return c.type === F.type; });
+    if (F.status) list = list.filter(function (c) { return c.status === F.status; });
+    if (F.value === '__none') list = list.filter(function (c) { return !c.value; });
+    else if (F.value) list = list.filter(function (c) { return c.value === F.value; });
+    if (F.quality === 'pending') list = list.filter(function (c) { return S.qualityPending(c.id); });
+    if (F.quality === 'missing-credit') list = list.filter(function (c) { return c.creditMissing; });
+    if (F.from) list = list.filter(function (c) { return c.createdAt.slice(0, 10) >= F.from; });
+    if (F.to) list = list.filter(function (c) { return c.createdAt.slice(0, 10) <= F.to; });
+    if (F.region || F.line || F.owner) {
+      list = list.filter(function (c) {
+        var rels = S.activeRelationsOf(c.id);
+        return rels.some(function (r) {
+          if (F.region && r.region !== F.region) return false;
+          if (F.line && S.businessLineName(r.businessLine) !== F.line) return false;
+          if (F.owner === '__none' && r.owner) return false;
+          if (F.owner && F.owner !== '__none' && r.owner !== F.owner) return false;
+          return true;
+        });
+      });
+    }
+    var order = { '战略': 0, '重点': 1, '普通': 2, '机会': 3 };
+    list.sort(function (a, b) {
+      if (F.sort === 'name-asc') return a.name.localeCompare(b.name, 'zh');
+      if (F.sort === 'created-desc') return b.createdAt.localeCompare(a.createdAt);
+      if (F.sort === 'value-desc') return (order[a.value] === undefined ? 9 : order[a.value]) - (order[b.value] === undefined ? 9 : order[b.value]);
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
+    return list;
+  }
+
+  var data = rows();
+  var page = st.page || 1, size = st.size || 10;
+  var pageData = data.slice((page - 1) * size, page * size);
+
+  function relCell(c) {
+    var rels = S.activeRelationsOf(c.id);
+    if (!rels.length) return '<span class="ry-faint">无有效经营关系</span>';
+    return '<div class="cust-rel">' + rels.map(function (r) {
+      return '<span>' + S.regionName(r.region) + ' · ' + S.businessLineName(r.businessLine) + ' · ' + ui.esc(S.userName(r.owner)) + '</span>';
+    }).join('') + '</div>';
+  }
+
+  function cell(c, k) {
+    switch (k) {
+      case 'id': return '<code>' + ui.esc(c.id) + '</code>';
+      case 'name':
+        return '<a class="ry-cellname" href="detail.html?id=' + c.id + '&from=list">' + ui.esc(c.name) + '</a>';
+      case 'alias': return ui.esc(c.alias || '—');
+      case 'type': return ui.esc(c.type);
+      case 'status': return ui.statusTag(c.status);
+      case 'value': return ui.valueTag(c.value);
+      case 'valueAdjustedAt': return ui.esc(c.valueAdjustedAt || '—');
+      case 'region': return S.activeRelationsOf(c.id).map(function (r) { return S.regionName(r.region); }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('、') || '—';
+      case 'businessLine': return S.activeRelationsOf(c.id).map(function (r) { return S.businessLineName(r.businessLine); }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('、') || '—';
+      case 'owner': return S.activeRelationsOf(c.id).map(function (r) { return S.userName(r.owner); }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('、') || '—';
+      case 'contactsCount': return c.contactsCount + ' 位';
+      case 'oppsCount': return c.oppsCount + ' 个';
+      case 'quality':
+        var flags = [];
+        if (S.qualityPending(c.id)) flags.push(ui.tag('待治理', 'warn'));
+        if (c.creditMissing) flags.push(ui.tag('缺信用代码', 'warn'));
+        return flags.length ? '<div class="cust-flags">' + flags.join('') + '</div>' : ui.tag('正常', 'ok');
+      case 'updatedAt': return '<span class="ry-mini">' + ui.esc(c.updatedAt) + '</span>';
+      default: return '—';
+    }
+  }
+
+  function render() {
+    var cols = COLS.filter(function (c) { return c.on; });
+    ui.qs('#thead').innerHTML = '<th style="width:34px"><input type="checkbox" id="selall"></th>' + cols.map(function (c) { return '<th>' + c.n + '</th>'; }).join('');
+    ui.qs('#tbody').innerHTML = pageData.length ? pageData.map(function (c) {
+      return '<tr data-id="' + c.id + '">' +
+        '<td><input type="checkbox" class="rowsel" value="' + c.id + '"></td>' +
+        cols.map(function (col) { return '<td>' + cell(c, col.k) + '</td>'; }).join('') + '</tr>';
+    }).join('') : '<tr><td colspan="' + (cols.length + 1) + '">' + ui.empty('当前筛选条件下没有客户记录。') + '</td></tr>';
+
+    ui.qs('#pager').innerHTML = ui.pager(data.length, page, size);
+
+    ui.qs('#result-sum').innerHTML = '共 <b>' + data.length + '</b> 条客户记录　·　' + ui.esc(scopeDescriptions[scopeMode]);
+
+    /* 查重提示：关键词命中相近名称时给出提示，但不阻断列表浏览 */
+    var kw = F.kw.trim();
+    var dupNote = '';
+    if (kw.length >= 2) {
+      var hits = data.filter(function (c) { return c.name.indexOf(kw) >= 0 || (c.creditCode && c.creditCode.indexOf(kw) >= 0); });
+      if (hits.length > 1) {
+        dupNote = ui.banner(
+          '<b>相近记录提示：</b>当前可见结果中有 ' + hits.length + ' 条记录命中「' + ui.esc(kw) + '」。请打开客户详情核对主体；列表提示不自动合并客户。',
+          'warn');
+      }
+    }
+    ui.qs('#list-banner').innerHTML = dupNote;
+
+    /* 批量白名单：仅经营关系类动作。客户主数据合并不进入批量。 */
+    ui.qs('#selbar').innerHTML = ui.selectionBar({
+      id: 'cus-sel', filteredTotal: data.length,
+      crossPageCount: S.selection('customer.list').length
+    });
+
+    ui.qs('#selbar').appendChild(bar);
+    bar.style.display = ui.selected('customer.list').length ? 'flex' : 'none';
+    var bn = ui.qs('#batch-n');
+    if (bn) bn.textContent = ui.selected('customer.list').length;
+
+    ui.bindSelection({
+      id: 'cus-sel', key: 'customer.list',
+      pageIds: pageData.map(function (c) { return c.id; }),
+      filteredIds: data.map(function (c) { return c.id; }),
+      filteredTotal: data.length,
+      crossPageCount: S.selection('customer.list').length,
+      onChange: function (ids) { ui.qs('#batchbar').style.display = ids.length ? 'flex' : 'none'; ui.qs('#batch-n').textContent = ids.length; }
+    });
+
+    bindRows();
+  }
+
+  function bindRows() {
+    ui.qsa('.rowsel').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var ids = ui.selected('customer.list').slice();
+        var id = cb.value;
+        if (cb.checked) { if (ids.indexOf(id) < 0) ids.push(id); }
+        else ids = ids.filter(function (x) { return x !== id; });
+        ui.syncSel('customer.list', ids);
+        ui.qs('#batchbar').style.display = ids.length ? 'flex' : 'none';
+        ui.qs('#batch-n').textContent = ids.length;
+      });
+    });
+    var all = ui.qs('#selall');
+    if (all) all.addEventListener('change', function () {
+      ui.qsa('.rowsel').forEach(function (cb) { cb.checked = all.checked; cb.dispatchEvent(new Event('change')); });
+    });
+    ui.qsa('#tbody tr[data-id]').forEach(function (tr) {
+      tr.addEventListener('click', function (e) {
+        if (e.target.closest('input') || e.target.closest('a')) return;
+        window.location.href = 'detail.html?id=' + tr.getAttribute('data-id') + '&from=list';
+      });
+    });
+  }
+
+  /* ---------------------------------------------------------- 批量动作条 */
+
+  var bar = document.createElement('div');
+  bar.className = 'ry-selbar';
+  bar.id = 'batchbar';
+  bar.style.display = 'none';
+  bar.innerHTML = '<b>已选 <span id="batch-n">0</span> 条</b>' +
+    '<span class="ry-selbar__sep"></span>' +
+    '<button type="button" data-pcn-rule="batch">◆ 批量规则</button>' +
+    '<span style="margin-left:auto"></span>' +
+    '<button class="ry-btn ry-btn--sm" data-batch="collab">批量新增协作人</button>' +
+    '<button class="ry-btn ry-btn--sm" data-batch="transfer">批量转派主负责人</button>' +
+    '<button class="ry-btn ry-btn--sm" data-batch="stop">批量停止经营</button>' +
+    '<button class="ry-btn ry-btn--sm" data-batch="clear">清空选择</button>';
+  ui.qs('#selbar').appendChild(bar);
+
+  bar.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-batch]');
+    if (!b) return;
+    var act = b.getAttribute('data-batch');
+    if (act === 'clear') { ui.syncSel('customer.list', []); ui.qsa('.rowsel').forEach(function (x) { x.checked = false; }); bar.style.display = 'none'; ui.qs('#selbar').querySelector('#cus-sel-info').innerHTML = '尚未选择'; return; }
+    RY.perm.ACTIONS['relation.collaborator'];
+    var need = act === 'collab' ? 'relation.collaborator' : act === 'transfer' ? 'relation.transfer' : 'relation.stop';
+    if (!RY.perm.can(need)) {
+      ui.modal({ title: '该动作当前不可执行', size: 'sm', body: '<p>' + ui.esc(RY.perm.whyNot(need)) + '</p>', footer: '<button class="ry-btn ry-btn--primary" data-close>我知道了</button>' });
+      return;
+    }
+    batchConfirm(act, ui.selected('customer.list'));
+  });
+
+  var BATCH_META = {
+    collab: { title: '批量新增协作人', label: '协作人', need: true, action: 'relation.collaborator' },
+    transfer: { title: '批量转派主负责人', label: '目标主负责人', need: true, action: 'relation.transfer' },
+    stop: { title: '批量停止经营', label: '', need: true, action: 'relation.stop', reason: '停止经营必须填写原因' }
+  };
+
+  function batchConfirm(act, ids) {
+    var m = BATCH_META[act];
+    var targets = [];
+    ids.forEach(function (id) { S.activeRelationsOf(id).forEach(function (r) { targets.push({ customerId: id, rel: r }); }); });
+
+    /* 逐项预检：只对符合条件的关系执行，其余标注原因，绝不静默跳过 */
+    var pre = targets.map(function (t) {
+      var c = S.customer(t.customerId);
+      var problems = [];
+      if (t.rel.status === '停止经营') problems.push('该经营关系已停止经营');
+      if (act === 'stop' && !t.rel.owner) problems.push('该经营关系当前无主负责人，无需停止');
+      return { t: t, ok: problems.length === 0, problems: problems };
+    });
+    var okOnes = pre.filter(function (x) { return x.ok; });
+    var badOnes = pre.filter(function (x) { return !x.ok; });
+
+    ui.modal({
+      title: m.title,
+      subtitle: '批量处理范围共 ' + ids.length + ' 条客户、' + targets.length + ' 条经营关系。所有批量均为异步执行，可在处理记录查看结果。',
+      size: 'lg',
+      body:
+        '<h4>预检结果</h4>' +
+        '<p class="ry-hint">提交前逐项预检，执行时再次校验；单项失败不影响其他项，已成功项不会重复执行。</p>' +
+        '<div class="ry-jobsum">' +
+          '<div class="ry-jobsum__item"><b>' + targets.length + '</b><span>经营关系总数</span></div>' +
+          '<div class="ry-jobsum__item ry-ok"><b>' + okOnes.length + '</b><span>可执行</span></div>' +
+          '<div class="ry-jobsum__item ry-bad"><b>' + badOnes.length + '</b><span>将被跳过</span></div>' +
+        '</div>' +
+        (badOnes.length ? '<table class="ry-table ry-table--tight"><thead><tr><th>客户</th><th>经营关系</th><th>跳过原因</th></tr></thead><tbody>' +
+          badOnes.map(function (x) {
+            var c = S.customer(x.t.customerId);
+            return '<tr><td>' + ui.esc(c.name) + '</td><td>' + S.regionName(x.t.rel.region) + ' · ' + S.businessLineName(x.t.rel.businessLine) + '</td><td class="ry-muted">' + x.problems.join('；') + '</td></tr>';
+          }).join('') + '</tbody></table>' : '') +
+        '<h4>执行参数</h4>' +
+        (m.need && act === 'collab' ? ui.field('协作人', ui.select('target', S.all('users').filter(function (u) { return u.role === 'R1'; }).map(function (u) { return { value: u.id, label: u.name + '（' + RY.perm.ROLES[u.role].name + '）' }; }), 'U-002'), '协作人不改变主负责人与保护期。') : '') +
+        (m.need && act === 'transfer' ? ui.field('目标主负责人', ui.select('target', S.all('users').filter(function (u) { return u.role === 'R1'; }).map(function (u) { return { value: u.id, label: u.name }; }), 'U-002'), '转派保留现有协作人和历史经营记录；原主负责人不会自动转为协作人。') : '') +
+        (m.reason ? ui.field('停止原因', ui.select('reason', D.poolReleaseReason, D.poolReleaseReason[0]), '', true) : '') +
+        ui.field('备注', ui.textarea('note', '', '可填写本次批量的业务背景，将写入审计'), false),
+      footer: '<button class="ry-btn" data-close>取消</button>' +
+        '<button class="ry-btn ry-btn--primary" id="do-batch"' + (okOnes.length ? '' : ' disabled') + '>提交批量（' + okOnes.length + ' 项）</button>',
+      onOpen: function (el) {
+        ui.qs('#do-batch', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          var job = S.addJob({
+            type: '批量处理', action: m.title, object: '客户经营关系', status: '处理中',
+            total: okOnes.length, success: 0, failed: 0,
+            items: okOnes.map(function (x) {
+              var c = S.customer(x.t.customerId);
+              return { key: c.id, name: c.name + '｜' + S.businessLineName(x.t.rel.businessLine), result: '处理中', reason: '' };
+            })
+          });
+          ui.close();
+          ui.asyncRun({
+            title: '正在执行：' + m.title, total: okOnes.length, processId: job.processId,
+            onDone: function () {
+              var okCount = okOnes.length;
+              var failCount = 0;
+              var runtimeFailures = {};
+              okOnes.forEach(function (x) {
+                if (act === 'collab') S.addCollaborator(x.t.rel.id, v.target);
+                if (act === 'transfer') {
+                  var tr = S.transferRelation(x.t.rel.id, v.target, { reason: v.note || '批量转派', action: '批量转派主负责人' });
+                  if (!tr.ok) { failCount++; okCount--; runtimeFailures[x.t.rel.id] = tr.reason; }
+                }
+                if (act === 'stop') S.stopOperating(x.t.rel.id, v.reason);
+              });
+              var items = okOnes.map(function (x) {
+                var c = S.customer(x.t.customerId);
+                return { key: c.id, name: c.name + '｜' + S.businessLineName(x.t.rel.businessLine), result: runtimeFailures[x.t.rel.id] ? '失败' : '成功', reason: runtimeFailures[x.t.rel.id] || '' };
+              }).concat(badOnes.map(function (x) {
+                var c = S.customer(x.t.customerId);
+                return { key: c.id, name: c.name + '｜' + S.businessLineName(x.t.rel.businessLine), result: '失败', reason: x.problems.join('；') };
+              }));
+              S.updateJob(job.id, { status: failCount ? (okCount ? '部分成功' : '失败') : '已完成', success: okCount, failed: failCount + badOnes.length, items: items });
+              ui.closeAll();
+              ui.toast('批量执行完成：成功 ' + okCount + ' 项，跳过 ' + badOnes.length + ' 项（已记录原因）。', 'success');
+              ui.syncSel('customer.list', []);
+              render();
+              ui.qs('#batchbar').style.display = 'none';
+            }
+          });
+        });
+      }
+    });
+  }
+
+  /* ------------------------------------------------------- 导出与列设置 */
+
+  function expBtn() {
+    var ok = RY.perm.can('customer.export');
+    return '<button class="ry-btn" id="btn-exp"' + (ok ? '' : ' data-denied="1" data-action="customer.export"') + '>导出' +
+      (ok ? '' : '<i class="ry-btn__lock">无权限</i>') + '</button>';
+  }
+  ui.qs('#btn-export').innerHTML = expBtn();
+  ui.qs('#btn-export').addEventListener('click', function (e) {
+    if (e.target.closest('[data-denied]')) return;
+    exportDialog();
+  });
+
+  function exportDialog() {
+    var fields = COLS.map(function (c) { return { value: c.k, label: c.n }; });
+    ui.modal({
+      title: '导出客户列表',
+      subtitle: '导出按当前角色的按钮权限与数据范围执行，结果异步生成，可在处理记录下载。',
+      size: 'md',
+      body: ui.field('导出范围', ui.select('range', [
+        { value: 'filtered', label: '当前筛选结果（' + data.length + ' 条）' },
+        { value: 'selected', label: '已勾选记录（' + ui.selected('customer.list').length + ' 条）' },
+        { value: 'current', label: '仅当前页（' + pageData.length + ' 条）' }
+      ]), '导出属于独立授权动作，需要单独授予。') +
+        ui.field('导出字段', '<div class="colset">' + fields.map(function (f, i) {
+          return '<label><input type="checkbox" name="f' + i + '" value="' + f.value + '"' + (i < 8 ? ' checked' : '') + '> ' + ui.esc(f.label) + '</label>';
+        }).join('') + '</div>') +
+        ui.banner('价值分级字段会如实导出当前值。', 'info'),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="do-exp">提交导出</button>',
+      onOpen: function (el) {
+        ui.qs('#do-exp', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          var cols = fields.filter(function (f, i) { return v['f' + i]; }).map(function (f) { return f.label; });
+          var n = v.range === 'selected' ? ui.selected('customer.list').length : v.range === 'current' ? pageData.length : data.length;
+          if (n === 0) { ui.toast('导出范围为空，请先勾选记录或调整筛选。', 'warn'); return; }
+          ui.close();
+          var job = S.addJob({
+            type: '导出', action: '客户列表导出', object: '客户', status: '处理中',
+            total: n, success: 0, failed: 0, fileName: '客户列表_' + S.today().replace(/-/g, '') + '.xlsx', fields: cols
+          });
+          ui.asyncRun({
+            title: '正在生成导出文件', total: n, processId: job.processId,
+            onDone: function () {
+              S.updateJob(job.id, { status: '已完成', success: n, failed: 0 });
+              ui.closeAll();
+              ui.modal({
+                title: '导出已完成', size: 'sm',
+                body: '<p>共 ' + n + ' 条，文件已生成。</p>' + ui.kv([['文件', job.fileName], ['记录数', n + ' 条'], ['字段数', cols.length + ' 个'], ['保留期', '处理记录保留 7 天']]),
+                footer: '<button class="ry-btn" data-close>关闭</button><a class="ry-btn ry-btn--primary" href="../processing/detail.html?id=' + job.id + '&from=export">去处理记录下载</a>'
+              });
+            }
+          });
+        });
+      }
+    });
+  }
+
+  ui.qs('#colset-btn').addEventListener('click', function () {
+    ui.modal({
+      title: '列显示设置', size: 'sm',
+      subtitle: '仅影响当前浏览器的展示偏好，不改变任何业务规则。',
+      body: '<div class="colset">' + COLS.map(function (c, i) {
+        return '<label><input type="checkbox" data-col="' + c.k + '"' + (c.on ? ' checked' : '') + '> ' + ui.esc(c.n) + '</label>';
+      }).join('') + '</div>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="save-col">保存</button>',
+      onOpen: function (el) {
+        ui.qs('#save-col', el).addEventListener('click', function () {
+          var on = ui.qsa('[data-col]', el).filter(function (x) { return x.checked; }).map(function (x) { return x.getAttribute('data-col'); });
+          if (!on.length) { ui.toast('至少保留一列。', 'warn'); return; }
+          COLS.forEach(function (c) { c.on = on.indexOf(c.k) >= 0; });
+          S.listState(LS, { columns: on });
+          ui.close(); render();
+        });
+      }
+    });
+  });
+
+  /* ---------------------------------------------------------- 筛选与分页 */
+
+  function collect() {
+    F.kw = ui.qs('#f-kw').value;
+    F.type = ui.qs('#f-type').value; F.status = ui.qs('#f-status').value;
+    F.value = ui.qs('#f-value').value;
+    F.sort = ui.qs('#f-sort').value; F.region = ui.qs('#f-region').value;
+    F.line = ui.qs('#f-line').value;
+    F.owner = ui.qs('#f-owner').value;
+    F.from = ui.qs('#f-from').value; F.to = ui.qs('#f-to').value;
+    F.quality = ui.qs('#f-quality').value;
+    S.listState(LS, { filters: F, page: 1, size: size });
+  }
+
+  function reload() {
+    ui.syncSel(LS, []);
+    data = rows();
+    page = 1;
+    pageData = data.slice(0, size);
+    render();
+  }
+
+  ui.qs('#do-filter').addEventListener('click', function () { collect(); reload(); });
+  ui.qs('#f-kw').addEventListener('keydown', function (e) { if (e.key === 'Enter') { collect(); reload(); } });
+  ui.qs('#reset-filter').addEventListener('click', function () {
+    F = { kw: '', type: '', status: '', value: '', sort: 'updated-desc', region: '', line: '', owner: '', from: '', to: '', quality: '' };
+    S.listState(LS, { filters: F, page: 1 });
+    ui.qs('#f-kw').value = ''; ui.qs('#f-type').value = ''; ui.qs('#f-status').value = '';
+    ui.qs('#f-value').value = ''; ui.qs('#f-sort').value = 'updated-desc';
+    ui.qs('#f-region').value = ''; ui.qs('#f-line').value = '';
+    ui.qs('#f-owner').value = ''; ui.qs('#f-from').value = '';
+    ui.qs('#f-to').value = ''; ui.qs('#f-quality').value = '';
+    reload();
+  });
+
+  RY.nav.bindFilterToggle('#toggle-more', '#more');
+
+  ui.bindPager('#pager', function (p) {
+    page = p; pageData = data.slice((page - 1) * size, page * size);
+    S.listState(LS, { page: page });
+    render();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  /* 新增客户入口按权限表达，不使用隐藏代替权限说明 */
+  var canNew = RY.perm.can('customer.create');
+  ui.qs('#btn-new').innerHTML = canNew
+    ? '<a class="ry-btn ry-btn--primary" href="create.html?from=list">新增客户</a>'
+    : '<button class="ry-btn ry-btn--primary" data-denied="1" data-action="customer.create">新增客户<i class="ry-btn__lock">无权限</i></button>';
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

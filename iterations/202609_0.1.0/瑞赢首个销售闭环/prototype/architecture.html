@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>整体说明 · 瑞赢 0.1 原型</title>
+<link rel="stylesheet" href="assets/css/common.css">
+<style>
+  body{margin:0;background:#f5f7fb;color:#263449;font:14px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+  header{background:#fff;border-bottom:1px solid #e6eaf1;padding:18px max(20px,calc((100vw - 1040px)/2))}
+  header a{color:#2563eb;text-decoration:none;margin-right:20px}main{max-width:1040px;margin:24px auto;padding:0 18px 48px}
+  h1{font-size:25px;margin:0 0 4px}h2{font-size:18px;margin:0 0 14px}p{margin:7px 0}section{background:#fff;border:1px solid #e6eaf1;border-radius:14px;padding:20px 24px;margin:16px 0}
+  table{width:100%;border-collapse:collapse}th,td{padding:9px 10px;text-align:left;border-bottom:1px solid #edf0f4;vertical-align:top}th{background:#f7f9fc}ul{margin:8px 0;padding-left:20px}
+  .note{color:#64748b}.tag{display:inline-block;background:#fff4cf;color:#855700;border-radius:6px;padding:2px 8px;font-size:12px}
+  .overview-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:22px 0 18px}.overview-tabs a{padding:8px 15px;border:1px solid #dce5f0;border-radius:9px;color:#36516f;text-decoration:none;background:#fff}.overview-tabs a:hover,.overview-tabs a[aria-current="page"]{background:#e9f2ff;border-color:#8eb8ec;color:#1454a3}
+  .diagram{display:grid;gap:12px;margin:18px 0}.flow{grid-template-columns:repeat(5,minmax(0,1fr));align-items:stretch}.diagram-card{border:1px solid #dbe6f2;border-radius:12px;padding:15px;background:#f8fbff;min-width:0}.diagram-card b{display:block;color:#174a7f;margin-bottom:5px}.diagram-card small{display:block;color:#63768b;line-height:1.55}.flow .diagram-card:not(:last-child){position:relative}.flow .diagram-card:not(:last-child)::after{content:'→';position:absolute;right:-13px;top:calc(50% - 12px);font-size:20px;color:#3880ca;z-index:1}
+  .lane{border:1px solid #dbe6f2;border-radius:12px;padding:16px;margin:12px 0;background:#fff}.lane h3{margin:0 0 10px;font-size:15px;color:#174a7f}.lane-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.lane-grid .diagram-card{background:#f8fbff}.lane-note{margin-top:10px;color:#64748b;font-size:12px}
+  .branch{border-left:3px solid #89b6e7;padding:4px 0 4px 14px;margin:16px 0;color:#4b647d}.architecture-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.architecture-grid .diagram-card{min-height:100px}.architecture-support{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  main.is-wide{max-width:1560px}.panorama-scroll{overflow-x:auto;padding-bottom:12px}.panorama{min-width:1160px;background:#edf1f4;border:8px solid #40505e;padding:10px;box-shadow:0 18px 40px rgba(23,47,75,.12)}.panorama *{box-sizing:border-box}.panorama-band{background:#fff;padding:14px;margin-bottom:10px}.panorama-band:last-child{margin-bottom:0}.panorama-band h2{margin:0 0 11px;text-align:center;font-size:16px;color:#28384b}.panorama-title{background:#163d5a;color:#fff;text-align:center;padding:9px;font-weight:700;letter-spacing:.08em}.panorama-top{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.panorama-top span{display:block;background:linear-gradient(100deg,#bd4b55,#163d5a);color:#fff;text-align:center;padding:9px 7px;font-weight:600;font-size:12px}.panorama-ends{display:grid;grid-template-columns:1fr 1fr;gap:10px;background:transparent;padding:0}.panorama-ends article{background:#fff;padding:12px}.panorama-ends h2{margin-bottom:10px}.panorama-end-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.panorama-end-grid span{display:block;background:#31838a;color:#fff;padding:8px;text-align:center;font-size:12px;font-weight:600}.panorama-domains{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;background:transparent;padding:0}.panorama-domain{background:#fff;padding:12px;min-width:0}.panorama-domain h2{padding-bottom:8px;border-bottom:2px solid #dce5eb}.panorama-module{border:1px dashed #db8588;border-radius:5px;padding:18px 8px 9px;margin-top:15px;position:relative;min-height:90px}.panorama-module h3{position:absolute;top:-12px;left:8%;width:84%;margin:0;background:#143f60;color:#fff;border-radius:5px;text-align:center;padding:4px 6px;font-size:12px}.panorama-items{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.panorama-items span{display:flex;align-items:center;justify-content:center;min-height:30px;background:#f0f3f5;padding:5px 4px;text-align:center;font-size:11px;line-height:1.25}.panorama-support{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.panorama-support span{background:#527b94;color:#fff;padding:12px 8px;text-align:center;font-weight:600;font-size:12px}.panorama-caption{font-size:12px;color:#64748b;margin:4px 0 12px}
+  .object-table th:first-child{width:105px}.object-table td:nth-child(2){font-weight:600;color:#174a7f;white-space:nowrap}.object-table td:last-child{color:#516477}.object-table tbody tr:hover{background:#f8fbff}.object-table-wrap{overflow-x:auto}.object-table{min-width:760px}.object-map-scroll{overflow-x:auto;padding:5px 0 12px}.object-map{display:block;min-width:900px;width:100%;height:auto;background:#f8fbff;border:1px solid #dbe6f2;border-radius:12px}.object-map .edge{fill:none;stroke:#80a0bd;stroke-width:2}.object-map .edge-dash{stroke-dasharray:6 5}.object-map .node rect{fill:#fff;stroke:#82a7c8;stroke-width:1.5;rx:9}.object-map .node.core rect{fill:#e7f2ff;stroke:#3979b8}.object-map .node text{fill:#173b5f;font-size:14px;font-weight:600;text-anchor:middle;dominant-baseline:middle}.object-map .edge-label{font-size:11px;fill:#5b7187;text-anchor:middle}.object-cues{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}.object-cues p{margin:0;padding:10px 12px;border-left:3px solid #70a5d7;background:#f6faff;font-size:12px;color:#4b647d}
+  .module-flow-picker{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0}.module-flow-picker label{font-weight:600;color:#294964}.module-flow-picker select{min-width:220px;padding:9px 12px;border:1px solid #bfd2e5;border-radius:9px;background:#fff;color:#183b5a;font:inherit}.module-flow-picker select:focus-visible{outline:2px solid #3979b8;outline-offset:2px}.module-flow-scroll{overflow-x:auto;padding:8px 0 12px}.module-flow-grid{display:grid;grid-template-columns:repeat(5,minmax(180px,1fr));gap:16px;min-width:980px}.module-flow-step{position:relative;min-height:152px;padding:15px;border:1px solid #b8d1e8;border-top:5px solid #2b719f;border-radius:12px;background:#f8fbff}.module-flow-step:not(:last-child)::after{content:'→';position:absolute;right:-17px;top:43%;z-index:1;font-size:21px;font-weight:700;color:#357cae}.module-flow-step strong{display:block;color:#174a7f;font-size:14px;margin:2px 0 8px}.module-flow-step p{font-size:12px;line-height:1.55;color:#52677d;margin:0}.module-flow-num{font-size:11px;font-weight:700;color:#247399;letter-spacing:.08em}.module-flow-branches{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}.module-flow-branch{border:1px dashed #d4b77b;border-radius:9px;padding:11px 13px;background:#fffaf0}.module-flow-branch b{display:block;color:#815c19;font-size:12px}.module-flow-branch p{font-size:12px;color:#695d46;margin:3px 0 0}.module-flow-source{margin-top:15px;font-size:12px;color:#64748b}.module-flow-source a{color:#2563eb}
+  [hidden]{display:none!important}
+  @media(max-width:760px){.flow,.architecture-grid,.lane-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.flow .diagram-card::after{display:none}}
+  @media(max-width:640px){section{padding:16px}table{font-size:12px}.architecture-support{grid-template-columns:1fr}}
+  @media(max-width:640px){.object-cues{grid-template-columns:1fr}}
+  @media(max-width:640px){.module-flow-branches{grid-template-columns:1fr}}
+  @media(max-width:420px){.flow,.architecture-grid,.lane-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><a href="pc.html">← PC 首页</a><a href="index.html">H5 工作台</a><span class="note">0.1 联合评审 · 2026-10-12</span></header>
+<main>
+<h1>瑞赢 0.1 整体说明</h1>
+<p class="note">产品评审演示视图。图示概括当前 0.1 业务链路与功能边界；具体对象、字段、动作与权限以 PRD 和各源业务页面说明为准。</p>
+<nav class="overview-tabs" aria-label="选择整体说明"><a href="#rules" data-view="rules">整体规则</a><a href="#flow" data-view="flow">功能流程图</a><a href="#functions" data-view="functions">功能架构图</a><a href="#panorama" data-view="panorama">功能全景图</a><a href="#objects" data-view="objects">业务对象模型</a><a href="#module-flows" data-view="module-flows">模块业务流程图</a></nav>
+<div id="rules" data-panel="rules">
+<section><h2>两端定位</h2><p>H5 优先方便销售个人执行，主管／经理共用同一个 H5，工作台仅有一个“团队处理”入口，可进入团队线索、任务、日报和拜访。</p><p>PC 优先方便主管／经理管理团队，也支持其个人销售及销售人员使用。首页是轻量入口页，业务导航为客户管理、销售管理、工作管理、系统管理。</p></section>
+<section><h2>PC 五类列表默认</h2><table><thead><tr><th>列表</th><th>菜单进入</th><th>可切换范围</th></tr></thead><tbody><tr><td>客户</td><td>全部可见；状态、时间不限</td><td>全部／团队／我负责的／我协作的</td></tr><tr><td>线索</td><td>全部可见；状态、时间不限</td><td>全部／团队／我负责的／池内</td></tr><tr><td>商机</td><td>全部可见；状态、时间不限</td><td>全部／团队／我负责的／我参与的</td></tr><tr><td>任务</td><td>全部可见正式任务；状态、时间不限</td><td>全部／待确认／我的／团队；我的可多选负责、参与、创建</td></tr><tr><td>日报</td><td>全部可见；当天；状态不限</td><td>全部／团队／我的</td></tr></tbody></table><p>“全部”是当前账号有权查看的全部记录。从详情返回恢复 Tab、筛选、排序和页码；从菜单再次进入重置为默认值。</p></section>
+<section><h2>任务与候选</h2><p>正式任务只有待处理、已完成、已取消三个主状态。逾期是时间标记；待确认只属于 AI 候选任务。正式任务无接收、拒绝、验收或退回流程。一个任务 ID 只有一个负责人，可有多个参与人。</p></section>
+<section><h2>系统管理</h2><p>前台保留人员组织与权限、业务配置、异常事项、知识管理、AI 运行记录与失败处理。业务配置有字典、商机流程模板、线索池、全国公海、区域与业务线、任务规则、拜访规则、Agent 配置八个子菜单。</p><p><span class="tag">本期边界</span> 管理分析、指标配置及独立数据质量、集成同步、消息投递与审计查询页面退出 0.1。权限校验、同步重试、消息投递日志和审计记录仍由后台实现；相关审计记录由技术人员查看分析并处理，具体规则由技术定义。</p></section>
+<section><h2>上次提交后的增量（2026-10-15）</h2>
+<ul>
+<li><b>会议任务：</b>PC 与 H5 新建会议任务填写开始、结束时间和会议方式，并按线上／线下填写会议链接或地点；结束时间同时作为任务截止及到期计算依据，参与人从公司人员中查询多选，会议任务一期不发送企微邀请。</li>
+<li><b>任务与日历：</b>任务时间列展示开始时间至截止时间；会议任务在统一日历按会议时段投影，不另生成重复的截止时间投影。</li>
+<li><b>个人速记（H5）：</b>全局入口进入个人速记，支持语音或文本录入及本人历史；语音转写为原型模拟，正式转写和服务端保存仍待研发接入。速记仅本人可见，不自动写入任务、活动或日报。</li>
+<li><b>宽屏评审布局：</b>桌面宽度下 H5 画布居中，悬浮入口留在画布内，PC 原型跳转显示在画布外侧；窄屏不显示该评审跳转。</li>
+</ul>
+<p class="note">范围以本轮 PRD 与原型改动记录为准；速记真实语音服务尚未验收。</p></section>
+<section><h2>本次新增（36df055 提交后）</h2>
+<ul>
+<li><b>任务候选处理：</b>“待确认”分为“当前待确认”和“写入失败”。未补齐必填信息的候选留在当前待确认；已确认但未写入正式任务的候选保留最终确认值、确认时间和失败原因，并单独显示。</li>
+<li><b>失败恢复：</b>业务字段问题由原确认人补齐后手动重试，技术性失败可按原参数重试；每次重试重新校验权限、来源和对象状态，并核查原候选的幂等结果，避免重复创建任务。写入失败仍是候选处理状态，不是正式任务状态。</li>
+</ul>
+<p class="note">当前原型用于展示候选失败处理流程；服务端幂等、并发控制和权限校验仍需研发实现并联调验证。</p></section>
+</div>
+<div id="flow" data-panel="flow" hidden>
+<section><h2>销售业务主流程</h2><p class="note">按业务对象的典型推进关系展示；各环节也可从对应页面独立发起，不要求每条记录都依次经过所有环节。</p>
+<div class="diagram flow" aria-label="线索到销售工作闭环"><div class="diagram-card"><b>1 线索</b><small>录入、认领、分配与跟进；池内线索按规则流转。</small></div><div class="diagram-card"><b>2 转换</b><small>从单条线索详情发起，创建或关联客户、联系人，并至少创建一条商机。</small></div><div class="diagram-card"><b>3 商机</b><small>按流程模板推进阶段，记录阶段任务与协作。</small></div><div class="diagram-card"><b>4 执行</b><small>记录普通销售活动或正式拜访；任务与日程承接下一步工作。</small></div><div class="diagram-card"><b>5 日报与回看</b><small>汇总当日正式事实，销售补充后提交；主管在源业务页面查看与处理。</small></div></div>
+<p class="branch">线索转换后保留源线索与追溯关系；客户、联系人、活动、任务和日程可以按各自规则独立创建。</p></section>
+<section><h2>Agent 辅助流程</h2><div class="diagram flow" aria-label="AI 候选人工确认流程"><div class="diagram-card"><b>来源与提炼</b><small>从有权业务对象或沟通材料获取来源。</small></div><div class="diagram-card"><b>生成候选</b><small>展示目标对象、拟写内容与来源证据。</small></div><div class="diagram-card"><b>人工处理</b><small>发起人修改、确认或忽略；确认前不形成正式事实。</small></div><div class="diagram-card"><b>正式写入</b><small>重新鉴权并逐条校验，返回正式对象 ID 或失败原因。</small></div><div class="diagram-card"><b>回到源业务</b><small>成功项进入正式列表；失败项保留确认内容供处理。</small></div></div><p class="note">Agent 辅助不替代手工业务入口，也不直接改变既有商机阶段或正式任务状态。</p></section>
+</div>
+<div id="functions" data-panel="functions" hidden>
+<section><h2>0.1 功能架构</h2><p class="note">按用户可见的功能分组展示，表示产品范围与入口关系，不代表技术系统部署架构。</p>
+<div class="lane"><h3>PC · 统一工作区</h3><div class="architecture-grid"><div class="diagram-card"><b>客户管理</b><small>客户、联系人</small></div><div class="diagram-card"><b>销售管理</b><small>线索、商机、销售活动（普通活动／正式拜访）</small></div><div class="diagram-card"><b>工作管理</b><small>任务、日程、日报</small></div><div class="diagram-card"><b>系统管理</b><small>人员组织与权限、业务配置、异常事项、知识管理、AI 运行记录与失败处理</small></div></div><p class="lane-note">轻量首页提供固定业务快捷入口；顶栏提供全局搜索、消息与处理记录。</p></div>
+<div class="lane"><h3>企微 H5 · 个人执行与团队处理</h3><div class="lane-grid"><div class="diagram-card"><b>五个主入口</b><small>工作台、任务、日程、互动、知识库</small></div><div class="diagram-card"><b>业务快捷入口</b><small>客户、联系人、线索、商机</small></div><div class="diagram-card"><b>团队处理</b><small>主管从工作台进入团队线索、任务、日报、拜访源页面</small></div><div class="diagram-card"><b>瑞赢 AI</b><small>AI 首页、沟通整理、候选确认、AI 待确认与对象 AI</small></div></div></div>
+<div class="lane"><h3>两端共用的业务基础</h3><div class="architecture-support"><div class="diagram-card"><b>正式业务事实</b><small>共用对象 ID、状态、权限、数据范围与版本控制；深链进入目标页面后重新鉴权。</small></div><div class="diagram-card"><b>候选与治理</b><small>AI 候选经人工确认后才写入正式对象；权限、失败处理、消息与审计规则在后台执行。</small></div></div></div>
+<p class="note"><span class="tag">演示边界</span> 此图只覆盖 0.1 有效前台功能；管理分析、指标配置、独立数据质量、集成同步、消息投递与审计查询页面未列入。</p></section>
+</div>
+<div id="panorama" data-panel="panorama" hidden>
+<p class="panorama-caption">按参考图的分层方式展开当前 0.1 功能。图宽适合投屏评审；窄屏可横向滚动。此处展示产品功能范围，不表示技术部署关系。</p>
+<div class="panorama-scroll"><div class="panorama" role="group" aria-label="瑞赢 0.1 功能全景图：全局入口、PC 与 H5 工作区、四个业务功能分组、两端共用规则">
+  <div class="panorama-title">瑞赢 0.1 · 产品功能全景图</div>
+  <div class="panorama-band"><h2>全局入口与提示</h2><div class="panorama-top"><span>轻量工作台首页</span><span>全局搜索</span><span>消息</span><span>处理记录</span><span>业务深链</span></div></div>
+  <div class="panorama-band panorama-ends"><article><h2>PC · 统一工作区</h2><div class="panorama-end-grid"><span>客户管理</span><span>销售管理</span><span>工作管理</span><span>系统管理</span><span>固定业务快捷入口</span><span>右侧页面说明</span></div></article><article><h2>企微 H5 · 个人执行</h2><div class="panorama-end-grid"><span>工作台</span><span>任务 / 日程</span><span>互动 / 知识库</span><span>业务快捷入口</span><span>团队处理</span><span>瑞赢 AI</span></div></article></div>
+  <div class="panorama-band panorama-domains">
+    <article class="panorama-domain"><h2>客户管理</h2><div class="panorama-module"><h3>客户</h3><div class="panorama-items"><span>客户列表 / 详情</span><span>客户地址</span><span>经营关系</span><span>客户关系网</span></div></div><div class="panorama-module"><h3>联系人</h3><div class="panorama-items"><span>联系人列表 / 详情</span><span>关联客户</span><span>销售活动</span><span>历史记录</span></div></div></article>
+    <article class="panorama-domain"><h2>销售管理</h2><div class="panorama-module"><h3>线索</h3><div class="panorama-items"><span>录入 / 分配</span><span>线索池</span><span>跟进</span><span>单条转换</span></div></div><div class="panorama-module"><h3>商机</h3><div class="panorama-items"><span>商机列表 / 详情</span><span>阶段过程</span><span>流程模板</span><span>业务线 / 团队</span></div></div><div class="panorama-module"><h3>销售活动</h3><div class="panorama-items"><span>普通活动</span><span>正式拜访</span><span>内容 / 纪要</span><span>异常与复核</span></div></div></article>
+    <article class="panorama-domain"><h2>工作管理</h2><div class="panorama-module"><h3>任务</h3><div class="panorama-items"><span>创建 / 指派</span><span>待处理 / 完成</span><span>协作与关联</span><span>阶段任务</span></div></div><div class="panorama-module"><h3>日程</h3><div class="panorama-items"><span>我的 / 团队</span><span>独立日程</span><span>业务时间投影</span><span>同步状态</span></div></div><div class="panorama-module"><h3>日报</h3><div class="panorama-items"><span>正式事实</span><span>销售补充</span><span>提交冻结</span><span>主管建议</span></div></div></article>
+    <article class="panorama-domain"><h2>系统管理与 AI</h2><div class="panorama-module"><h3>人员与业务配置</h3><div class="panorama-items"><span>组织 / 权限</span><span>字典 / 模板</span><span>线索池 / 公海</span><span>任务 / 拜访规则</span></div></div><div class="panorama-module"><h3>治理与知识</h3><div class="panorama-items"><span>异常事项</span><span>知识管理</span><span>AI 运行记录</span><span>失败处理</span></div></div><div class="panorama-module"><h3>Agent 辅助</h3><div class="panorama-items"><span>能力 / 来源配置</span><span>沟通整理</span><span>候选人工确认</span><span>正式写入结果</span></div></div></article>
+  </div>
+  <div class="panorama-band"><h2>两端共用的业务基础</h2><div class="panorama-support"><span>统一对象 ID 与正式业务事实</span><span>角色权限与数据范围</span><span>状态、版本与操作校验</span><span>来源追溯、日志与审计</span></div></div>
+</div></div>
+<p class="note">图示仅包含 0.1 有效功能。AI 候选须人工确认后才可能写入正式对象；独立管理分析、指标配置、集成同步、消息投递与审计查询页面不在本期前台范围。</p>
+</div>
+<div id="objects" data-panel="objects" hidden>
+<section><h2>0.1 业务对象清单</h2><p class="note">按评审所需的主要业务对象与关联实体归组；同组名称不表示一张数据库表。字段、状态和操作规则以各模块 PRD 为准。</p>
+<div class="object-table-wrap"><table class="object-table"><thead><tr><th>领域</th><th>对象或关联实体</th><th>保存的核心事实与边界</th></tr></thead><tbody>
+<tr><td rowspan="7">客户与关系</td><td>客户主档</td><td>唯一客户主体与身份；主档不保存销售负责人。</td></tr>
+<tr><td>客户价值档案</td><td>客户的公司级价值分级，与商机阶段分开。</td></tr>
+<tr><td>经营关系</td><td>客户 × 区域 × 业务线的负责人、协作人与经营状态。</td></tr>
+<tr><td>全国公海记录</td><td>零条有效经营关系客户的待分配占用；与线索池分开。</td></tr>
+<tr><td>客户关系网</td><td>客户与客户的关联关系；不在主档设置通用父客户。</td></tr>
+<tr><td>联系人及联系人关系</td><td>自然人基础资料，与一个或多个客户的任职／角色关系分开。</td></tr>
+<tr><td>客户地址</td><td>客户下的地址记录；拜访可引用地址快照。</td></tr>
+<tr><td rowspan="4">销售推进</td><td>线索</td><td>待验证机会及跟进；单条转换可创建或关联客户、联系人与商机。</td></tr>
+<tr><td>商机</td><td>正式销售机会、主客户、负责人、阶段与结果。</td></tr>
+<tr><td>商机业务线明细</td><td>一条商机涉及的主／协同业务线，不另建商机。</td></tr>
+<tr><td>商机流程模板</td><td>版本化阶段、门槛与阶段任务配置，不替代商机实例。</td></tr>
+<tr><td rowspan="5">执行与复盘</td><td>普通销售活动</td><td>已发生的沟通与纪要。</td></tr>
+<tr><td>正式拜访</td><td>独立拜访对象，保存计划、执行、证据与异常；与普通活动分开。</td></tr>
+<tr><td>正式任务</td><td>唯一负责人、协作人、截止与成果；拜访计划和阶段任务复用同一任务对象。</td></tr>
+<tr><td>独立日程</td><td>真实日程记录；任务、拜访及线索／商机关键时间在日历中作投影。</td></tr>
+<tr><td>日报</td><td>当日正式事实、销售补充和提交快照；提交后冻结。</td></tr>
+<tr><td>AI 辅助</td><td>Agent 候选与写入执行</td><td>待确认内容与正式写入结果分开；确认前不形成正式业务事实。</td></tr>
+</tbody></table></div></section>
+<section><h2>概念对象关系图</h2><p class="note">实线表示主要对象关联，虚线表示可选、来源或投影关系。图只展示评审主干，完整基数及条件见 PRD。</p>
+<div class="object-map-scroll"><svg class="object-map" viewBox="0 0 1000 610" role="img" aria-labelledby="object-map-title object-map-desc" xmlns="http://www.w3.org/2000/svg"><title id="object-map-title">瑞赢 0.1 概念对象关系图</title><desc id="object-map-desc">客户主档关联价值档案、经营关系、公海、客户关系网、联系人与地址；线索转换生成商机，商机关联客户和流程模板；普通销售活动、正式拜访、正式任务分别保留源对象，进入日报事实汇总；独立日程与业务时间投影分开；Agent 候选人工确认后可写入正式对象。</desc>
+<defs><marker id="object-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#80a0bd"/></marker></defs>
+<path class="edge" marker-end="url(#object-arrow)" d="M190 75 H300"/><path class="edge" marker-end="url(#object-arrow)" d="M470 75 H555"/><path class="edge edge-dash" marker-end="url(#object-arrow)" d="M385 48 V24 H885 V48"/>
+<path class="edge" marker-end="url(#object-arrow)" d="M385 102 V158"/><path class="edge" marker-end="url(#object-arrow)" d="M230 175 L300 94"/><path class="edge" marker-end="url(#object-arrow)" d="M470 95 L555 165"/><path class="edge" marker-end="url(#object-arrow)" d="M715 95 L800 165"/>
+<path class="edge" marker-end="url(#object-arrow)" d="M230 290 H300"/><path class="edge" marker-end="url(#object-arrow)" d="M300 92 H270 V245 H300 V275"/><path class="edge" marker-end="url(#object-arrow)" d="M470 290 H555"/><path class="edge edge-dash" marker-end="url(#object-arrow)" d="M470 263 V235 H885 V263"/>
+<path class="edge edge-dash" d="M470 397 H555"/><path class="edge edge-dash" marker-end="url(#object-arrow)" d="M145 424 V455 H315 V485"/><path class="edge edge-dash" marker-end="url(#object-arrow)" d="M385 424 V485"/><path class="edge edge-dash" marker-end="url(#object-arrow)" d="M635 424 V455 H455 V485"/><path class="edge edge-dash" marker-end="url(#object-arrow)" d="M690 485 V424"/><path class="edge edge-dash" marker-end="url(#object-arrow)" d="M555 512 V570 H145 V424"/>
+<g class="node"><rect x="30" y="48" width="160" height="54"/><text x="110" y="75">客户价值档案</text></g><g class="node core"><rect x="300" y="48" width="170" height="54"/><text x="385" y="75">客户主档</text></g><g class="node"><rect x="555" y="48" width="160" height="54"/><text x="635" y="75">经营关系</text></g><g class="node"><rect x="800" y="48" width="170" height="54"/><text x="885" y="75">全国公海记录</text></g>
+<g class="node"><rect x="60" y="158" width="170" height="54"/><text x="145" y="185">联系人及关系</text></g><g class="node"><rect x="300" y="158" width="170" height="54"/><text x="385" y="185">客户关系网</text></g><g class="node"><rect x="555" y="158" width="160" height="54"/><text x="635" y="185">客户地址</text></g><g class="node"><rect x="800" y="158" width="170" height="54"/><text x="885" y="185">区域 / 业务线</text></g>
+<g class="node core"><rect x="60" y="263" width="170" height="54"/><text x="145" y="290">线索</text></g><g class="node core"><rect x="300" y="263" width="170" height="54"/><text x="385" y="290">商机</text></g><g class="node"><rect x="555" y="263" width="160" height="54"/><text x="635" y="290">业务线明细</text></g><g class="node"><rect x="800" y="263" width="170" height="54"/><text x="885" y="290">流程模板版本</text></g>
+<g class="node"><rect x="60" y="370" width="170" height="54"/><text x="145" y="397">普通销售活动</text></g><g class="node"><rect x="300" y="370" width="170" height="54"/><text x="385" y="397">正式拜访</text></g><g class="node"><rect x="555" y="370" width="160" height="54"/><text x="635" y="397">正式任务</text></g><g class="node"><rect x="800" y="370" width="170" height="54"/><text x="885" y="397">独立日程</text></g>
+<g class="node core"><rect x="300" y="485" width="170" height="54"/><text x="385" y="512">日报</text></g><g class="node"><rect x="555" y="485" width="160" height="54"/><text x="635" y="512">Agent 候选</text></g>
+<text class="edge-label" x="245" y="66">1 : 1</text><text class="edge-label" x="512" y="66">1 : N</text><text class="edge-label" x="760" y="18">零有效关系时入池</text><text class="edge-label" x="263" y="281">转换</text><text class="edge-label" x="513" y="281">1 : N</text><text class="edge-label" x="760" y="238">采用版本</text><text class="edge-label" x="512" y="386">0..1 关联</text><text class="edge-label" x="665" y="466">确认后写入</text>
+</svg></div>
+<div class="object-cues"><p>客户主档与经营关系分开；没有有效经营关系时才进入全国公海。</p><p>联系人与客户通过关系记录相连；客户关系网表达客户与客户的关联。</p><p>线索转换至少创建一条商机；商机必须关联有效主客户与模板版本。</p><p>普通活动、正式拜访、正式任务各有独立 ID 和生命周期；日报引用正式事实。</p><p>正式拜访与任务可建立可选关联，状态不自动联动；日历投影不复制源对象。</p><p>Agent 候选人工确认并通过写入校验后，才进入相应正式对象。</p></div>
+</section></div>
+<div id="module-flows" data-panel="module-flows" hidden>
+<section><h2>模块业务流程图</h2><p class="note">选择模块，查看入口、关键处理、结果和常见分支。图示用于评审讲解；跨模块主链见“功能流程图”，正式条件与权限以对应模块 PRD 为准。</p>
+<div class="module-flow-picker"><label for="module-flow-select">选择模块</label><select id="module-flow-select"><option value="customer">客户</option><option value="contact">联系人</option><option value="lead">线索</option><option value="opportunity">商机</option><option value="activity">普通销售活动</option><option value="visit">正式拜访</option><option value="task">任务</option><option value="schedule">日程</option><option value="report">日报</option><option value="agent">Agent 候选</option><option value="knowledge">知识管理</option><option value="system">系统管理</option></select></div>
+<div id="module-flow-content" aria-live="polite"></div>
+</section></div>
+</main>
+<script src="assets/js/module-flows.js"></script>
+<script>
+(function(){
+  function showView(){
+    var view = location.hash.slice(1);
+    if (!/^(rules|flow|functions|panorama|objects|module-flows)$/.test(view)) view = 'rules';
+    document.querySelectorAll('[data-panel]').forEach(function(panel){panel.hidden = panel.getAttribute('data-panel') !== view;});
+    document.querySelectorAll('[data-view]').forEach(function(link){
+      if (link.getAttribute('data-view') === view) link.setAttribute('aria-current','page');
+      else link.removeAttribute('aria-current');
+    });
+    document.querySelector('main').classList.toggle('is-wide', view === 'panorama');
+    document.title = ({rules:'整体规则',flow:'功能流程图',functions:'功能架构图',panorama:'功能全景图',objects:'业务对象模型','module-flows':'模块业务流程图'})[view] + ' · 瑞赢 0.1 原型';
+  }
+  window.addEventListener('hashchange', showView);
+  showView();
+})();
+</script>
+</body>
+</html>

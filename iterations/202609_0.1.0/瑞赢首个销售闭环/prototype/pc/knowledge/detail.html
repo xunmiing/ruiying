@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>知识详情 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：知识详情与编辑（发布／停用／日志记录） */
+  .kd-cols { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; }
+  .kd-body { white-space: pre-wrap; font-size: 13px; line-height: 1.85; color: var(--ink); }
+  .kd-h { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+  .kd-tl { border-left: 2px solid var(--line); margin-left: 6px; padding-left: 14px; }
+  .kd-tl__i { position: relative; padding-bottom: 11px; }
+  .kd-tl__i:last-child { padding-bottom: 0; }
+  .kd-tl__i::before { content: ''; position: absolute; left: -21px; top: 4px; width: 9px; height: 9px; border-radius: 50%; background: var(--brand); }
+  .kd-tl__h { font-size: 12.5px; font-weight: 600; }
+  .kd-tl__m { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+  @media (max-width: 1180px) { .kd-cols { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="kd-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/knowledge-attachments.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'knowledge.manage';
+  var id = ui.q('id') || '';
+  var canEdit = P.can('knowledge.edit');
+  var canPublish = P.can('knowledge.publish');
+  var canDeactivate = P.can('knowledge.deactivate');
+
+  var g = P.guard(PAGE, null, null);
+  var k = id ? S.kb(id) : null;
+  if (!k) g = { ok: false, kind: 'unavailable', reason: '知识文档不存在，或已被删除。' };
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '知识详情',
+    subtitle: '当前文档：<span class="ry-code">' + ui.esc(id || '未指定') + '</span>',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '知识管理', href: 'pc/knowledge/list.html' }, { label: k ? k.code : '详情' }],
+    actions: '<a class="ry-btn" href="list.html">返回知识列表</a>'
+  });
+
+  function scopeTone(scope) {
+    if (String(scope).indexOf('全员') >= 0) return 'brand';
+    if (String(scope).indexOf('指定角色') >= 0) return 'info';
+    return 'muted';
+  }
+
+  function render() {
+    if (!g.ok) {
+      ui.qs('#kd-host').innerHTML = ui.stateCard(g.kind, {
+        title: '知识文档不可用',
+        body: '<p>' + ui.esc(g.reason) + '</p>',
+        extra: '<a class="ry-btn" href="list.html">返回知识列表</a>'
+      });
+      return;
+    }
+
+    var inScope = S.knowledgeInPublishScope(k, S.currentUser());
+    var pub = k.status === '已发布';
+    var liveFiles = k.attachments || [];
+    var draftFiles = k.pendingDraft ? (k.pendingDraft.attachments || []) : [];
+    function fileRows(files) {
+      return files.length ? files.map(function (file) {
+        return '<div class="ry-acts-row"><span>' + ui.esc(file.name) + '（' + Math.ceil(file.size / 1024) + ' KB）</span>' +
+          ((k.allowDownload || canEdit) ? '<button class="ry-btn ry-btn--sm" type="button" data-kd-download="' + ui.esc(file.id) + '">下载</button>' : '') + '</div>';
+      }).join('') : '<p class="ry-hint">暂无附件</p>';
+    }
+
+    ui.qs('#kd-host').innerHTML =
+      '<div class="kd-cols" style="margin-top:12px">' +
+        '<div>' +
+          '<div class="ry-card" style="margin-bottom:12px"><div class="ry-card__body">' +
+            '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">' +
+              '<div><div class="kd-h">' + ui.esc(k.title) + '</div>' +
+                '<div class="ry-hint"><span class="ry-code">' + ui.esc(k.code) + '</span>　版本 <span class="ry-code">' + ui.esc(k.version) + '</span>　' +
+                  '维护人 ' + ui.esc(S.userName(k.owner) || k.owner) + '</div></div>' +
+              '<div>' + ui.statusTag(k.status) + '</div>' +
+            '</div>' +
+            '<p class="ry-hint" style="margin:8px 0 0">' + ui.esc(k.summary) + '</p>' +
+            '<div class="ry-divider"></div>' +
+            '<div class="kd-body">' + ui.esc(k.body) + '</div>' +
+          '</div></div>' +
+
+          ui.section('日志记录（' + (k.history || []).length + ' 条）',
+            '<div class="kd-tl">' + (k.history || []).map(function (h) {
+              return '<div class="kd-tl__i"><div class="kd-tl__h">' + ui.esc(h.action || (String(h.note || '').indexOf('首次') >= 0 ? '创建／发布' : '修改／发布')) + '　' + ui.esc(h.note || '') + '</div>' +
+                '<div class="kd-tl__m">' + ui.esc(h.at) + '　' + ui.esc(S.userName(h.by) || h.by || '系统') + '</div></div>';
+            }).join('') + '</div>' +
+            '<button type="button" data-pcn-rule="knowledgeVersion"></button>') +
+
+          ui.section('附件', fileRows(liveFiles) + (k.fileName && !liveFiles.length ? '<p class="ry-hint">旧草稿仅记录文件名：' + ui.esc(k.fileName) + '。请编辑草稿重新上传。</p>' : '') +
+            (k.pendingDraft ? '<h4>待发布附件</h4>' + fileRows(draftFiles) : '') + '<button type="button" data-pcn-rule="knowledgeFile"></button>') +
+
+          ui.section('维护文档', canEdit && k.status !== '已停用'
+            ? '<div class="ry-acts-row"><button class="ry-btn ry-btn--primary" id="kd-edit">编辑草稿</button><button type="button" data-pcn-rule="knowledgeVersion"></button></div>' +
+              (k.pendingDraft ? '<p class="ry-hint">已有待发布修改；当前正文仍是已发布版本。</p>' : '')
+            : '<p class="ry-hint">当前文档不可编辑。</p>') +
+        '</div>' +
+
+        '<div>' +
+          ui.section('文档信息',
+            ui.kv([
+              ['文档编号', k.code],
+              ['版本', k.version],
+              ['状态', k.status],
+              ['发布范围', k.scope],
+              ['当前身份是否在范围内', inScope ? '在范围内' : '不在范围内'],
+              ['允许下载', k.allowDownload ? '允许' : '不允许'],
+              ['允许分享', k.allowShare ? '允许' : '不允许'],
+              ['附件数量', liveFiles.length + ' 个'],
+              ['维护人', S.userName(k.owner) || k.owner],
+              ['创建时间', k.createdAt || '未记录'],
+              ['最近修改', (k.history && k.history.length ? k.history[k.history.length - 1].at : '—')],
+              ['最近修改人', (k.history && k.history.length ? (S.userName(k.history[k.history.length - 1].by) || k.history[k.history.length - 1].by) : '—')],
+              ['最近发布', k.publishedAt || '未发布'],
+              ['停用时间', k.deactivatedAt || '—'],
+              ['停用原因', k.deactivateReason || '—']
+            ]) +
+            '<div class="ry-acts-row" style="margin-top:10px">' +
+              ((!pub || k.pendingDraft) && canPublish ? '<button class="ry-btn ry-btn--primary" id="kd-pub">' + (pub ? '发布新版本' : '发布') + '</button><button type="button" data-pcn-rule="knowledgePublish"></button>' : '') +
+              (pub && canDeactivate ? '<button class="ry-btn" id="kd-off">停用</button>' : '') +
+            '</div>') +
+
+          '<button type="button" data-pcn-rule="knowledgeRetrieval"></button>' +
+        '</div>' +
+      '</div>' +
+
+      '';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    ui.qsa('[data-kd-download]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        var files = (k.attachments || []).concat(k.pendingDraft ? (k.pendingDraft.attachments || []) : []);
+        var meta = files.filter(function (f) { return f.id === button.getAttribute('data-kd-download'); })[0];
+        if (meta) RYKnowledgeFiles.download(meta).catch(function (error) { ui.toast(error.message, 'warn'); });
+      });
+    });
+    var eb = ui.qs('#kd-edit');
+    if (eb) eb.addEventListener('click', edit);
+    var pb = ui.qs('#kd-pub');
+    if (pb) pb.addEventListener('click', function () {
+      ui.confirm({
+        title: '发布知识文档　' + k.title,
+        message: '<p>发布后该版本进入全局搜索与 Agent 检索，范围：<b>' + ui.esc(k.pendingDraft ? k.pendingDraft.scope : k.scope) + '</b>。</p>' +
+          '<p class="ry-hint">只有已发布且在范围内的用户能检索到；Agent 仍只读调用者有权访问的版本。</p>',
+        confirmText: '确认发布',
+        onConfirm: function () {
+          var r = S.knowledgePublish(k.id, '详情页发布');
+          ui.toast(r.ok ? '已发布。' : r.msg, r.ok ? 'success' : 'warn');
+          render();
+        }
+      });
+    });
+    var ob = ui.qs('#kd-off');
+    if (ob) ob.addEventListener('click', function () {
+      ui.confirm({
+        title: '停用知识文档　' + k.title,
+        message: '<p>停用后退出全局搜索，且不再作为 Agent 新回答的来源。</p>' +
+          '<p class="ry-hint">历史回答仍可回溯到当时的版本；已产生的业务记录不受影响。</p>',
+        requireReason: true, reasonLabel: '停用原因', confirmText: '确认停用', danger: true,
+        onConfirm: function (reason) {
+          var r = S.knowledgeDeactivate(k.id, reason);
+          ui.toast(r.ok ? '已停用。' : r.msg, r.ok ? 'success' : 'warn');
+          render();
+        }
+      });
+    });
+  }
+
+  function edit() {
+    ui.drawer({
+      title: '编辑知识正文　' + k.title,
+      subtitle: '编辑草稿内容；发布后才对检索生效。',
+      size: 'lg',
+      body:
+        ui.field('标题', ui.input('kd-t', k.pendingDraft ? k.pendingDraft.title : k.title), '', true) +
+        ui.field('摘要', ui.textarea('kd-s', k.pendingDraft ? k.pendingDraft.summary : k.summary, '一句话说明适用范围', 2), '', true) +
+        ui.field('正文', ui.textarea('kd-b', k.pendingDraft ? k.pendingDraft.body : k.body, '', 14), '', true) +
+        '<div class="ry-field"><span class="ry-field__label">当前附件</span>' +
+          ((k.pendingDraft ? k.pendingDraft.attachments : k.attachments) || []).map(function (f) {
+            return '<label class="ry-hint" style="display:block"><input type="checkbox" data-kd-keep="' + ui.esc(f.id) + '" checked> 保留 ' + ui.esc(f.name) + '</label>';
+          }).join('') +
+          '<input class="ry-input" type="file" id="kd-files" multiple><span class="ry-hint">取消勾选可从新草稿移除；可继续添加多个文件。</span></div><button type="button" data-pcn-rule="knowledgeFile"></button>' +
+        ui.field('发布范围', ui.select('kd-sc', [
+          { value: '全员', label: '全员' },
+          { value: '指定角色：R1、R2、R5', label: '指定角色：销售、销售主管/经理、管理员（运营）' },
+          { value: '指定业务线：车电业务线', label: '指定业务线：车电业务线' },
+          { value: '指定业务线：车电业务线、新能源业务线', label: '指定业务线：车电业务线、新能源业务线' }
+        ], k.pendingDraft ? k.pendingDraft.scope : k.scope), '', true) +
+        '<button type="button" data-pcn-rule="knowledgeScope"></button>' +
+        ui.grid2(
+          ui.field('允许下载', ui.select('kd-dl', [{ value: '1', label: '允许' }, { value: '0', label: '不允许' }], (k.pendingDraft ? k.pendingDraft.allowDownload : k.allowDownload) ? '1' : '0')),
+          ui.field('允许分享', ui.select('kd-sh', [{ value: '1', label: '允许' }, { value: '0', label: '不允许' }], (k.pendingDraft ? k.pendingDraft.allowShare : k.allowShare) ? '1' : '0'))
+        ) +
+        '<button type="button" data-pcn-rule="knowledgeVersion"></button>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="kd-save">保存</button>',
+      onOpen: function (el) {
+        ui.qs('#kd-save', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          if (!v['kd-t'] || !v['kd-t'].trim()) { ui.toast('标题必填。', 'warn'); return; }
+          var existing=(k.pendingDraft ? k.pendingDraft.attachments : k.attachments) || [];
+          var kept=existing.filter(function(f){var box=ui.qs('[data-kd-keep="'+f.id+'"]',el);return box&&box.checked;});
+          ui.qs('#kd-save',el).disabled=true;
+          RYKnowledgeFiles.saveFiles(k.id,ui.qs('#kd-files',el).files).then(function(added){
+            var r=S.knowledgeSaveDraft(k.id,{title:v['kd-t'],summary:v['kd-s'],body:v['kd-b'],scope:v['kd-sc'],allowDownload:v['kd-dl']==='1',allowShare:v['kd-sh']==='1',attachments:kept.concat(added)});
+            if(!r.ok) throw new Error(r.msg);
+            ui.close();ui.toast('草稿和附件已保存。','success');render();
+          }).catch(function(error){ui.qs('#kd-save',el).disabled=false;ui.toast('保存失败：'+error.message,'warn');});
+        });
+      }
+    });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

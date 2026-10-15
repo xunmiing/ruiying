@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>知识检索 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：知识检索（关键词搜索 / 范围过滤 / 已发布且在发布范围内）。 */
+  .kl-bar { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; background: var(--surface); }
+  .kl-bar input { flex: 1; border: 0; outline: 0; font-size: 14px; background: transparent; }
+  .kl-row { border: 1px solid var(--line); border-radius: 12px; padding: 10px 11px; margin-bottom: 8px; background: var(--surface); }
+  .kl-row__t { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; font-size: 13.5px; font-weight: 600; }
+  .kl-row__m { font-size: 11.5px; color: var(--muted); line-height: 1.85; margin-top: 5px; word-break: break-all; }
+  .kl-row__m code { font-family: var(--mono); font-size: 11px; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+  <div id="kl-host"></div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  var PAGE = 'h5.knowledge.list';
+
+  RY.nav.h5shell({
+    title: '知识检索',
+    back: 'h5/agent/index.html',
+    nav: 'knowledge',
+    tabbar: true
+  });
+
+  var u = S.currentUser();
+  var state = { q: '', scope: '全部' };
+
+  /* ---------------------------------------------------------- 数据 */
+
+  /* 只取「已发布且在发布范围内」的文档；草稿与已停用不进入普通搜索，也不返回数量。 */
+  function scopeList() {
+    return S.knowledgeList(state.q).filter(function (k) { return S.knowledgeInPublishScope(k, u); });
+  }
+
+  function scopes() {
+    var set = { '全部': true };
+    scopeList().forEach(function (k) {
+      var s = String(k.scope || '');
+      if (s.indexOf('全员') >= 0) set['全员'] = true;
+      else if (s.indexOf('指定角色') >= 0) set['指定角色'] = true;
+      else if (s.indexOf('指定业务线') >= 0) set['指定业务线'] = true;
+    });
+    return Object.keys(set);
+  }
+
+  function filtered() {
+    return scopeList().filter(function (k) {
+      if (state.scope === '全部') return true;
+      return String(k.scope || '').indexOf(state.scope) >= 0;
+    });
+  }
+
+  function isUpdated(k) { return (k.history || []).length > 1; }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  function rowHtml(k) {
+    return '<div class="kl-row">' +
+      '<div class="kl-row__t"><span>' + ui.esc(k.title) + '</span>' +
+        (isUpdated(k) ? ui.tag('已更新', 'warn') : ui.tag('已发布', 'ok')) + '</div>' +
+      '<div class="kl-row__m">' +
+        '<code>' + ui.esc(k.code) + '</code>　版本 ' + ui.esc(k.version) +
+        (k.publishedAt ? '　发布 ' + ui.esc(k.publishedAt) : '') + '<br>' +
+        '适用范围：' + ui.esc(k.scope) + '　来源：瑞赢知识文档<br>' +
+        ui.esc(k.summary || '') +
+      '</div>' +
+      '<div class="ry-acts-row" style="margin-top:8px">' +
+        ui.tag(k.allowDownload ? '允许下载' : '禁止下载', k.allowDownload ? 'muted' : 'warn') +
+        ui.tag(k.allowShare ? '允许瑞赢内分享' : '禁止对外分享', k.allowShare ? 'muted' : 'warn') +
+      '</div>' +
+      '<div class="ry-acts-row" style="margin-top:8px">' +
+        '<a class="ry-btn ry-btn--sm ry-btn--primary" href="' + RY.nav.href('h5/knowledge/detail.html?id=' + encodeURIComponent(k.id)) + '">在线查看</a>' +
+        '<a class="ry-btn ry-btn--sm" href="' + RY.nav.href('h5/agent/object.html') + '">交给 Agent 检索</a>' +
+      '</div></div>';
+  }
+
+  function render() {
+    var html = '';
+
+    if (!P.page(PAGE)) {
+      html += ui.stateCard('no-permission', {
+        title: '没有知识检索的访问权限',
+        body: '<p>当前账号无法查看知识库。</p>',
+        actions: '<a class="ry-btn" href="' + RY.nav.href('h5/agent/index.html') + '">返回瑞赢 AI</a>'
+      });
+      html += contractHtml();
+      ui.qs('#kl-host').innerHTML = html;
+      return;
+    }
+
+    var list = filtered();
+    var all = scopeList();
+
+    html += '<div class="ry-brief">' +
+      '<div class="ry-brief__row"><span class="ry-brief__k">瑞赢知识（只读）</span>' +
+        '<span>' + ui.tag('可检索 ' + all.length + ' 篇', 'info') + '</span></div></div>';
+
+    /* 搜索与范围过滤 */
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>知识搜索</h3>' +
+      '</div><div class="ry-hcard__body">' +
+      '<div class="kl-bar"><input id="kl-q" type="search" placeholder="输入标题、编号或关键字，如「阶段门槛」" value="' + ui.esc(state.q) + '">' +
+        '<button class="ry-btn ry-btn--sm" id="kl-go">搜索</button></div>' +
+      '<div class="ry-acts-row" style="margin-top:8px">' + scopes().map(function (s) {
+        return '<button type="button" class="ry-chip' + (state.scope === s ? ' is-on' : '') + '" data-scope="' + ui.esc(s) + '">' + ui.esc(s) + '</button>';
+      }).join('') + '</div>' +
+      '</div></div>';
+
+    /* 结果 */
+    html += '<div class="ry-hcard"><div class="ry-hcard__head"><h3>搜索结果</h3>' +
+      '<div class="ry-hcard__extra">' + ui.tag(list.length + ' 篇', list.length ? 'ok' : 'muted') + '</div></div>' +
+      '<div class="ry-hcard__body">' +
+      (list.length ? list.map(rowHtml).join('')
+        : ui.stateCard('empty', {
+            body: '<p>没有匹配的知识文档，请调整关键词或筛选条件。</p>'
+          })) +
+      '</div></div>';
+
+    html += contractHtml();
+    ui.qs('#kl-host').innerHTML = html;
+    bind();
+  }
+
+  function bind() {
+    var go = ui.qs('#kl-go');
+    if (go) go.addEventListener('click', function () { state.q = ui.qs('#kl-q').value; render(); });
+    var q = ui.qs('#kl-q');
+    if (q) q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { state.q = q.value; render(); } });
+    ui.qsa('[data-scope]').forEach(function (b) {
+      b.addEventListener('click', function () { state.scope = b.getAttribute('data-scope'); render(); });
+    });
+  }
+
+  function contractHtml() {
+    return '<div class="ry-hcard ry-hcard--flat" style="margin-top:14px">' +
+      '<div class="ry-hcard__head"><h3>本页契约</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">PG-KB-LIST</span></div></div>' +
+      '<div class="ry-hcard__body">' + ui.kv([
+        ['页面契约', 'PG-KB-LIST · 知识检索（H5 查看与搜索）'],
+        ['所属模块', '瑞赢知识（08 PC 基础平台与集成治理 §12 知识管理）'],
+        ['端', '企业微信 H5（只读）｜维护与发布在 PC 瑞赢知识管理'],
+        ['可进入角色', 'ALL5：R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员（仍需发布范围与数据范围校验）'],
+        ['PRD 来源', 'prd/08 §12 知识管理；页面规格 prd.md §6.24A 知识查看与搜索'],
+        ['覆盖 AC', 'AC-54（瑞赢知识：H5 可查看搜索，下载与分享开关生效且留痕，Agent 只检索有权文档）'],
+        ['本页视图', '知识搜索｜仅已发布且在授权发布范围内｜停用文档不进入普通搜索'],
+        ['关键边界', '草稿与已停用不进入普通搜索且不展示数量；H5 只读、无知识配置入口；下载与对外分享按开关校验；链接不扩大权限；Agent 使用同一权限且不自动建任务'],
+        ['可见范围', '已发布 ∩ 发布范围（全员／指定角色／指定业务线）∩ 当前身份数据范围；无权文档不显示标题、数量和摘要。'],
+        ['下载与分享', '有查看权限且文档允许下载时可下载；对外分享按文档开关校验。复制知识链接不扩大权限，打开时按访问者身份重新校验。'],
+        ['Agent 与留痕', 'Agent 仅引用当前有权的正式发布版本并展示来源与版本，不自动创建任务；查看、下载与系统内分享留痕。'],
+        ['维护与反馈', 'H5 不提供上传、编辑、发布、停用、范围配置或纠错反馈入口；维护在 PC 瑞赢知识管理执行，问题通过现有线下群反馈运营。']
+      ]) + '</div></div>';
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

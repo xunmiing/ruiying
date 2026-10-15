@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>新建线索 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：新建线索 */
+  .lc-cols { display: grid; grid-template-columns: 1fr 1.05fr; gap: 14px; align-items: start; }
+  @media (max-width: 1180px) { .lc-cols { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="lc-guard"></div>
+      <div id="lc-body" class="lc-cols" style="display:none">
+        <div id="lc-form"></div>
+        <div id="lc-side"></div>
+      </div>
+    
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser(), D = S.all('dicts');
+  var PROVINCES = ['北京市','天津市','上海市','重庆市','河北省','山西省','辽宁省','吉林省','黑龙江省','江苏省','浙江省','安徽省','福建省','江西省','山东省','河南省','湖北省','湖南省','广东省','海南省','四川省','贵州省','云南省','陕西省','甘肃省','青海省','台湾省','内蒙古自治区','广西壮族自治区','西藏自治区','宁夏回族自治区','新疆维吾尔自治区','香港特别行政区','澳门特别行政区'];
+  function can(a, o) { return RY.perm.can(a, o); }
+  function deny(a) { return RY.perm.whyNot(a); }
+  function rule(key) { return '<button type="button" data-pcn-rule="' + key + '"></button>'; }
+
+  RY.nav.shell({
+    nav: 'lead.list',
+    title: '新建线索',
+    subtitle: '线索创建必须低门槛：只有「原始内容」与「来源」必填，其余可后补。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '销售管理' }, { label: '线索', href: 'pc/lead/list.html' }, { label: '新建线索' }],
+    actions: '<a class="ry-btn" href="list.html">返回线索列表</a>'
+  });
+
+  if (!RY.perm.page('lead.create') || !can('lead.create')) {
+    ui.renderState('#lc-guard', 'no-permission', {
+      title: '没有新建线索权限',
+      body: '<p>' + ui.esc(deny('lead.create')) + '</p>' +
+        '<p class="ry-hint">需要新建线索时请由具备该动作权限的角色执行；原型不会用前端隐藏替代权限校验。</p>',
+      actions: '<a class="ry-btn" href="list.html">返回线索列表</a>'
+    });
+    return;
+  }
+
+  ui.qs('#lc-body').style.display = '';
+
+  function formHtml() {
+    return ui.section('线索内容',
+      ui.field('原始内容', ui.textarea('raw', '', '客户原话、需求描述、来龙去脉。允许自由文本，不要求结构化。', 4), rule('leadCreateRaw'), true) +
+      ui.field('来源', ui.select('source', D.leadSource, ''), rule('leadCreateSource'), true) +
+      ui.field('候选业务线', '<div style="display:flex;gap:12px;flex-wrap:wrap">' + S.all('businessLines').filter(function (x) { return x.status === '启用'; }).map(function (x) {
+        return '<label class="ry-check"><input type="checkbox" name="line" value="' + x.code + '"> ' + x.name + '</label>';
+      }).join('') + '</div>', rule('leadCreateLines')) +
+      ui.field('关联正式联系人', ui.select('contactId', [{ value: '', label: '暂不关联' }].concat(S.all('contacts').filter(function (c) { return RY.perm.inScope('contacts', c); }).map(function (c) { return { value: c.id, label: c.name + '（' + c.id + '）' }; })), ''), rule('leadCreateContact')) +
+      ui.grid2(
+        ui.field('联系人姓名', ui.input('contactName', '', '如：赵女士')),
+        ui.field('联系人电话', ui.input('phone', '', ''), rule('leadCreatePhone'))
+      ) +
+      ui.field('销售归属地区', ui.grid2(
+        ui.select('salesRegionProvince', [{ value: '', label: '选择省份' }].concat(PROVINCES.map(function (x) { return { value: x, label: x }; })), ''),
+        ui.input('salesRegionCity', '', '填写城市')
+      ), rule('leadCreateRegion')) +
+      ui.grid2(
+        ui.field('候选产品（自由文本）', ui.input('products', '', '如：车电套餐、维保服务包')),
+        ui.field('来源记录说明', ui.input('sourceRecord', '', '如：2026 秋季行业展会名单'))
+      ));
+  }
+
+  function sideHtml() {
+    return ui.section('归属方式（必须选择一项）',
+      '<div id="lc-own">' +
+        '<label class="ry-check"><input type="radio" name="own" value="self" checked> <b>我自己负责</b>：保存后你成为唯一当前负责人</label><br>' +
+        '<label class="ry-check"><input type="radio" name="own" value="pool"> <b>放入线索池</b>：保存后无负责人，等待池内认领或主管分派</label>' +
+      '</div>' +
+      '<div id="lc-poolbox">' + ui.field('目标池', ui.select('pool', S.all('leadPools').filter(function (p) { return p.status === '启用'; }).map(function (p) {
+        return { value: p.code, label: p.name + '（' + p.status + '，' + (p.allowClaim ? '开放认领' : '未开放认领') + '）' };
+      }), 'POOL-CE'), rule('leadCreatePool')) + '</div>',
+      rule('leadOwnership')) +
+      '<div class="ry-actions-row">' +
+        '<button class="ry-btn ry-btn--primary" id="lc-save">保存线索</button>' +
+        '<button class="ry-btn" id="lc-clear">清空</button>' +
+        '<a class="ry-btn" href="list.html">取消</a>' +
+      '</div>';
+  }
+
+  ui.qs('#lc-form').innerHTML = formHtml();
+  ui.qs('#lc-side').innerHTML = sideHtml();
+
+  var contactFields = (function (root) {
+    var select = ui.qs('[name=contactId]', root);
+    var name = ui.qs('[name=contactName]', root);
+    var phone = ui.qs('[name=phone]', root);
+    var manual = { name: '', phone: '' };
+    var linked = false;
+    function sync() {
+      var contact = select.value ? S.contact(select.value) : null;
+      if (contact) {
+        if (!linked) manual = { name: name.value, phone: phone.value };
+        name.value = contact.name || '';
+        phone.value = contact.phonePlain || (contact.phones && contact.phones[0]) || '';
+        name.readOnly = phone.readOnly = true;
+        linked = true;
+      } else {
+        if (linked) { name.value = manual.name; phone.value = manual.phone; }
+        name.readOnly = phone.readOnly = false;
+        linked = false;
+      }
+    }
+    select.addEventListener('change', sync);
+    sync();
+    return { sync: sync, reset: function () { linked = false; manual = { name: '', phone: '' }; sync(); } };
+  })(ui.qs('#lc-body'));
+
+  function refresh() {
+    var own = ui.qsa('input[name=own]').filter(function (x) { return x.checked; })[0].value;
+    ui.qs('#lc-poolbox').style.display = own === 'pool' ? '' : 'none';
+  }
+  ui.qsa('input[name=own]').forEach(function (x) { x.addEventListener('change', refresh); });
+
+  ui.qs('#lc-clear').addEventListener('click', function () {
+    ui.qs('#lc-body').querySelectorAll('input,textarea,select').forEach(function (x) {
+      if (x.type === 'checkbox' || x.type === 'radio') x.checked = (x.value === 'self');
+      else if (x.tagName === 'SELECT') x.selectedIndex = 0;
+      else x.value = '';
+    });
+    contactFields.reset();
+    refresh();
+  });
+
+  ui.qs('#lc-save').addEventListener('click', function () {
+    contactFields.sync();
+    var v = ui.formValues(ui.qs('#lc-body'));
+    if (!v.raw) { ui.toast('请填写原始内容。', 'warn'); return; }
+    if (!v.source) { ui.toast('请选择来源。', 'warn'); return; }
+    var lines = ui.qsa('input[name=line]').filter(function (x) { return x.checked; }).map(function (x) { return x.value; });
+    var own = ui.qsa('input[name=own]').filter(function (x) { return x.checked; })[0].value;
+    if (own === 'pool' && !v.pool) { ui.toast('请选择目标池。', 'warn'); return; }
+    submit(v, lines, own);
+  });
+
+  function submit(v, lines, own) {
+    ui.submitWithRecovery({
+      onSubmit: function () {
+        var l = S.createLead({
+          raw: v.raw, source: v.source, sourceRecord: v.sourceRecord || '人工录入',
+          candidateLines: lines, phone: v.phone,
+          contactId: v.contactId, contactName: v.contactName,
+          salesRegionProvince: v.salesRegionProvince, salesRegionCity: v.salesRegionCity,
+          owner: own === 'self' ? u.id : '',
+          currentPool: own === 'pool' ? v.pool : '',
+          idempotencyKey: 'MANUAL-' + S.month() + '-' + Math.abs(hash(v.raw + v.phone)).toString(36).slice(0, 6)
+        });
+        S.save();
+        window.location.href = 'detail.html?id=' + l.id + '&from=create';
+      }
+    });
+  }
+  function hash(s) { var h = 0; for (var i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; } return h; }
+
+  refresh();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

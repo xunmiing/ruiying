@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>日报 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：日报列表 */
+  .rl-overview { margin:12px 0; border:1px solid var(--line); border-radius:var(--r-card); background:var(--surface); padding:16px; }
+  .rl-overview__head { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
+  .rl-overview__title { font-size:16px; font-weight:700; }
+  .rl-overview__sub { font-size:11.5px; color:var(--muted); margin-top:3px; }
+  .rl-period { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .rl-period__modes { display:inline-flex; padding:2px; border:1px solid var(--line); border-radius:var(--r-btn); background:var(--surface-2); }
+  .rl-period__modes button { border:0; background:transparent; padding:6px 11px; border-radius:6px; cursor:pointer; font:inherit; font-size:12px; }
+  .rl-period__modes button.is-on { background:var(--surface); color:var(--brand); font-weight:700; box-shadow:0 1px 4px #0002; }
+  .rl-period__label { min-width:160px; text-align:center; font-size:12.5px; font-weight:600; }
+  .rl-period__nav { border:1px solid var(--line); background:var(--surface); border-radius:6px; padding:5px 9px; cursor:pointer; }
+  .rl-calendar { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:4px; margin-top:12px; padding-top:12px; border-top:1px solid var(--line-soft); }
+  .rl-calendar__weekday { text-align:center; color:var(--muted); font-size:11px; padding-bottom:2px; }
+  .rl-calendar__day { border:1px solid var(--line-soft); border-radius:6px; padding:7px 10px; min-height:48px; background:var(--surface-2); }
+  .rl-calendar--month .rl-calendar__day { min-height:35px; padding:4px 7px; display:flex; align-items:center; justify-content:space-between; gap:4px; }
+  .rl-calendar__day.is-out { opacity:.45; }
+  .rl-calendar__day.is-today { border-color:var(--brand); }
+  .rl-calendar__day b { display:block; font-size:13px; }
+  .rl-calendar__day small { color:var(--muted); font-size:10px; }
+  .rl-calendar__day.is-filled { background:#edf6ff; border-color:#cfe2f4; }
+  .rl-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+  .rl-stat { border:1px solid var(--line-soft); border-radius:var(--r-btn); background:var(--surface-2); padding:11px 14px; min-width:0; }
+  .rl-stat span { display:block; color:var(--muted); font-size:11px; }
+  .rl-stat b { display:block; font-size:22px; line-height:1.35; margin-top:2px; }
+  .rl-stat--unread { background:#fff9ea; border-color:#f1d58c; }
+  .rl-filterbar { border:1px solid var(--line); border-radius:var(--r-card); background:var(--surface); padding:12px 14px; margin-bottom:12px; }
+  .rl-filterbar__heading { display:flex; align-items:center; gap:8px; margin-bottom:9px; font-size:12px; font-weight:700; color:var(--muted); }
+  .rl-filterbar__main { display:grid; grid-template-columns:minmax(180px,2fr) repeat(3,minmax(120px,1fr)) auto; gap:10px; align-items:end; }
+  .rl-filterbar .ry-field { margin:0; min-width:0; }
+  .rl-filterbar__actions { display:flex; gap:7px; align-items:center; white-space:nowrap; }
+  .rl-filterbar__more { border-top:1px solid var(--line-soft); margin-top:12px; padding-top:12px; }
+  .rl-filterbar__more[hidden] { display:none; }
+  .rl-layout { display:grid; grid-template-columns:320px minmax(0,1fr); gap:14px; align-items:start; }
+  .rl-detail,.rl-list { min-width:0; }
+  .rl-detail .ry-card__body { padding:16px; }
+  .rl-list__head { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:12px 14px; border-bottom:1px solid var(--line); }
+  .rl-list__items { max-height:680px; overflow:auto; }
+  .rl-item { width:100%; border:0; border-bottom:1px solid var(--line-soft); background:var(--surface); text-align:left; padding:11px 14px; cursor:pointer; font:inherit; }
+  .rl-item:hover { background:var(--surface-2); }
+  .rl-item.is-on { background:var(--brand-soft); box-shadow:inset 3px 0 var(--brand); }
+  .rl-item__top,.rl-item__meta { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .rl-item__top { font-weight:600; }
+  .rl-item__meta { color:var(--muted); font-size:11px; margin-top:5px; }
+  .rl-item__summary { color:var(--text); font-size:12px; margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rl-item__flag { display:inline-flex; align-items:center; gap:4px; }
+  .rl-item__flag.is-unread { color:#9a6710; font-weight:700; }
+  .rl-item__flag.is-unread::before { content:''; width:6px; height:6px; border-radius:50%; background:#d99a22; }
+  .rl-detail__head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .rl-detail__actions { display:flex; gap:7px; flex-wrap:wrap; }
+  .rl-detail__section { border-top:1px solid var(--line-soft); padding-top:14px; margin-top:16px; }
+  .rl-detail__section--body { border-top:0; padding:14px; margin-top:16px; border-radius:var(--r-btn); background:var(--surface-2); }
+  .rl-detail__section h4 { margin:0 0 8px; }
+  .rl-detail__body { white-space:pre-wrap; line-height:1.8; }
+  .rl-facts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+  .rl-fact { border:1px solid var(--line-soft); border-radius:var(--r-btn); padding:9px 11px; }
+  .rl-fact b { display:block; margin-bottom:5px; }
+  .rl-fact a { display:block; line-height:1.65; overflow-wrap:anywhere; }
+  .rl-system-items { margin:10px 0 0; padding-left:18px; color:var(--text); font-size:12.5px; line-height:1.8; }
+  .rl-history-list { display:grid; gap:8px; }
+  .rl-history-item { border-left:2px solid var(--line); padding:1px 0 1px 11px; font-size:12px; line-height:1.6; }
+  .rl-history-item time { color:var(--muted); margin-right:8px; }
+  @media(max-width:1200px) { .rl-filterbar__main { grid-template-columns:repeat(2,minmax(0,1fr)); } .rl-filterbar__actions { grid-column:1/-1; justify-content:flex-end; } }
+  @media(max-width:1050px) { .rl-layout { grid-template-columns:280px minmax(0,1fr); } }
+  @media(max-width:850px) { .rl-layout { display:flex; flex-direction:column; } .rl-detail,.rl-list { width:100%; } .rl-list__items { max-height:250px; } .rl-stats { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media(max-width:600px) { .rl-calendar { gap:2px; } .rl-calendar__day { padding:4px; min-height:42px; } .rl-calendar--month .rl-calendar__day { min-height:32px; } .rl-calendar__day small { display:none; } }
+  .rl-layout { grid-template-columns:minmax(270px,310px) minmax(380px,1fr) minmax(270px,310px); gap:12px; }
+  .rl-left,.rl-right { min-width:0; display:flex; flex-direction:column; gap:12px; }
+  .rl-left .ry-scopes { display:flex; width:100%; border-radius:10px; margin:0; }
+  .rl-left .ry-scope { flex:1; text-align:center; padding:7px 4px; white-space:nowrap; }
+  .rl-left .ry-scope b { font-size:11px; }
+  .rl-left .rl-filterbar { margin:0; padding:10px; }
+  .rl-left .rl-filterbar__main { display:flex; flex-direction:column; align-items:stretch; gap:7px; }
+  .rl-left .rl-filterbar__actions { justify-content:space-between; flex-wrap:nowrap; gap:4px; }
+  .rl-left .rl-filterbar__actions .ry-btn { padding:5px 7px; font-size:11px; }
+  .rl-left .rl-filterbar__more { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:9px; padding-top:9px; }
+  .rl-left .rl-filterbar__more[hidden] { display:none; }
+  .rl-left .rl-filterbar__more .ry-field { min-width:0; }
+  .rl-left .rl-filterbar__more .ry-field:last-child { grid-column:1/-1; }
+  .rl-left .rl-filterbar__more .ry-field label { font-size:11px; }
+  .rl-left .rl-filterbar .ry-input { width:100%; min-width:0; }
+  .rl-left .rl-filterbar__more .ry-daterange { flex-wrap:wrap; }
+  .rl-left .rl-filterbar__more .ry-input { width:120px; }
+  .rl-left .ry-resultbar { margin:0; padding:9px 12px; border:1px solid var(--line); border-radius:var(--r-btn); background:var(--surface); font-size:12px; }
+  .rl-left .ry-resultbar__right { display:none; }
+  .rl-list__items { max-height:540px; }
+  .rl-detail { min-height:720px; }
+  .rl-detail .ry-card__body { padding:24px; }
+  .rl-detail__head h3 { margin:0 0 6px; font-size:20px; }
+  .rl-detail__actions { margin-top:10px; }
+  .rl-overview { margin:0; background:#292929; color:#f5f5f5; border-color:#333; padding:17px 16px 14px; }
+  .rl-overview__head { align-items:flex-start; flex-wrap:nowrap; margin-bottom:12px; }
+  .rl-overview__title { font-size:22px; color:#eee; white-space:nowrap; }
+  .rl-overview__title em { color:#9466f5; font-style:normal; }
+  .rl-overview__sub { color:#aaa; }
+  .rl-period__today { border:0; background:transparent; color:#ddd; font:inherit; font-size:12px; cursor:pointer; }
+  .rl-period__today:hover { color:#fff; }
+  .rl-calendar__range { color:#bbb; font-size:12px; line-height:1.6; }
+  .rl-period { width:auto; justify-content:space-between; flex-wrap:nowrap; gap:3px; }
+  .rl-period__modes { background:#353535; border-color:#494949; }
+  .rl-period__modes button { color:#bbb; padding:5px 9px; }
+  .rl-period__modes button.is-on { background:#8755e8; color:#fff; box-shadow:none; }
+  .rl-period__label { flex:1; min-width:0; color:#f4f4f4; font-size:15px; font-weight:700; }
+  .rl-period__nav { border:0; background:transparent; color:#ddd; font-size:20px; padding:1px 6px; }
+  .rl-period__nav:disabled { opacity:.3; }
+  .rl-period .ry-btn { background:transparent; color:#d4d4d4; border-color:#555; }
+  .rl-calendar { grid-template-columns:28px repeat(7,minmax(0,1fr)); gap:2px; margin-top:12px; padding-top:12px; border-top-color:#444; }
+  .rl-calendar__weekday { color:#b6b6b6; padding:2px 0 7px; font-weight:600; }
+  .rl-calendar__weekno { text-align:center; color:#929292; font-size:11px; padding-top:9px; border-right:1px solid #3c3c3c; }
+  .rl-calendar__day,.rl-calendar--month .rl-calendar__day { position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-height:38px; padding:4px 0; border:0; border-radius:6px; background:transparent; color:#e8e8e8; cursor:pointer; font:inherit; }
+  .rl-calendar__day:hover { background:#454545; }
+  .rl-calendar__day.is-out { opacity:.35; }
+  .rl-calendar__day.is-today { border:0; color:#bc91ff; }
+  .rl-calendar__day.is-filled { background:transparent; border:0; }
+  .rl-calendar__day.is-selected,.rl-calendar__day.is-selected:hover { background:#8755e8; color:#fff; opacity:1; }
+  .rl-calendar__day b { font-size:12px; font-weight:500; }
+  .rl-calendar__day small { display:none; }
+  .rl-calendar__dot { width:4px; height:4px; border-radius:50%; background:#aaa; }
+  .rl-calendar__day.is-selected .rl-calendar__dot { background:#fff; }
+  .rl-stats { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .rl-stats-card { border:1px solid var(--line); border-radius:var(--r-card); background:var(--surface); padding:14px; }
+  .rl-stats-card__title { display:flex; align-items:center; justify-content:space-between; font-weight:700; margin-bottom:10px; }
+  .rl-stats-card__sub { font-size:11px; color:var(--muted); margin-top:10px; line-height:1.5; }
+  .rl-stat { padding:9px 10px; }
+  .rl-stat b { font-size:19px; }
+  @media(max-width:1180px) { .rl-layout { grid-template-columns:270px minmax(330px,1fr) 270px; } }
+  @media(max-width:980px) { .rl-layout { grid-template-columns:290px minmax(0,1fr); } .rl-right { grid-column:1/-1; display:grid; grid-template-columns:minmax(280px,1fr) 280px; align-items:start; } }
+  @media(max-width:850px) { .rl-layout { display:grid; grid-template-columns:1fr; } .rl-right { grid-column:auto; grid-template-columns:1fr; } .rl-list__items { max-height:300px; } .rl-detail { min-height:0; } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div class="rl-layout">
+        <div class="rl-left">
+          <div class="ry-scopes" id="rl-scopes"></div>
+          <div id="rl-filter"></div>
+          <div class="ry-resultbar" id="rl-resultbar"></div>
+          <div class="ry-card rl-list"><div class="rl-list__head"><b>日报列表</b><span id="rl-list-count"></span></div><div class="rl-list__items" id="rl-items"></div><div id="rl-pager"></div></div>
+        </div>
+        <div class="ry-card rl-detail" id="rl-detail"></div>
+        <div class="rl-right"><div class="rl-overview" id="rl-overview"></div><div class="rl-stats-card" id="rl-stats"></div></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, u = S.currentUser();
+  var KEY = 'report.list';
+  function can(a) { return RY.perm.can(a); }
+  function rule(key) { return '<button type="button" data-pcn-rule="' + key + '"></button>'; }
+
+  var st = S.listState(KEY);
+  if (ui.q('menu') === '1') S.listState(KEY, { scope:'all', flt:{ kw:'', status:'', user:'', from:'', to:'', read:'' }, selectedDay:S.today(), periodAnchor:S.today(), viewMode:'week', page:1 });
+  if (ui.q('menu') === '1') { var menuUrl = new URL(location.href); menuUrl.searchParams.delete('menu'); history.replaceState(null, '', menuUrl.href); }
+  if (!st.reportAllDefaultV2) { st.scope = 'all'; st.reportAllDefaultV2 = true; S.save(); }
+  var scope = ui.q('scope') || st.scope || 'all';
+  var flt = st.flt || (st.flt = { kw: '', status: '', user: '', from: '', to: '', read: '' });
+  var page = st.page || 1, size = 10;
+  var viewMode = flt.from || flt.to ? 'range' : (st.viewMode === 'month' ? 'month' : 'week');
+  var periodAnchor = st.periodAnchor || st.focusDate || null;
+  var selectedId = st.selectedId || '';
+  var selectedDay = st.selectedDay || '';
+  var lastOpenedId = '';
+  var moreFilters = !!(st.moreFilters || flt.from || flt.to);
+  function extraFilterLabel() { return '更多筛选' + (flt.status || flt.user || flt.read || flt.from || flt.to ? ' · 已设置' : ''); }
+  var sampleReports = [
+    ['2026-10-09','U-001','已提交','今日进展：上午与远驰科技采购及技术负责人开会，核对车电项目首批 120 台设备的安装顺序。客户认可分两批交付，但要求补充华东、华南两地的售后响应承诺。\n客户反馈：报价中的现场培训次数需要写清，避免后续增补费用争议。\n下一步：10 月 12 日前请方案团队确认跨区域服务资源，我再提交修订版方案。\n需协助：请交付负责人确认首批安装人员排期。'],
+    ['2026-10-09','U-002','草稿','今日进展：电话联系盈川新能源采购专员，对方确认项目仍在内部立项，预计下周形成正式询价。\n待确认：签约主体、首批采购数量和预算审批人。\n下一步：10 月 12 日再次联系采购专员，补齐主体信息后判断是否推进为商机。'],
+    ['2026-10-08','U-001','已提交','今日进展：完成远驰科技技术方案内部评审，明确首批交付范围和验收口径；报价中暂不包含客户新增的驻场支持。\n风险：客户希望本周锁定排期，但方案团队尚未确认华南实施资源。\n下一步：请方案团队明日上午补充资源说明，下午发客户复核版。'],
+    ['2026-10-08','U-002','已提交','今日进展：与盈川新能源采购专员通话 25 分钟，确认项目拟覆盖 3 个园区，第一阶段先在上海试点。\n客户反馈：希望先收到产品能力清单和同类项目案例，再讨论预算。\n下一步：整理案例摘要并约下周二继续沟通采购主体和试点规模。'],
+    ['2026-10-07','U-001','已提交','拜访栖达车务，讨论续约报价及服务范围。客户提出增加车辆巡检频次，计划形成调整建议。'],
+    ['2026-10-07','U-002','已提交','整理车电线索池新认领线索，完成首次联系并记录客户当前需求，后续持续跟进。'],
+    ['2026-10-06','U-001','已提交','推进远驰科技商机阶段任务，完成需求访谈纪要并同步方案团队。'],
+    ['2026-10-06','U-002','草稿','跟进新能源集采线索，等待客户确认下一轮沟通时间。'],
+    ['2026-10-05','U-001','已提交','汇总本周重点客户经营计划，安排远驰科技方案交流和栖达车务续约拜访。'],
+    ['2026-10-05','U-002','已提交','完成两条线索的首次电话触达，记录采购主体、项目周期和下一次联系时间。'],
+    ['2026-10-02','U-001','已提交','整理节前客户沟通结果，确认节后重点商机的方案提交节点。'],
+    ['2026-10-01','U-002','已提交','回顾新能源项目机会，整理待确认事项与下一阶段计划。']
+  ].map(function (row, i) {
+    var systemItems = [
+      ['销售活动：远驰科技车电方案沟通 · 已完成', '阶段任务：交付排期确认 · 进行中'],
+      ['销售活动：盈川新能源首次跟进 · 已完成', '任务：确认采购主体 · 待处理'],
+      ['商机：远驰科技车电业务线年度框架 · 需求确认', '阶段任务：技术方案内部评审 · 已完成'],
+      ['销售活动：盈川新能源电话沟通 · 已完成', '线索：盈川新能源集采咨询 · 跟进中'],
+      ['客户：栖达车务 · 有效经营', '销售活动：续约范围面谈 · 已完成'],
+      ['线索：车电项目咨询 · 已认领', '销售活动：首次电话联系 · 已完成'],
+      ['商机：远驰科技车电业务线年度框架 · 需求确认', '任务：需求访谈纪要 · 已完成'],
+      ['线索：盈川新能源集采咨询 · 跟进中', '任务：再次联系采购专员 · 待处理'],
+      ['任务：本周重点客户计划 · 已完成', '客户：远驰科技 · 有效经营'],
+      ['销售活动：线索首次电话触达 · 2 条', '线索：待确认采购主体 · 2 条'],
+      ['商机：远驰科技车电业务线年度框架 · 方案准备', '任务：方案节点核对 · 已完成'],
+      ['线索：新能源项目咨询 · 跟进中', '任务：采购需求梳理 · 已完成']
+    ];
+    return { id: 'DEMO-RPT-' + String(i + 1).padStart(3, '0'), demo: true, date: row[0], userId: row[1], status: row[2],
+      submittedBody: row[2] === '已提交' ? row[3] : '', draftBody: row[2] === '草稿' ? row[3] : '',
+      aiDraft: '系统汇总：' + systemItems[i].join('；') + '。', systemItems: systemItems[i],
+      submittedAt: row[2] === '已提交' ? row[0] + ' 18:30' : '', facts: {}, readBy: {},
+      history: [{ at:row[0] + ' 18:00', actor:'系统', action:'生成日报信息' }].concat(row[2] === '已提交' ? [{ at:row[0] + ' 18:30', actor:S.userName(row[1]) || row[1], action:'提交日报' }] : []),
+      advices: i === 2 ? [{ by:'U-003', at:'2026-10-08 19:15', text:'请与方案团队确认交付资源后，再向客户承诺具体日期。' }] : [] };
+  });
+  function reportRows() { return S.arr('reports').concat(sampleReports); }
+  function reportById(id) { return sampleReports.find(function (r) { return r.id === id; }) || S.report(id); }
+  function markRead(r, read) {
+    if (!r.demo) return S.markReportRead(r.id, read);
+    var at = S.now();
+    r.readBy[u.id] = { read: read, at: read ? at : '', unreadAt: read ? '' : at };
+    r.history.push({ at:at, actor:u.name, action:read ? '标记已读' : '标记未读' });
+    return { ok: true };
+  }
+
+  function scopes() {
+    var list = [
+      { key: 'all', name: '全部', desc: '当前用户有权查看的日报' },
+      { key: 'team', name: '团队', desc: '当前用户有权查看的团队日报' },
+      { key: 'mine', name: '我的', desc: '我是提交人' }
+    ];
+    return list;
+  }
+  function inScope(r) {
+    if (!RY.perm.inScope('report', { userId: r.userId })) return false;
+    if (scope === 'mine') return r.userId === u.id;
+    if (scope === 'team') return r.userId === u.id || S.inTeamOf(r.userId, u.id);
+    return true;
+  }
+  function isReadByMe(r) { return !!(r.readBy && r.readBy[u.id] && r.readBy[u.id].read); }
+  function dateOf(s) { return new Date(String(s) + 'T00:00:00Z'); }
+  function iso(d) { return d.toISOString().slice(0, 10); }
+  function shiftDate(s, days) { var d = dateOf(s); d.setUTCDate(d.getUTCDate() + days); return iso(d); }
+  function weekNumber(s) {
+    var d = dateOf(s), day = (d.getUTCDay() + 6) % 7;
+    d.setUTCDate(d.getUTCDate() - day + 3);
+    var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+    return 1 + Math.round((d - yearStart) / 604800000);
+  }
+  function periodBounds() {
+    if (viewMode === 'range') return { start: flt.from || '', end: flt.to || '', label: '自定义范围' };
+    var anchor = dateOf(periodAnchor || S.today());
+    if (viewMode === 'month') {
+      var first = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
+      var last = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 0));
+      return { start: iso(first), end: iso(last), label: anchor.getUTCFullYear() + '年' + (anchor.getUTCMonth() + 1) + '月' };
+    }
+    var monday = shiftDate(iso(anchor), -((anchor.getUTCDay() + 6) % 7));
+    var sunday = shiftDate(monday, 6);
+    return { start: monday, end: sunday, label: monday + ' — ' + sunday };
+  }
+  function shiftPeriod(direction) {
+    var anchor = dateOf(periodAnchor || S.today());
+    if (viewMode === 'month') { anchor.setUTCDate(1); anchor.setUTCMonth(anchor.getUTCMonth() + direction); }
+    else anchor.setUTCDate(anchor.getUTCDate() + direction * 7);
+    periodAnchor = iso(anchor);
+  }
+  function inPeriod(r, bounds) { return !!r.date && (!bounds.start || r.date >= bounds.start) && (!bounds.end || r.date <= bounds.end); }
+  function viewableFact(type, id) {
+    var map = { customers:['customer',S.customer], leads:['lead',S.lead], opportunities:['opp',S.opp],
+      activities:['activity',S.activity], visits:['visit',S.visit], tasks:['task',S.task] };
+    var x = map[type], item = x && x[1](id);
+    return !!(item && RY.perm.inScope(x[0], item));
+  }
+  function factHref(type, id) {
+    var paths = { customers:'customer', leads:'lead', opportunities:'opportunity', activities:'activity', visits:'visit', tasks:'task' };
+    return '../' + paths[type] + '/detail.html?id=' + encodeURIComponent(id);
+  }
+
+  RY.nav.shell({
+    nav: 'report.list',
+    title: '日报',
+    subtitle: '查看、填写和处理当前范围内的日报。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '工作管理' }, { label: '日报' }],
+    actions: (can('report.export') ? '<button class="ry-btn" id="rl-exp">导出</button>'
+      : '<button class="ry-btn" data-denied="1" data-action="report.export">导出<i class="ry-btn__lock">无权限</i></button>') +
+      '<a class="ry-btn ry-btn--primary" href="detail.html?date=' + S.today() + '">写今日日报</a>'
+  });
+
+  function countOf(key) {
+    return reportRows().filter(function (r) {
+      if (!RY.perm.inScope('report', { userId: r.userId })) return false;
+      if (key === 'mine') return r.userId === u.id;
+      if (key === 'team') return r.userId === u.id || S.inTeamOf(r.userId, u.id);
+      return true;
+    }).length;
+  }
+  function renderScopes() {
+    ui.qs('#rl-scopes').innerHTML = scopes().map(function (s) {
+      return '<button class="ry-scope' + (scope === s.key ? ' is-on' : '') + '" data-scope="' + s.key + '" title="' + ui.esc(s.desc) + '">' +
+        ui.esc(s.name) + ' <b>' + countOf(s.key) + '</b></button>';
+    }).join('');
+    ui.qsa('[data-scope]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        scope = b.getAttribute('data-scope'); st.scope = scope; page = 1; st.page = 1; selectedId = ''; S.save(); render();
+      });
+    });
+  }
+
+  ui.qs('#rl-filter').innerHTML =
+    '<div class="rl-filterbar"><div class="rl-filterbar__main">' +
+      ui.input('kw', flt.kw, '搜索日报编号／正文') +
+      '<div class="rl-filterbar__actions"><button class="ry-btn" id="rl-more" type="button" aria-expanded="' + (moreFilters ? 'true' : 'false') + '">' + extraFilterLabel() + '</button>' +
+      '<button class="ry-btn" id="rl-reset" type="button">重置</button><button class="ry-btn ry-btn--primary" id="rl-apply" type="button">查询</button></div></div>' +
+    '<div class="rl-filterbar__more" id="rl-more-fields"' + (moreFilters ? '' : ' hidden') + '>' +
+      ui.field('日报状态', ui.select('status', [{ value: '', label: '全部' }, { value: '草稿', label: '草稿' }, { value: '已提交', label: '已提交' }], flt.status), '', false) +
+      ui.field('提交人', ui.select('user', [{ value: '', label: '全部' }].concat(S.all('users').filter(function (x) { return RY.perm.inScope('report', { userId: x.id }); }).map(function (x) { return { value: x.id, label: x.name }; })), flt.user), '', false) +
+      ui.field('我的阅读状态', ui.select('read', [{ value: '', label: '全部' }, { value: 'read', label: '我已读' }, { value: 'unread', label: '我未读' }], flt.read), '', false) +
+      ui.field('跨日期范围', '<div class="ry-daterange">' + ui.input('from', flt.from, '起') + '<span>~</span>' + ui.input('to', flt.to, '止') + '</div>', '', false) +
+    '</div></div>';
+  ui.qs('#rl-more').addEventListener('click', function () {
+    moreFilters = !moreFilters; st.moreFilters = moreFilters; S.save();
+    ui.qs('#rl-more-fields').hidden = !moreFilters;
+    this.setAttribute('aria-expanded', moreFilters ? 'true' : 'false');
+  });
+
+  function filtered() {
+    var k = flt.kw.trim();
+    var bounds = periodBounds();
+    return reportRows().filter(function (r) {
+      if (!inScope(r)) return false;
+      if (!inPeriod(r, bounds)) return false;
+      if (selectedDay && r.date !== selectedDay) return false;
+      var searchableBody = r.status === '已提交' ? (r.submittedBody || '') : r.userId === u.id ? (r.draftBody || '') : '';
+      if (k && r.id.indexOf(k) < 0 && searchableBody.indexOf(k) < 0) return false;
+      if (flt.status && r.status !== flt.status) return false;
+      if (flt.user && r.userId !== flt.user) return false;
+      if (flt.read === 'read' && !isReadByMe(r)) return false;
+      if (flt.read === 'unread' && (isReadByMe(r) || r.userId === u.id)) return false;
+      return true;
+    }).sort(function (a, b) {
+      if (a.userId !== u.id && a.status === '已提交' && !isReadByMe(a) && !(b.userId !== u.id && b.status === '已提交' && !isReadByMe(b))) return -1;
+      if (b.userId !== u.id && b.status === '已提交' && !isReadByMe(b) && !(a.userId !== u.id && a.status === '已提交' && !isReadByMe(a))) return 1;
+      return String(b.date || '').localeCompare(String(a.date || ''));
+    });
+  }
+
+  function render() {
+    renderScopes();
+    var dates = Array.from(new Set(reportRows().filter(function (r) { return inScope(r); }).map(function (r) { return r.date; }).filter(Boolean))).sort().reverse();
+    if (!periodAnchor) periodAnchor = dates[0] || S.today();
+    var bounds = periodBounds();
+    if (selectedDay && !inPeriod({ date: selectedDay }, bounds)) selectedDay = '';
+    var list = filtered(), total = list.length;
+    var pages = Math.max(1, Math.ceil(total / size));
+    if (page > pages) page = pages;
+    var rows = list.slice((page - 1) * size, page * size);
+    if (!rows.some(function (r) { return r.id === selectedId; })) selectedId = rows.length ? rows[0].id : '';
+    var selected = list.find(function (r) { return r.id === selectedId; });
+    if (selected && selected.id !== lastOpenedId && selected.userId !== u.id && selected.status === '已提交' && can('report.read') && !isReadByMe(selected)) {
+      markRead(selected, true);
+      selected = reportById(selected.id);
+      list = filtered(); total = list.length;
+      rows = list.slice((page - 1) * size, page * size);
+    }
+    lastOpenedId = selected ? selected.id : '';
+    st.periodAnchor = periodAnchor; st.viewMode = viewMode; st.selectedDay = selectedDay; st.selectedId = selectedId; S.save();
+    var overviewReports = reportRows().filter(function (r) { return inScope(r) && inPeriod(r, bounds); });
+    var overviewStats = [
+      ['日报记录', overviewReports.length],
+      ['已提交', overviewReports.filter(function (r) { return r.status === '已提交'; }).length],
+      ['草稿', overviewReports.filter(function (r) { return r.status === '草稿'; }).length],
+      ['我未读', overviewReports.filter(function (r) { return r.userId !== u.id && r.status === '已提交' && !isReadByMe(r); }).length]
+    ];
+    var dailyCounts = {};
+    overviewReports.forEach(function (r) { dailyCounts[r.date] = (dailyCounts[r.date] || 0) + 1; });
+    var calendar = '';
+    if (viewMode !== 'range') {
+      var calendarStart = viewMode === 'month' ? shiftDate(bounds.start, -((dateOf(bounds.start).getUTCDay() + 6) % 7)) : bounds.start;
+      var weekdayNames = ['一','二','三','四','五','六','日'];
+      calendar = '<div class="rl-calendar__weekday">W</div>' + weekdayNames.map(function (name) { return '<div class="rl-calendar__weekday">周' + name + '</div>'; }).join('');
+      var weeks = viewMode === 'month' ? 6 : 1;
+      for (var wi = 0; wi < weeks; wi++) {
+        var weekStart = shiftDate(calendarStart, wi * 7);
+        calendar += '<div class="rl-calendar__weekno">' + weekNumber(weekStart) + '</div>';
+        for (var di = 0; di < 7; di++) {
+          var day = shiftDate(weekStart, di);
+          calendar += '<button type="button" data-rl-day="' + day + '" aria-label="' + day + '，' + (dailyCounts[day] || 0) + '份日报" class="rl-calendar__day' +
+            (day < bounds.start || day > bounds.end ? ' is-out' : '') + (day === S.today() ? ' is-today' : '') +
+            (day === selectedDay ? ' is-selected' : '') + '"><b>' + Number(day.slice(8)) + '</b>' +
+            (dailyCounts[day] ? '<i class="rl-calendar__dot"></i>' : '') + '</button>';
+        }
+      }
+    }
+    var calendarTitleDate = dateOf(periodAnchor);
+    ui.qs('#rl-overview').innerHTML = '<div class="rl-overview__head"><div><div class="rl-overview__title">' + (calendarTitleDate.getUTCMonth() + 1) + '月 <em>' + calendarTitleDate.getUTCFullYear() + '</em></div>' +
+      '<div class="rl-overview__sub">' + (viewMode === 'range' ? '自定义日期范围' : ui.esc(bounds.label)) + '</div></div>' +
+      '<div class="rl-period">' +
+      '<button type="button" class="rl-period__nav" data-rl-shift="-1"' + (viewMode === 'range' ? ' disabled' : '') + ' aria-label="上一周期">‹</button>' +
+      '<button type="button" class="rl-period__today" id="rl-today">今天</button>' +
+      '<button type="button" class="rl-period__nav" data-rl-shift="1"' + (viewMode === 'range' ? ' disabled' : '') + ' aria-label="下一周期">›</button>' +
+      '</div></div>' +
+      '<div class="rl-period__modes"><button type="button" data-rl-mode="week" class="' + (viewMode === 'week' ? 'is-on' : '') + '">周视图</button>' +
+      '<button type="button" data-rl-mode="month" class="' + (viewMode === 'month' ? 'is-on' : '') + '">月视图</button></div>' +
+      (calendar ? '<div class="rl-calendar' + (viewMode === 'month' ? ' rl-calendar--month' : '') + '">' + calendar + '</div>' : '<p class="rl-calendar__range">自定义范围内的日报显示在左侧列表。</p>');
+    ui.qs('#rl-stats').innerHTML = '<div class="rl-stats-card__title">周期统计 ' + rule('reportListStats') + '</div><div class="rl-stats">' + overviewStats.map(function (x, i) {
+        return '<div class="rl-stat' + (i === 3 ? ' rl-stat--unread' : '') + '"><span>' + x[0] + '</span><b>' + x[1] + '</b></div>';
+      }).join('') + '</div><div class="rl-stats-card__sub">' + ui.esc(scopeName()) + ' · ' + ui.esc(bounds.label) + '；列表筛选不改变此处统计。</div>';
+    function clearRange() {
+      flt.from = ''; flt.to = ''; st.flt = flt;
+      ui.qs('[name=from]', ui.qs('#rl-filter')).value = '';
+      ui.qs('[name=to]', ui.qs('#rl-filter')).value = '';
+      ui.qs('#rl-more').textContent = extraFilterLabel();
+    }
+    ui.qsa('[data-rl-mode]').forEach(function (b) { b.addEventListener('click', function () {
+      viewMode = b.getAttribute('data-rl-mode'); clearRange(); selectedDay = ''; selectedId = ''; page = 1; st.page = 1; render();
+    }); });
+    ui.qsa('[data-rl-shift]').forEach(function (b) { b.addEventListener('click', function () {
+      shiftPeriod(Number(b.getAttribute('data-rl-shift'))); selectedDay = ''; selectedId = ''; page = 1; st.page = 1; render();
+    }); });
+    ui.qsa('[data-rl-day]').forEach(function (b) { b.addEventListener('click', function () {
+      var day = b.getAttribute('data-rl-day');
+      if (viewMode === 'month' && (day < bounds.start || day > bounds.end)) periodAnchor = day;
+      selectedDay = selectedDay === day ? '' : day; selectedId = ''; page = 1; st.page = 1; render();
+    }); });
+    ui.qs('#rl-today').addEventListener('click', function () {
+      if (viewMode === 'range') viewMode = 'week';
+      clearRange(); periodAnchor = S.today(); selectedDay = S.today(); selectedId = ''; page = 1; st.page = 1; render();
+    });
+    ui.qs('#rl-resultbar').innerHTML = '<span>' + (selectedDay ? ui.esc(selectedDay) + ' · ' : '') + '共 ' + total + ' 份日报（' + ui.esc(scopeName()) + '）</span>' +
+      '<span class="ry-resultbar__right">按我未读的已提交日报优先排列</span>';
+    ui.qs('#rl-list-count').textContent = total + ' 份';
+    ui.qs('#rl-items').innerHTML = rows.length ? rows.map(function (r) {
+      var readLabel = r.userId === u.id ? '本人' : r.status !== '已提交' ? '未提交' : isReadByMe(r) ? '已读' : '未读';
+      var summary = r.status === '已提交' ? r.submittedBody : r.userId === u.id ? (r.draftBody || '草稿待填写') : '尚未提交正文';
+      return '<button type="button" class="rl-item' + (r.id === selectedId ? ' is-on' : '') + '" data-rl-select="' + ui.esc(r.id) + '">' +
+        '<div class="rl-item__top"><span>' + ui.esc(S.userName(r.userId) || r.userId) + '</span>' + ui.statusTag(r.status) + '</div>' +
+        '<div class="rl-item__meta"><span>' + ui.esc(r.date || '—') + '</span><span class="rl-item__flag' + (readLabel === '未读' ? ' is-unread' : '') + '">' + readLabel + '</span></div>' +
+        '<div class="rl-item__summary">' + ui.esc(String(summary || '暂无正文').slice(0, 55)) + '</div>' +
+        ((r.advices || []).length ? '<div class="rl-item__meta">已有主管建议 ' + (r.advices || []).length + ' 条</div>' : '') + '</button>';
+    }).join('') : '<div class="ry-card__body ry-faint">当前条件下没有日报。</div>';
+    renderDetail(selected || null);
+    ui.qs('#rl-pager').innerHTML = ui.pager(total, page, size, KEY);
+
+    ui.bindPager('#rl-pager', function (p) { page = p; st.page = p; S.save(); render(); });
+    ui.qsa('[data-rl-select]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        selectedId = b.getAttribute('data-rl-select'); st.selectedId = selectedId;
+        S.save(); render();
+      });
+    });
+    var adv = ui.qs('#rl-adv');
+    if (adv) adv.addEventListener('click', function () { advice(selectedId); });
+    var read = ui.qs('#rl-read');
+    if (read) read.addEventListener('click', function () {
+      var r = reportById(selectedId), res = markRead(r, !isReadByMe(r));
+      if (!res.ok) { ui.toast(res.msg, 'warn'); return; }
+      render();
+    });
+    ui.bindDenied('#ry-page');
+  }
+
+  function scopeName() { var s = scopes().filter(function (x) { return x.key === scope; })[0]; return s ? s.name : scope; }
+
+  function renderDetail(r) {
+    var host = ui.qs('#rl-detail');
+    if (!r) { host.innerHTML = '<div class="ry-card__body ry-faint">请从左侧选择一份日报。</div>'; return; }
+    if (!r.demo && r.userId === u.id && r.status === '草稿') { S.ensureReportEditableDraft(r.id); r = S.report(r.id); }
+    var mine = r.userId === u.id, submitted = r.status === '已提交';
+    var facts = submitted ? (r.frozenFacts || r.facts || {}) : (r.facts || {});
+    var types = [['customers','客户'],['leads','线索'],['opportunities','商机'],['activities','销售活动'],['visits','正式拜访'],['tasks','任务']];
+    var factGroups = types.map(function (pair) {
+      return { type: pair[0], label: pair[1], items: (facts[pair[0]] || []).filter(function (x) { return viewableFact(pair[0], x.id); }) };
+    }).filter(function (group) { return group.items.length; });
+    var logRows = (r.history || []).slice();
+    Object.keys(r.readBy || {}).forEach(function (id) {
+      var read = r.readBy[id], at = read.read ? read.at : read.unreadAt, action = read.read ? '标记已读' : '标记未读';
+      if (at && !logRows.some(function (x) { return x.at === at && x.action === action; })) {
+        logRows.push({ at:at, actor:S.userName(id) || id, action:action });
+      }
+    });
+    logRows.sort(function (a, b) { return String(b.at || '').localeCompare(String(a.at || '')); });
+    host.innerHTML = '<div class="ry-card__body"><div class="rl-detail__head"><div><h3>' + ui.esc(S.userName(r.userId) || r.userId) + ' · ' + ui.esc(r.date || '') + ' 日报</h3>' +
+      '<div class="ry-hint">' + ui.esc(r.id) + '　' + ui.statusTag(r.status) + '　' + (mine ? '本人日报' : !submitted ? '尚未提交' : isReadByMe(r) ? '我已读' : '我未读') + '</div></div>' +
+      '<div class="rl-detail__actions">' +
+        (mine && !submitted && !r.demo ? '<a class="ry-btn ry-btn--primary" href="detail.html?id=' + encodeURIComponent(r.id) + '&from=' + encodeURIComponent(scope) + '">继续填写</a>' : '') +
+        (!mine && submitted && can('report.advice') ? '<button class="ry-btn ry-btn--primary" id="rl-adv">追加建议</button>' : '') +
+        (!mine && submitted && can('report.read') ? '<button class="ry-btn" id="rl-read">标记' + (isReadByMe(r) ? '未读' : '已读') + '</button>' : '') + '</div></div>' +
+      '<div class="rl-detail__section rl-detail__section--body"><h4>日报正文 ' + rule('reportDetailFreeze') + '</h4>' +
+        '<div class="rl-detail__body">' + ui.esc(submitted ? (r.submittedBody || '暂无正文') : (mine ? (r.draftBody || '草稿尚未填写') : '尚未提交')) + '</div>' +
+        (submitted ? '<p class="ry-hint">提交于 ' + ui.esc(r.submittedAt || '—') + '</p>' : '') + '</div>' +
+      '<div class="rl-detail__section"><h4>事实来源 ' + rule('reportDetailFacts') + '</h4>' +
+        (r.systemItems && r.systemItems.length ? '<ul class="rl-system-items">' + r.systemItems.map(function (x) { return '<li>' + ui.esc(x) + '</li>'; }).join('') + '</ul>' : '') +
+        '<div class="rl-facts" style="margin-top:12px">' + (factGroups.length ? factGroups.map(function (group) {
+          return '<div class="rl-fact"><b>' + group.label + ' · ' + group.items.length + '</b>' + group.items.map(function (x) {
+            return '<a href="' + factHref(group.type, x.id) + '">' + ui.esc(x.name || x.id) + '</a>';
+          }).join('') + '</div>';
+        }).join('') : '') + '</div>' +
+        (r.aiDraft ? '<details><summary>查看 AI 原始底稿</summary><div class="rl-detail__body">' + ui.esc(r.aiDraft) + '</div></details>' : '') + '</div>' +
+      '<div class="rl-detail__section"><h4>追加建议 ' + rule('reportAdvice') + '</h4>' +
+        ((r.advices || []).length ? (r.advices || []).slice().reverse().map(function (a) {
+          return '<div class="rl-fact" style="margin-top:7px"><b>' + ui.esc(S.userName(a.by) || a.by) + ' · ' + ui.esc(a.at || '') + '</b><div class="rl-detail__body">' + ui.esc(a.text || '') + '</div></div>';
+        }).join('') : '<p class="ry-faint">暂无建议。</p>') + '</div>' +
+      '<div class="rl-detail__section"><h4>日志 ' + rule('reportListRead') + '</h4>' +
+        '<div class="rl-history-list">' + (logRows.length ? logRows.map(function (x) {
+          return '<div class="rl-history-item"><time>' + ui.esc(x.at || '') + '</time>' + ui.esc(x.actor || '') + ' · ' + ui.esc(x.action || '') + '</div>';
+        }).join('') : '<p class="ry-faint">暂无操作历史。</p>') + '</div></div></div>';
+  }
+
+  function advice(id) {
+    var r = reportById(id);
+    var mine = r && r.userId === u.id;
+    if (mine) { ui.toast('不能给本人日报写建议。', 'warn'); return; }
+    ui.drawer({
+      title: '追加主管建议',
+      body: ui.kv([['日报编号', r.id], ['提交人', S.userName(r.userId)], ['日期', r.date], ['提交时间', r.submittedAt || '未提交']]) +
+        ui.field('建议内容', ui.textarea('text', '', '面向下一步动作的具体建议', 4), rule('reportAdvice'), true),
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="rl-adv-ok">提交建议</button>',
+      onOpen: function (el) {
+        ui.qs('#rl-adv-ok', el).addEventListener('click', function () {
+          var v = ui.formValues(el);
+          var note = (v.text || '').trim();
+          var res = r.demo ? (note ? (r.advices.push({ by:u.id, at:S.now(), text:note }), r.history.push({ at:S.now(), actor:u.name, action:'追加建议' }), { ok:true }) : { ok:false, msg:'请填写建议内容。' }) : S.addReportAdvice(id, note);
+          if (!res.ok) { ui.toast(res.msg, 'warn'); return; }
+          ui.close(); ui.toast('建议已追加。', 'success'); render();
+        });
+      }
+    });
+  }
+
+  ui.qs('#rl-apply').addEventListener('click', function () {
+    var v = ui.formValues(ui.qs('#rl-filter'));
+    flt.kw = v.kw; flt.status = v.status; flt.user = v.user; flt.from = v.from; flt.to = v.to; flt.read = v.read;
+    if (flt.from || flt.to) viewMode = 'range';
+    else if (viewMode === 'range') viewMode = 'week';
+    ui.qs('#rl-more').textContent = extraFilterLabel();
+    selectedDay = ''; page = 1; st.page = 1; st.flt = flt; S.save(); render();
+  });
+  ui.qs('#rl-reset').addEventListener('click', function () {
+    Object.keys(flt).forEach(function (k) { flt[k] = ''; });
+    viewMode = 'week'; periodAnchor = null; selectedDay = ''; moreFilters = false; st.moreFilters = false;
+    page = 1; st.page = 1; S.save();
+    ui.qs('#rl-filter').querySelectorAll('input,select').forEach(function (x) {
+      if (x.tagName === 'SELECT') x.selectedIndex = 0; else x.value = '';
+    });
+    ui.qs('#rl-more-fields').hidden = true;
+    ui.qs('#rl-more').setAttribute('aria-expanded', 'false');
+    ui.qs('#rl-more').textContent = '更多筛选';
+    render();
+  });
+
+  var ex = ui.qs('#rl-exp');
+  if (ex) ex.addEventListener('click', function (e) {
+    if (e.target.closest('[data-denied]')) return;
+    ui.modal({
+      title: '导出日报', size: 'sm',
+      body: '<p>将导出当前范围与筛选结果中的正式日报 <b>' + filtered().filter(function (r) { return !r.demo; }).length + '</b> 份。' + rule('reportExport') + '</p>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="rl-exp-ok"' + (filtered().some(function (r) { return !r.demo; }) ? '' : ' disabled') + '>提交导出</button>',
+      onOpen: function (el) {
+        ui.qs('#rl-exp-ok', el).addEventListener('click', function () {
+          ui.close();
+          var n = filtered().filter(function (r) { return !r.demo; }).length;
+          var job = S.addJob({
+            type: '导出', action: '日报导出', object: '日报', status: '处理中', total: n,
+            fields: ['日报编号', '提交人', '日期', '状态', '提交时间', '正文'],
+            fileName: '日报_' + S.today().replace(/-/g, '') + '.xlsx'
+          });
+          ui.asyncRun({
+            title: '正在生成导出文件', total: n, processId: job.processId,
+            onDone: function () {
+              S.updateJob(job.id, { status: '已完成', success: n, failed: 0 });
+              ui.closeAll(); ui.toast('导出已完成，可在处理记录下载。', 'success');
+            }
+          });
+        });
+      }
+    });
+  });
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

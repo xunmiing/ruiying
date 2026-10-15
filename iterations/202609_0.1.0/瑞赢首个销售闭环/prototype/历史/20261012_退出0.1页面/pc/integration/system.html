@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>外部系统 · 瑞赢 0.1 PC 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/pc-common.css">
+<style>
+  /* 页面专属样式：外部系统（服务身份、能力与方向；只读治理视图） */
+  .is-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .is-card { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); overflow: hidden; }
+  .is-card__h { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 10px 13px; background: #FBFCFC; border-bottom: 1px solid var(--line-soft); }
+  .is-card__n { font-size: 13.5px; font-weight: 600; }
+  .is-card__b { padding: 10px 13px; }
+  .is-k { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px; font-size: 12.5px; line-height: 1.85; }
+  .is-k > span { color: var(--muted); }
+  .is-svc { font-family: var(--mono); font-size: 11.5px; }
+  @media (max-width: 1180px) { .is-grid { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body data-root="../../">
+
+<div class="ry-app">
+  <aside class="ry-side" id="ry-side"></aside>
+  <div class="ry-main">
+    <header class="ry-top" id="ry-top"></header>
+    <div class="ry-head" id="ry-head"></div>
+    <main class="ry-page" id="ry-page">
+      <div id="is-host"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/pc-permissions-0-1.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+  var PAGE = 'integration.system';
+
+  RY.nav.shell({
+    nav: PAGE,
+    title: '外部系统',
+    subtitle: '展示<b>服务身份、能力与数据方向</b>。0.1 <b>不建设通用集成编排、字段映射与对账</b>。',
+    crumbs: [{ label: '首页', href: 'pc.html' }, { label: '系统管理' }, { label: '集成与同步' }, { label: '外部系统' }],
+    actions: '<a class="ry-btn" href="job.html">同步任务</a><a class="ry-btn" href="exception.html">同步异常</a>'
+  });
+
+  var g = P.guard(PAGE, null, null);
+  if (!g.ok) {
+    ui.qs('#is-host').innerHTML = ui.stateCard(g.kind, {
+      title: '当前身份不可进入外部系统',
+      body: '<p>' + ui.esc(g.reason) + '</p><p class="ry-hint">无权时不展示系统名称、服务身份与能力清单。</p>'
+    });
+    return;
+  }
+
+  var kw = '', healthF = '';
+
+  function list() { return S.extSystems(); }
+  function filtered() {
+    var k = kw.trim().toLowerCase();
+    return list().filter(function (x) {
+      if (healthF && x.health !== healthF) return false;
+      if (k && (x.name + x.capability + x.serviceIdentity).toLowerCase().indexOf(k) < 0) return false;
+      return true;
+    });
+  }
+  function healthTag(h) {
+    return ui.tag(h, h === '正常' ? 'ok' : h === '降级' ? 'warn' : 'bad');
+  }
+  function dirTag(d) {
+    return ui.tag(d, d === '读入' ? 'info' : d === '写出' ? 'brand' : 'muted');
+  }
+
+  function render() {
+    var all = list(), rows = filtered();
+    ui.qs('#is-host').innerHTML =
+      ui.banner('与外部系统的连接在瑞赢里是<b>固定能力</b>，不是可自由编排的集成平台。' +
+        '每个系统明确写着：<b>capability</b>（能做什么）、<b>direction</b>（数据往哪个方向流）、' +
+        '<b>serviceIdentity</b>（瑞赢用什么服务身份访问）。' +
+        '0.1 <b>不建设通用集成编排、可视化字段映射、通用对账</b>——' +
+        '这些能力一旦开放，边界就会从「与若干确定的外部系统对接」' +
+        '扩散成「谁都能连任意系统并映射任意字段」，权限与事实源都会失控。' +
+        '因此本页是<b>只读治理视图</b>：可以查看健康状态与能力边界，' +
+        '但不能在此新增系统、修改映射或调整同步方向。', 'info') +
+
+      '<div class="ry-card" style="margin:12px 0"><div class="ry-card__body">' +
+        '<div class="ry-filter__row">' +
+          ui.field('关键词', ui.input('is-kw', kw, '系统名称／能力／服务身份'), '', false) +
+          ui.field('健康状态', ui.select('is-health', [
+            { value: '', label: '全部' }, { value: '正常', label: '正常' },
+            { value: '降级', label: '降级' }, { value: '异常', label: '异常' }
+          ], healthF), '', false) +
+        '</div>' +
+        '<div class="ry-filter__act"><button class="ry-btn" id="is-reset">重置</button>' +
+          '<button class="ry-btn ry-btn--primary" id="is-apply">查询</button></div>' +
+      '</div></div>' +
+
+      '<div class="ry-kpi-row" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px">' +
+        '<div class="ry-card ry-card--flat"><div class="ry-card__body"><div class="ry-hint">外部系统</div>' +
+          '<div style="font-size:22px;font-weight:600">' + all.length + '</div></div></div>' +
+        '<div class="ry-card ry-card--flat"><div class="ry-card__body"><div class="ry-hint">健康正常</div>' +
+          '<div style="font-size:22px;font-weight:600;color:var(--ok)">' + all.filter(function (x) { return x.health === '正常'; }).length + '</div></div></div>' +
+        '<div class="ry-card ry-card--flat"><div class="ry-card__body"><div class="ry-hint">降级</div>' +
+          '<div style="font-size:22px;font-weight:600;color:var(--warn)">' + all.filter(function (x) { return x.health === '降级'; }).length + '</div></div></div>' +
+        '<div class="ry-card ry-card--flat"><div class="ry-card__body"><div class="ry-hint">异常</div>' +
+          '<div style="font-size:22px;font-weight:600;color:var(--danger)">' + all.filter(function (x) { return x.health === '异常'; }).length + '</div></div></div>' +
+      '</div>' +
+
+      ui.section('系统清单（' + rows.length + ' 个）',
+        '<div class="is-grid">' + rows.map(function (x) {
+          return '<div class="is-card"><div class="is-card__h">' +
+              '<div><div class="is-card__n">' + ui.esc(x.name) + '</div>' +
+                '<div class="ry-hint is-svc">' + ui.esc(x.serviceIdentity) + '　' + ui.esc(x.env) + '</div></div>' +
+              '<div>' + healthTag(x.health) + ' ' + (x.status === '启用' ? ui.tag('启用', 'ok') : ui.tag('停用', 'muted')) + '</div>' +
+            '</div><div class="is-card__b"><div class="is-k">' +
+              '<span>能力</span><b>' + ui.esc(x.capability) + '</b>' +
+              '<span>数据方向</span><b>' + dirTag(x.direction) + '</b>' +
+              '<span>服务身份</span><b class="is-svc">' + ui.esc(x.serviceIdentity) + '</b>' +
+              '<span>责任人</span><b>' + ui.esc(S.userName(x.owner) || x.owner) + '</b>' +
+              '<span>最近巡检</span><b>' + ui.esc(x.lastHealthAt || '—') + '</b>' +
+              '<span>映射可释放</span><b>' + (x.mappingReleasable ? '是（只读引用，可随时失效而不影响事实）' : '否（该系统的标识是事实源的一部分）') + '</b>' +
+            '</div>' +
+            '<p class="ry-hint" style="margin:8px 0 0">' + ui.esc(x.note) + '</p>' +
+            '<div class="ry-acts-row" style="margin-top:9px">' +
+              '<a class="ry-btn ry-btn--sm" href="job.html?system=' + encodeURIComponent(x.name) + '">查看同步任务</a>' +
+              '<span class="ry-hint">本页只读，不提供编辑入口</span>' +
+            '</div>' +
+          '</div></div>';
+        }).join('') + '</div>') +
+
+      '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin-top:14px">' +
+        ui.section('事实源划分',
+          '<ul class="ry-kv ry-kv--tight">' +
+            '<li><span>组织与人员</span><b>公司用户中心为事实源；瑞赢不本地建号</b></li>' +
+            '<li><span>身份认证</span><b>企业微信认证：消费公司既有 ZR 工号认证结果</b></li>' +
+            '<li><span>业务线与产品</span><b>业务线管理系统为事实源；多匹配／缺失阻断商机创建</b></li>' +
+            '<li><span>公司级知识</span><b>公司知识库为事实源；与瑞赢文档各自标明来源</b></li>' +
+            '<li><span>文件原件</span><b>统一文件存储；已有原件不重复存储</b></li>' +
+            '<li><span>AI 能力</span><b>Coze（私有化）提供模型与编排，<b>不绕过候选与人工确认写 CRM</b></b></li>' +
+          '</ul>') +
+
+        ui.section('明确不建设',
+          '<ul class="ry-kv ry-kv--tight">' +
+            '<li><span>通用集成编排</span><b>不提供：连接器市场、流程编排、任意触发条件</b></li>' +
+            '<li><span>可视化字段映射</span><b>不提供：字段映射由确定的对接方案实现</b></li>' +
+            '<li><span>通用对账</span><b>不提供：不做双向数据比对与差异核销台账</b></li>' +
+            '<li><span>连接配置编辑</span><b>不在此页新增系统、修改地址或凭据</b></li>' +
+            '<li><span>凭据展示</span><b>不展示任何密钥、口令或生产接口地址</b></li>' +
+          '</ul>' +
+          ui.banner('能力边界写死在对接方案里，是为了保证：<b>「这个字段是从哪来的」永远只有一个答案</b>。' +
+            '一旦开放通用映射，同一字段可能有多个来源与多套覆盖顺序，' +
+            '治理与审计都无法给出确定的结论。', 'warn')) +
+      '</div>' +
+
+      '<section class="ry-card ry-card--flat" style="margin-top:14px"><header class="ry-card__head"><h3>本页契约</h3>' +
+        '<div class="ry-card__extra"><span class="ry-hint">PG-ADM-INTEGRATION</span></div></header>' +
+      '<div class="ry-card__body"><ul class="ry-kv ry-kv--tight">' +
+        '<li><span>页面契约</span><b>PG-ADM-INTEGRATION · PC · 集成与同步</b></li>' +
+        '<li><span>依据</span><b>prd/08 §14</b></li>' +
+        '<li><span>可进入角色</span><b>管理员（运营）</b></li>' +
+        '<li><span>覆盖验收</span><b>AC-75</b></li>' +
+        '<li><span>必须展示</span><b>外部系统｜服务身份｜能力与方向</b></li>' +
+        '<li><span>明确不做</span><b>不建设通用集成编排、字段映射、通用对账；不展示凭据与生产接口地址</b></li>' +
+      '</ul></div></section>';
+
+    bind();
+    ui.bindDenied('#ry-page');
+  }
+
+  function bind() {
+    ui.qs('#is-apply').addEventListener('click', function () {
+      var v = ui.formValues(ui.qs('#is-host')); kw = v['is-kw'] || ''; healthF = v['is-health'] || ''; render();
+    });
+    ui.qs('#is-reset').addEventListener('click', function () { kw = ''; healthF = ''; render(); });
+  }
+
+  render();
+})();
+</script>
+<script src="../../assets/js/pc-page-notes.js"></script>
+</body>
+</html>

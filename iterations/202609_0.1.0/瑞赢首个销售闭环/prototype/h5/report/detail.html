@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>日报详情 · 瑞赢 0.1 企微 H5 原型</title>
+<link rel="stylesheet" href="../../assets/css/common.css">
+<link rel="stylesheet" href="../../assets/css/h5-common.css">
+<style>
+  /* 页面专属样式：日报详情（系统事实 / 销售补充 / 主管建议 / 阅读信息）。 */
+  .rp-content { display: grid; gap: 10px; }
+  summary.ry-hcard__head { display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; }
+  summary.ry-hcard__head::-webkit-details-marker { display: none; }
+  .rp-frz { border: 1px solid var(--info-line); background: var(--info-soft); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+  .rp-frz p { margin: 0; font-size: 12.5px; line-height: 1.8; }
+  .rp-fact { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; background: var(--surface); }
+  .rp-fact__t { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .rp-fact__t b { font-size: 13.5px; }
+  .rp-fact ul { list-style: none; margin: 0; padding: 0; }
+  .rp-fact li { font-size: 12.5px; line-height: 1.9; display: flex; gap: 8px; flex-wrap: wrap; }
+  .rp-fact li code { color: var(--faint); font-size: 11.5px; }
+  .rp-body { white-space: pre-wrap; line-height: 1.9; font-size: 13.5px; margin: 0; }
+  .rp-src { display: flex; gap: 6px; flex-wrap: wrap; }
+  .rp-rd { border: 1px solid var(--ok-line); background: var(--ok-soft); border-radius: 12px; padding: 9px 12px; margin-bottom: 10px; }
+  .rp-rd p { margin: 0; font-size: 12.5px; line-height: 1.8; }
+</style>
+</head>
+<body class="ry-app" data-root="../../" data-end="h5">
+
+<div class="ry-bar ry-bar--brand" id="ry-hbar"></div>
+
+<div class="ry-body ry-body--pad-bottom">
+  <div id="rp-host"></div>
+</div>
+
+<nav class="ry-tabbar" id="ry-htabs"></nav>
+
+<script src="../../assets/js/demo-data.js"></script>
+<script src="../../assets/js/prototype-store.js"></script>
+<script src="../../assets/js/permissions.js"></script>
+<script src="../../assets/js/common-actions.js"></script>
+<script src="../../assets/js/navigation.js"></script>
+<script src="../../assets/js/page-manifest.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ui = RY.ui, S = RY.store, P = RY.perm;
+
+  /* permissions.js 未单列 h5.report.detail 页面键；日报详情沿用已登记的 report.detail 页面键
+     （SALES_ALL）并叠加对象数据范围校验，未登记键一律 fail-closed 不放行。 */
+  var PAGE = P.page('h5.report.detail') ? 'h5.report.detail' : 'report.detail';
+  var FACT_GROUPS = [
+    { k: 'customers', n: '客户', type: '客户' }, { k: 'leads', n: '线索', type: '线索' },
+    { k: 'opportunities', n: '商机', type: '商机' }, { k: 'activities', n: '销售活动', type: '销售活动' },
+    { k: 'visits', n: '正式拜访', type: '正式拜访' }, { k: 'tasks', n: '任务', type: '任务' }
+  ];
+  var id = ui.q('id');
+  var r = id ? S.report(id) : null;
+  var me = S.currentUser();
+
+  RY.nav.h5shell({
+    title: '日报详情',
+    sub: r ? (S.userName(r.userId) + ' · ' + r.date) : '日报',
+    back: 'h5/activity/list.html?tab=report',
+    nav: 'home',
+    tabbar: false   /* 详情页隐藏底部五入口 */
+  });
+
+  /* 先判空对象再 guard：缺少 id 或对象不存在时不能按「有权限」继续渲染。 */
+  var g = r ? P.guard(PAGE, 'reports', id)
+            : { ok: false, kind: 'unavailable', reason: '缺少日报标识，或该日报不存在、已不在当前数据范围内。' };
+  if (!g.ok) {
+    ui.qs('#rp-host').innerHTML = ui.stateCard(g.kind, {
+      title: g.kind === 'no-permission' ? '没有该日报的访问权限' : '该日报当前不可用',
+      body: '<p>' + ui.esc(g.reason) + '</p>' +
+        '<p class="ry-hint">日报详情按数据范围开放：本人日报对本人可见，团队成员已提交日报对授权主管可见；' +
+        '范围之外的日报不返回条数、正文、事实条目与摘要，也不展示提交时间与阅读信息。</p>' +
+        '<p class="ry-hint">已提交日报正文与系统事实在提交时冻结为快照；此后源对象的变更不回写已提交日报，' +
+        '也不因为查看者权限变化而改写内容。</p>' +
+        '<p class="ry-hint">日报不使用销售活动或正式拜访冒充事实来源：系统事实只引用有权对象，登记来源只做只读投影。</p>',
+      actions: '<a class="ry-btn" href="' + RY.nav.href('h5/activity/list.html?tab=report') + '">我的日报</a>' +
+               '<a class="ry-btn" href="' + RY.nav.href('index.html') + '">返回工作台</a>'
+    });
+    return;
+  }
+
+  var isMine = r.userId === me.id;
+  var canAdvice = P.can('report.advice', r);   /* 主管不能给本人日报追加建议 */
+  var canRead = P.can('report.read');
+
+  function linkOrText(type, oid, name) {
+    var o = type === '客户' ? S.customer(oid) : type === '商机' ? S.opp(oid) : type === '线索' ? S.lead(oid)
+      : type === '销售活动' ? S.activity(oid) : type === '正式拜访' ? S.visit(oid) : type === '任务' ? S.task(oid) : null;
+    if (!o) return '<span>' + ui.esc(name || oid) + ' <code>' + ui.esc(oid) + '</code></span>';
+    var permType = { '客户': 'customer', '商机': 'opp', '线索': 'lead', '销售活动': 'activity', '正式拜访': 'visit', '任务': 'task' }[type];
+    if (!P.inScope(permType, o)) return '<span class="ry-hint">无权查看的来源</span>';
+    var path = { '客户': 'h5/customer/detail.html', '商机': 'h5/opportunity/detail.html', '线索': 'h5/lead/detail.html',
+      '销售活动': 'h5/activity/detail.html', '正式拜访': 'h5/visit/detail.html', '任务': 'h5/task/detail.html' }[type];
+    return '<a href="' + RY.nav.href(path + '?id=' + encodeURIComponent(oid)) + '">' + ui.esc(name || oid) + '</a>' +
+      '<code>' + ui.esc(oid) + '</code>';
+  }
+
+  function visibleSource(s) {
+    var type = { customers:'客户', leads:'线索', opportunities:'商机', activities:'销售活动', visits:'正式拜访', tasks:'任务' }[s.type] || s.type;
+    var map = { '客户':['customer', S.customer], '线索':['lead', S.lead], '商机':['opp', S.opp],
+      '销售活动':['activity', S.activity], '正式拜访':['visit', S.visit], '任务':['task', S.task] };
+    var pair = map[type], item = pair && pair[1](s.id);
+    return !!(item && P.inScope(pair[0], item));
+  }
+
+  /* ---------------------------------------------------------- 视图 */
+
+  function viewFacts() {
+    var f = r.status === '已提交' ? (r.frozenFacts || r.facts || {}) : (r.facts || {});
+    var body = FACT_GROUPS.map(function (g2) {
+      var rows = f[g2.k] || [];
+      if (!rows.length) return '';
+      return '<div class="rp-fact"><div class="rp-fact__t"><b>' + g2.n + '</b>' + ui.tag(rows.length + ' 条', 'muted') + '</div>' +
+        '<ul>' + rows.map(function (x) {
+          return '<li>' + linkOrText(g2.type, x.id, x.name) +
+            '<span class="h5-sec-note">' + ui.esc(x.change || '') + '</span></li>';
+        }).join('') + '</ul></div>';
+    }).join('');
+    if (!body) body = '<p class="ry-hint">该日报没有系统汇总事实（当日允许只写文字补充）。</p>';
+    var sources = (r.status === '已提交' ? (r.frozenSources || r.sources) : r.sources) || [];
+    return '<details class="ry-hcard"><summary class="ry-hcard__head"><h3>事实来源</h3>' +
+      '<span class="h5-sec-note">只读 · 点击展开</span></summary>' +
+      '<div class="ry-hcard__body">' + body +
+      (sources.length ? '<div class="rp-src">' + sources.map(function (s) {
+        return visibleSource(s) ? ui.tag(s.type + '：' + s.id, 'muted') : ui.tag('无权查看的来源', 'muted');
+      }).join('') + '</div>' : '') +
+      '<p class="ry-hint">正文中的事实描述可在提交前修改；来源只读，提交时冻结。来源对象仍按当前权限打开。</p>' +
+      '</div></details>';
+  }
+
+  function viewBody() {
+    var text = r.submittedBody || r.draftBody || '';
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>日报正文</h3>' +
+      '<div class="ry-hcard__extra">' + ui.statusTag(r.status) + '</div></div>' +
+      '<div class="ry-hcard__body">' +
+      (text ? '<p class="rp-body">' + ui.esc(text) + '</p>'
+            : '<p class="ry-hint">该日报还没有填写正文（草稿为空）。</p>') +
+      '<p class="ry-hint">正文提交后冻结，不退回、不重提；主管不能代销售改写正文。</p>' +
+      '</div></div>';
+  }
+
+  function viewAdv() {
+    var adv = r.advices || [];
+    return '<div class="ry-hcard"><div class="ry-hcard__head"><h3>主管建议</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">追加式 · 不覆盖</span></div></div>' +
+      '<div class="ry-hcard__body">' +
+      (adv.length
+        ? adv.map(function (a) {
+            return '<div class="rp-fact"><div class="rp-fact__t"><b>' + ui.esc(S.userName(a.by)) + '</b>' +
+              '<span class="h5-sec-note">' + ui.esc(a.at) + '</span></div>' +
+              '<p class="rp-body">' + ui.esc(a.text) + '</p></div>';
+          }).join('')
+        : '<p class="ry-hint">还没有主管建议。</p>') +
+      '<div class="ry-acts-row" style="margin-top:10px">' +
+        (canAdvice ? ui.actionBtn('report.advice', '追加建议', ' data-adv="1"', 'ry-btn--primary')
+                   : '<span class="ry-btn is-off" data-denied="1" title="' + ui.esc(P.whyNot('report.advice') || '主管不能给本人日报追加建议；销售本人也不能自评。') + '">追加建议<i class="ry-btn__lock">不可用</i></span>') +
+      '</div>' +
+      '<p class="ry-hint">建议只能追加、不能覆盖或删除；追加建议不重置其他主管的阅读状态，也不改变已提交正文与事实快照。' +
+      'H5 不做批量已读／未读，也不提供导出（导出属 PC 能力）。</p>' +
+      '</div></div>';
+  }
+
+  function viewHis() {
+    var hist = (r.history || []).slice();
+    Object.keys(r.readBy || {}).forEach(function (readerId) {
+      var x = r.readBy[readerId];
+      var at = x.read ? x.at : x.unreadAt;
+      var action = x.read ? '标记已读' : '标记未读';
+      if (at && !hist.some(function (h) { return h.at === at && h.action === action && h.actor === S.userName(readerId); })) {
+        hist.push({ at: at, actor: S.userName(readerId), action: action });
+      }
+    });
+    hist.sort(function (a, b) { return String(b.at || '').localeCompare(String(a.at || '')); });
+    var rb = r.readBy || {};
+    var keys = Object.keys(rb);
+    return '<div class="ry-hcard ry-hcard--flat"><div class="ry-hcard__head"><h3>日志记录</h3>' +
+      '<div class="ry-hcard__extra"><span class="h5-sec-note">提交后冻结</span></div></div><div class="ry-hcard__body">' +
+      (keys.length ? '<p class="ry-hint">当前阅读：' + keys.map(function (k) {
+        return ui.esc(S.userName(k)) + ' ' + (rb[k].read ? '已读' : '未读');
+      }).join(' · ') + '</p>' : '') +
+      (hist.length
+        ? '<ul class="ry-tl">' + hist.map(function (h) {
+            return '<li><p class="ry-tl__t"><b>' + ui.esc(h.action) + '</b>' +
+              (h.from || h.to ? '（' + ui.esc((h.from || '—') + ' → ' + (h.to || '—')) + '）' : '') + '</p>' +
+              '<p class="ry-tl__m">' + ui.esc(h.actor) + ' · ' + ui.esc(h.at) + '</p></li>';
+          }).join('') + '</ul>'
+        : '<p class="ry-hint">暂无日志记录。</p>') +
+      (r.submitIdem ? '<p class="ry-hint">提交幂等标识：<code>' + ui.esc(r.submitIdem) + '</code>　一次提交只有一次生效。</p>' : '') +
+      '</div></div>';
+  }
+
+
+  /* ---------------------------------------------------------- 追加建议 */
+
+  function adviceSheet() {
+    RY.nav.sheet({
+      title: '追加主管建议', sub: S.userName(r.userId) + ' · ' + r.date,
+      body: '<div class="ry-hform">' +
+        ui.field('建议内容', ui.textarea('text', '', '针对该日报的过程与结论给出建议，追加后不可覆盖或删除', 4), '', true) +
+        '</div><p class="ry-hint">建议为追加式记录：不修改已提交正文与事实快照，也不重置其他主管的阅读状态。</p>',
+      footer: '<button class="ry-btn" data-close>取消</button><button class="ry-btn ry-btn--primary" id="rp-adv-ok">提交建议</button>',
+      onOpen: function (host, close) {
+        host.addEventListener('click', function (e) {
+          if (!e.target.closest('#rp-adv-ok')) return;
+          var v = ui.formValues(host);
+          var text = (v.text || '').trim();
+          if (!text) { ui.toast('建议内容不能为空', 'warn'); return; }
+          var res = S.addReportAdvice(r.id, text);
+          if (!res.ok) { ui.toast(res.msg, 'warn'); return; }
+          close();
+          r = S.report(r.id);
+          ui.toast('已追加建议（追加式，不覆盖）', 'ok');
+          render();
+        });
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------- 渲染 */
+
+  var autoReadDone = false;
+
+  function render() {
+    ui.qs('#rp-host').innerHTML =
+      '<div class="ry-brief"><div class="ry-brief__row">' +
+        '<div><div class="ry-brief__k">日报日期</div><div class="ry-brief__v">' + ui.esc(r.date) + '</div></div>' +
+        '<div><div class="ry-brief__k">状态</div><div class="ry-brief__v">' + ui.statusTag(r.status) + '</div></div>' +
+      '</div><p class="ry-brief__next">归属：<b>' + ui.esc(S.userName(r.userId)) + '</b>' +
+        (isMine ? '（本人日报）' : '（团队日报，按数据范围查看）') +
+        (r.submittedAt ? '　提交：' + ui.esc(r.submittedAt) : '　未提交') + '</p></div>' +
+      (r.status === '已提交'
+        ? '<div class="rp-frz"><p><b>已提交并冻结：不退回、不重提。</b>正文、系统事实与来源在提交时冻结为快照；' +
+          '源对象后续变更不回写。需要补充请在次日日报说明，或由主管以建议追加。</p></div>'
+        : '<div class="rp-frz"><p><b>草稿：尚未提交。</b>草稿可多次保存，提交只有一次；提交后正文与事实快照冻结。</p></div>') +
+      (autoReadDone ? '<div class="rp-rd"><p>已自动标记为已读，记录见下方日志。</p></div>' : '') +
+      '<div class="rp-content">' + viewBody() + viewFacts() + viewAdv() + viewHis() + '</div>' +
+      '<div class="ry-hcard ry-hcard--flat" style="margin-top:14px"><div class="ry-hcard__head"><h3>本页契约</h3>' +
+        '<div class="ry-hcard__extra"><span class="h5-sec-note">PG-RPT-DETAIL</span></div></div>' +
+      '<div class="ry-hcard__body">' + ui.kv([
+        ['页面契约', 'PG-RPT-DETAIL · 日报和主管业务处理 · H5'],
+        ['可进入角色', 'R1 销售｜R2 销售主管｜R3 销售运营｜R4 客户数据管理｜R5 系统管理员（ALL5）；实际进入按数据范围判定'],
+        ['依据', 'prd/04 §6'],
+        ['覆盖验收', 'AC-36 AC-38'],
+        ['本页视图', '正文、可展开的只读事实来源、主管建议、日志记录纵向展示；阅读状态并入日志；原始底稿仅 PC 查看'],
+        ['事实边界', '系统先按事实汇总，销售只补充文字；正文提交后冻结，不退回、不重提'],
+        ['阅读边界', '只有打开正文详情才自动置为已读；允许单条手动改已读／未读，不做批量已读未读'],
+        ['建议边界', '建议只能追加、不能覆盖或删除；追加建议不重置他人阅读状态，也不改变已提交正文'],
+        ['范围边界', '按数据范围展示；范围之外的日报不返回条数、正文、事实与阅读信息']
+      ]) +
+      '<p class="ry-hint">说明：permissions.js 未单列 h5.report.detail 页面键，本页沿用已登记的 report.detail（SALES_ALL）并叠加对象数据范围校验。</p>' +
+      '</div></div>';
+
+    var adv = ui.qs('#rp-host [data-adv]');
+    if (adv && !adv.hasAttribute('data-denied')) adv.addEventListener('click', adviceSheet);
+    ui.bindDenied(document.body);
+    ui.bindMasked(document.body);
+  }
+
+  /* 打开详情即展示正文，按本人阅读状态自动置为已读。 */
+  function markReadIfNeeded() {
+    if (isMine || !canRead || r.status !== '已提交') return;
+    var x = (r.readBy || {})[me.id];
+    if (x && x.read) return;
+    var res = S.markReportRead(r.id, true);
+    if (res.ok) { r = res.report; autoReadDone = true; }
+  }
+
+  var origRender = render;
+  render = function () {
+    markReadIfNeeded();
+    origRender();
+  };
+
+  render();
+})();
+</script>
+</body>
+</html>
